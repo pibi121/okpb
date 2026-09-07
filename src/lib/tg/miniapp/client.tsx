@@ -43,7 +43,16 @@ export type TgMiniAppProfile = {
     maxPhotos: number;
   };
   botUsername?: string;
+  supportUrl?: string;
 };
+
+/** Filled from /api/tg/me so TgShell footer picks up Railway TG_SUPPORT_CONTACT. */
+let cachedSupportUrl = "https://t.me/peachbitch_support";
+
+function rememberSupportUrl(url?: string) {
+  const next = url?.trim();
+  if (next) cachedSupportUrl = next;
+}
 
 const UI = {
   ru: {
@@ -59,6 +68,8 @@ const UI = {
     video: "Видео",
     profile: "Профиль",
     balance: "Баланс",
+    legalRules: "Политика, правила, оферта",
+    legalSupport: "Поддержка",
   },
   en: {
     openInTg: "Open from Telegram Mini App",
@@ -73,6 +84,8 @@ const UI = {
     video: "Video",
     profile: "Profile",
     balance: "Balance",
+    legalRules: "Policy, rules & offer",
+    legalSupport: "Support",
   },
 } as const;
 
@@ -160,6 +173,7 @@ export function useTgMiniApp() {
       throw err;
     }
     const data = (await res.json()) as TgMiniAppProfile;
+    rememberSupportUrl(data.supportUrl);
     setProfile(data);
     if (data.locale === "en" || data.locale === "ru") setLocale(data.locale);
     return data;
@@ -285,6 +299,36 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
   );
 }
 
+export function TgLegalFooter({ locale }: { locale: "ru" | "en" }) {
+  const u = UI[locale];
+  const rulesHref = `/tg/rules?lang=${locale === "en" ? "en" : "ru"}`;
+  const support = cachedSupportUrl;
+
+  const openSupport = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const tg = window.Telegram?.WebApp;
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(support);
+      return;
+    }
+    window.open(support, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <footer className="tg-legal-footer">
+      <Link href={rulesHref} className="tg-legal-link">
+        {u.legalRules}
+      </Link>
+      <span className="tg-legal-dot" aria-hidden>
+        ·
+      </span>
+      <a href={support} className="tg-legal-link" onClick={openSupport}>
+        {u.legalSupport}
+      </a>
+    </footer>
+  );
+}
+
 export function TgShell({
   children,
   locale,
@@ -299,8 +343,10 @@ export function TgShell({
   onLangToggle?: () => void;
   /** @deprecated unused — logo-only header */
   hideTitle?: boolean;
+  /** @deprecated ignored extras from older callers */
+  status?: unknown;
+  error?: unknown;
 }) {
-  void locale;
   return (
     <div className="tg-shell">
       <header className="tg-header">
@@ -310,6 +356,7 @@ export function TgShell({
         </div>
       </header>
       {children}
+      <TgLegalFooter locale={locale} />
       <TgTabBar locale={locale} />
     </div>
   );

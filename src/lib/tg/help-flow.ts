@@ -2,27 +2,35 @@ import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
 import { langInlineKeyboard } from "@/lib/tg/character-bot";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
-
-function supportContact(): string {
-  return process.env.TG_SUPPORT_CONTACT?.trim() || "@peachbitch_support";
-}
-
-function reserveLinks(): string {
-  const raw = process.env.TG_RESERVE_LINKS?.trim();
-  if (raw) return raw;
-  return "t.me/peachbitch_bot";
-}
+import { tgRulesArticleUrl } from "@/lib/tg/rules";
+import {
+  tgReserveLinks,
+  tgSupportContact,
+  tgSupportUrl,
+} from "@/lib/tg/support";
 
 export async function sendHelp(chatId: number, locale: TgLocale) {
   await tgSendMessage(
     chatId,
     tFormat("help_title", locale, {
-      support: supportContact(),
-      reserves: reserveLinks(),
+      support: tgSupportContact(),
+      reserves: tgReserveLinks(),
     }),
     {
       reply_markup: {
         inline_keyboard: [
+          [
+            {
+              text: t("help_rules_btn", locale),
+              url: tgRulesArticleUrl(locale),
+            },
+          ],
+          [
+            {
+              text: t("help_support_btn", locale),
+              url: tgSupportUrl(),
+            },
+          ],
           [{ text: t("help_lang_btn", locale), callback_data: "help:lang" }],
         ],
       },

@@ -12,6 +12,8 @@ export const FUNNEL_SLOTS: { slot: TgI18nKey; title: string }[] = [
   { slot: "onboard_pick_studio_btn", title: "Кнопка: готовый персонаж" },
   { slot: "onboard_create_char_btn", title: "Кнопка: создать свою модель" },
   { slot: "help_title", title: "Помощь" },
+  { slot: "help_rules_btn", title: "Кнопка: политика/правила/оферта" },
+  { slot: "help_support_btn", title: "Кнопка: поддержка" },
   { slot: "gen_insufficient", title: "Не хватает персиков" },
   { slot: "generating", title: "Генерация запущена" },
   { slot: "gen_error", title: "Ошибка генерации (человеку)" },

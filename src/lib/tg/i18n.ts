@@ -651,13 +651,25 @@ Your balance: {balance}🍑
 📩 Поддержка: {support}
 🔗 Резервы: {reserves}
 
-Язык интерфейса можно сменить кнопкой ниже 👇`,
+Политика, правила и оферта — в кнопке ниже.
+Язык интерфейса можно сменить кнопкой 👇`,
     en: `<b>Help</b>
 
 📩 Support: {support}
 🔗 Backups: {reserves}
 
-Change language with the button below 👇`,
+Policy, rules & offer — button below.
+Change language with the button 👇`,
+  },
+
+  help_rules_btn: {
+    ru: "📜 Политика, правила, оферта",
+    en: "📜 Policy, rules & offer",
+  },
+
+  help_support_btn: {
+    ru: "💬 Написать в поддержку",
+    en: "💬 Message support",
   },
 
   help_lang_btn: { ru: "🌐 Сменить язык", en: "🌐 Change language" },

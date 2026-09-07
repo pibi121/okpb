@@ -1,0 +1,11 @@
+PROCS 11883 bash -c setsid /opt/ComfyUI/.venv/bin/python -u /tmp/wan_i2v_download.py > /workspace/WAN_I2V_DOWNLOAD.nohup 2>&1 < /dev/null
+11898 /opt/ComfyUI/.venv/bin/python -u /tmp/wan_i2v_download.py
+11938 bash -c python3 - <<'PY' import time, pathlib, subprocess time.sleep(5) r=subprocess.run(['pgrep','-af','wan_i2v_download'],capture_output=True,text=True) print('PROCS', r.stdout or 'none') for p in ['/workspace/WAN_I2V_DOWNLOAD.log','/workspace/WAN_I2V_DOWNLOAD.nohup']:   path=pathlib.Path(p)   if path.exists():     print('FILE', p, path.stat().st_size)     print(path.read_text(errors='replace')[-1500:]) PY
+
+FILE /workspace/WAN_I2V_DOWNLOAD.log 92
+Wan I2V download start
+[14:21:22] DL start wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+
+FILE /workspace/WAN_I2V_DOWNLOAD.nohup 69
+[14:21:22] DL start wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+

@@ -1,0 +1,53 @@
+/dev/nvme0n1p4  3.7T  3.7T  3.1G 100% /workspace
+NVIDIA GeForce RTX 5090, 32607 MiB, 20331 MiB
+comfyui                          RUNNING   pid 131, uptime 0:11:32
+=== diffusion / unet ===
+total 72G
+-rw-r--r-- 1 root root 23G Aug  3 09:45 ultrarealFineTune_v4.safetensors
+-rw-r--r-- 1 root root 14G Aug  3 14:24 wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+-rw-r--r-- 1 root root 14G Aug  3 14:27 wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+-rw-r--r-- 1 root root 12G Aug  3 08:39 z_image_bf16.safetensors
+-rw-r--r-- 1 root root 12G Aug  3 07:58 z_image_turbo_bf16.safetensors
+total 0
+=== vae ===
+total 562M
+-rw-r--r-- 1 root root 320M Aug  3 07:54 ae.safetensors
+-rw-r--r-- 1 root root 243M Aug  3 14:28 wan_2.1_vae.safetensors
+=== clip / text ===
+/workspace/models/clip/:
+total 0
+
+/workspace/models/text_encoders/:
+total 24G
+-rw-r--r-- 1 root root 235M Aug  3 09:22 clip_l.safetensors
+-rw-r--r-- 1 root root 7.5G Aug  3 07:59 qwen_3_4b.safetensors
+-rw-r--r-- 1 root root 9.2G Aug  3 09:25 t5xxl_fp16.safetensors
+-rw-r--r-- 1 root root 6.3G Aug  3 14:28 umt5_xxl_fp8_e4m3fn_scaled.safetensors
+=== loras ===
+total 2.6G
+drwxr-xr-x 2 root root   10 Aug  3 09:56 Zimage
+-rw------- 1 root root  82M Aug  3 14:04 olh_person_zimage.safetensors
+-rw------- 1 root root  82M Aug  3 14:04 olh_person_zimage_1500.safetensors
+-rw------- 1 root root  82M Aug  3 14:04 olh_person_zimage_2000.safetensors
+-rw-r--r-- 1 root root 1.2G Aug  3 14:29 wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+-rw-r--r-- 1 root root 1.2G Aug  3 14:29 wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+=== blueprints wan ===
+Canny to Video (LTX 2.0).json
+Depth to Video (ltx 2.0).json
+Image to Video (Wan 2.2).json
+Pose to Video (LTX 2.0).json
+Text to Video (Wan 2.2).json
+Video Captioning (Gemini).json
+Video Inpaint(Wan2.1 VACE).json
+Video Stitch.json
+Video Upscale(GAN x4).json
+Image-to-Video-Wan-2.2.json
+Wan-I2V-2.2.json
+=== find wan files ===
+/workspace/models/vae/wan_2.1_vae.safetensors
+/workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+/workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+/workspace/models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+/workspace/models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+=== object_info Wan hints ===
+keys ['TextEncodeHunyuanVideo_ImageToVideo', 'HunyuanVideo15ImageToVideo', 'HunyuanImageToVideo', 'CosmosImageToVideoLatent', 'CosmosPredict2ImageToVideoLatent', 'WanTrackToVideo', 'WanImageToVideo', 'WanFunControlToVideo', 'Wan22FunControlToVideo', 'WanFunInpaintToVideo', 'WanFirstLastFrameToVideo', 'WanVaceToVideo', 'WanCameraImageToVideo', 'WanPhantomSubjectToVideo', 'WanSoundImageToVideo', 'WanSoundImageToVideoExtend', 'WanHuMoImageToVideo', 'WanAnimateToVideo', 'Wan22ImageToVideoLatent', 'WanInfiniteTalkToVideo', 'WanSCAILToVideo', 'WanCameraEmbedding', 'WanContextWindowsManual', 'wanBlockSwap', 'Kandinsky5ImageToVideo', 'WanMoveTrackToVideo', 'WanMoveTracksFromCoords', 'WanMoveConcatTrack', 'WanMoveVisualizeTracks', 'ByteDanceImageToVideoNode', 'KlingCameraControlI2VNode', 'KlingOmniProImageToVideoNode', 'KlingImageToVideoWithAudio', 'LtxvApiImageToVideo', 'LumaImageToVideoNode', 'MinimaxImageToVideoNode', 'PixverseImageToVideoNode', 'RunwayImageToVideoNodeGen3a', 'RunwayImageToVideoNodeGen4', 'ViduImageToVideoNode']

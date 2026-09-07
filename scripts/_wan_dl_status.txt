@@ -1,0 +1,40 @@
+PROCS 1129 bash -c python3 - <<'PY' import pathlib, subprocess, os r=subprocess.run(['pgrep','-af','wan_i2v_download'],capture_output=True,text=True) print('PROCS', (r.stdout or 'none').strip()) files=[  '/workspace/models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',  '/workspace/models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors',  '/workspace/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors',  '/workspace/models/vae/wan_2.1_vae.safetensors',  '/workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors',  '/workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors', ] for f in files:   p=pathlib.Path(f)   part=pathlib.Path(f+'.part')   if p.exists():     print('OK', p.name, p.stat().st_size)   elif part.exists():     print('PART', p.name, part.stat().st_size)   else:     print('MISS', p.name) for p in ['/workspace/WAN_I2V_STATUS.txt','/workspace/WAN_I2V_DOWNLOAD.log']:   path=pathlib.Path(p)   if path.exists():     print('---', p, '---')     print(path.read_text(errors='replace')[-2000:]) PY
+OK wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors 14294742832
+OK wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors 14294742832
+OK umt5_xxl_fp8_e4m3fn_scaled.safetensors 6735906897
+OK wan_2.1_vae.safetensors 253815318
+OK wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors 1226977424
+OK wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors 1226977424
+--- /workspace/WAN_I2V_STATUS.txt ---
+Wan 2.2 I2V READY
+OK /workspace/models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+OK /workspace/models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+OK /workspace/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
+OK /workspace/models/vae/wan_2.1_vae.safetensors
+OK /workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+OK /workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+
+Open in Comfy: Workflow -> Image-to-Video-Wan-2.2 (or Templates Wan 2.2)
+1. Load Image = still from Z-Image+LoRA
+2. Prompt motion (english)
+3. Queue (first run may be slow)
+LightX2V 4-step LoRAs included for faster gens.
+
+--- /workspace/WAN_I2V_DOWNLOAD.log ---
+Wan I2V download start
+[14:21:22] DL start wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+[14:24:36] DL done hf /workspace/models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors (14294742832)
+[14:24:36] DL start wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+[14:27:34] DL done hf /workspace/models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors (14294742832)
+[14:27:34] DL start umt5_xxl_fp8_e4m3fn_scaled.safetensors
+[14:28:54] DL done hf /workspace/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors (6735906897)
+[14:28:54] DL start wan_2.1_vae.safetensors
+[14:28:59] DL done hf /workspace/models/vae/wan_2.1_vae.safetensors (253815318)
+[14:28:59] DL start wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+[14:29:11] DL done hf /workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors (1226977424)
+[14:29:11] DL start wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+[14:29:24] DL done hf /workspace/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors (1226977424)
+[14:29:24] workflow -> /workspace/user/default/workflows/Image-to-Video-Wan-2.2.json
+[14:29:24] workflow -> /workspace/user/default/workflows/Wan-I2V-2.2.json
+[14:29:24] STATUS written
+

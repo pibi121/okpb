@@ -1,0 +1,97 @@
+{
+  "id": "a1b2c3d4-stitch-autoedit-001",
+  "revision": 0,
+  "last_node_id": 20,
+  "last_link_id": 20,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AutoEditWorkbench",
+      "pos": [-400, 0],
+      "size": [420, 280],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "slot_index": 0, "links": [1]},
+        {"name": "audio", "type": "AUDIO", "slot_index": 1, "links": [2]},
+        {"name": "fps", "type": "FLOAT", "slot_index": 2, "links": [3]}
+      ],
+      "title": "Автосклейка: укажи папку с клипами (абсолютный путь на сервере)",
+      "properties": {"Node name for S&R": "AutoEditWorkbench"},
+      "widgets_values": [
+        "/work/ComfyUI/output/stitch_inbox",
+        "alphabetical_asc",
+        "Crop (Fill Screen)",
+        "First Video",
+        512,
+        512,
+        "First Video",
+        24,
+        0.0,
+        false,
+        1.5
+      ]
+    },
+    {
+      "id": 2,
+      "type": "VHS_VideoCombine",
+      "pos": [120, 0],
+      "size": [360, 420],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 1},
+        {"name": "audio", "type": "AUDIO", "link": 2, "shape": 7},
+        {"name": "meta_batch", "type": "VHS_BatchManager", "link": null, "shape": 7},
+        {"name": "vae", "type": "VAE", "link": null, "shape": 7},
+        {"name": "frame_rate", "type": "FLOAT", "link": 3, "widget": {"name": "frame_rate"}}
+      ],
+      "outputs": [
+        {"name": "Filenames", "type": "VHS_FILENAMES", "links": null}
+      ],
+      "title": "Save stitched mp4",
+      "properties": {"Node name for S&R": "VHS_VideoCombine"},
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "Stitch/autoedit",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "MarkdownNote",
+      "pos": [-400, 340],
+      "size": [700, 220],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## Автомонтаж / склейка\n\n1. Положи 2+ клипа (mp4) в папку на сервере, например:\n   `/work/ComfyUI/output/stitch_inbox`\n2. В ноде Auto-Edit Workbench проверь `directory_path`.\n3. Queue → результат в `output/Stitch/`.\n\nСортировка: alphabetical / date / random.\n`limit_duration_sec=0` = без лимита (для теста поставь 10–15).\n\n**trim_start** (галочка): если включена — обрезает первые `trim_start_sec` у КАЖДОГО клипа перед склейкой (полезно чтобы убрать артефакты первых 1–2 сек оживления). Выключена — ничего не режет."
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 1, 1, 2, 1, "AUDIO"],
+    [3, 1, 2, 2, 4, "FLOAT"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.85, "offset": [500, 200]},
+    "frontendVersion": "1.36.14"
+  },
+  "version": 0.4
+}

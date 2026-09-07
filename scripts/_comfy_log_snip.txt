@@ -1,0 +1,60 @@
+70:[2026-08-03 10:14:07.657] ⚠️  SeedVR2 optimizations check: SageAttention ❌ | Flash Attention ❌ | Triton ✅
+116:    _use_top_left_mask = flash_attn_supports_top_left_mask()
+118:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/modeling_flash_attention_utils.py", line 43, in flash_attn_supports_top_left_mask
+119:    if is_flash_attn_2_available() or is_flash_attn_3_available() or is_flash_attn_4_available():
+121:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 965, in is_flash_attn_2_available
+122:    pkg.replace("_", "-") for pkg in PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]
+124:KeyError: 'flash_attn'
+133:  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/__init__.py", line 7, in <module>
+134:    from .src.interfaces import comfy_entrypoint, SeedVR2Extension
+135:  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/interfaces/__init__.py", line 8, in <module>
+136:    from .video_upscaler import SeedVR2VideoUpscaler
+137:  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/interfaces/video_upscaler.py", line 10, in <module>
+139:  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/utils/downloads.py", line 14, in <module>
+141:  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/utils/model_registry.py", line 14, in <module>
+143:  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/models/video_vae_v3/modules/attn_video_vae.py", line 20, in <module>
+166:    raise RuntimeError(
+167:RuntimeError: Failed to import diffusers.loaders.single_file_model because of the following error (look up to see its traceback):
+168:'flash_attn'
+170:[2026-08-03 10:14:08.468] Cannot import /workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler module for custom nodes: Failed to import diffusers.loaders.single_file_model because of the following error (look up to see its traceback):
+171:'flash_attn'
+177:  File "/workspace/custom_nodes/was-node-suite-comfyui/__init__.py", line 1, in <module>
+178:    from .WAS_Node_Suite import NODE_CLASS_MAPPINGS
+179:  File "/workspace/custom_nodes/was-node-suite-comfyui/WAS_Node_Suite.py", line 2415, in <module>
+204:    _use_top_left_mask = flash_attn_supports_top_left_mask()
+206:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/modeling_flash_attention_utils.py", line 43, in flash_attn_supports_top_left_mask
+207:    if is_flash_attn_2_available() or is_flash_attn_3_available() or is_flash_attn_4_available():
+209:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 965, in is_flash_attn_2_available
+210:    pkg.replace("_", "-") for pkg in PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]
+212:KeyError: 'flash_attn'
+214:[2026-08-03 10:14:08.858] Cannot import /workspace/custom_nodes/was-node-suite-comfyui module for custom nodes: 'flash_attn'
+261:    _use_top_left_mask = flash_attn_supports_top_left_mask()
+263:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/modeling_flash_attention_utils.py", line 43, in flash_attn_supports_top_left_mask
+264:    if is_flash_attn_2_available() or is_flash_attn_3_available() or is_flash_attn_4_available():
+266:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 965, in is_flash_attn_2_available
+267:    pkg.replace("_", "-") for pkg in PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]
+269:KeyError: 'flash_attn'
+271:[2026-08-03 10:14:08.966] Cannot import /workspace/custom_nodes/ComfyUI_LayerStyle module for custom nodes: 'flash_attn'
+317:    _use_top_left_mask = flash_attn_supports_top_left_mask()
+319:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/modeling_flash_attention_utils.py", line 43, in flash_attn_supports_top_left_mask
+320:    if is_flash_attn_2_available() or is_flash_attn_3_available() or is_flash_attn_4_available():
+322:  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 965, in is_flash_attn_2_available
+323:    pkg.replace("_", "-") for pkg in PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]
+325:KeyError: 'flash_attn'
+334:  File "/workspace/custom_nodes/seedvr2_videoupscaler/__init__.py", line 7, in <module>
+335:    from .src.interfaces import comfy_entrypoint, SeedVR2Extension
+336:  File "/workspace/custom_nodes/seedvr2_videoupscaler/src/interfaces/__init__.py", line 8, in <module>
+337:    from .video_upscaler import SeedVR2VideoUpscaler
+338:  File "/workspace/custom_nodes/seedvr2_videoupscaler/src/interfaces/video_upscaler.py", line 10, in <module>
+340:  File "/workspace/custom_nodes/seedvr2_videoupscaler/src/utils/downloads.py", line 14, in <module>
+342:  File "/workspace/custom_nodes/seedvr2_videoupscaler/src/utils/model_registry.py", line 14, in <module>
+344:  File "/workspace/custom_nodes/seedvr2_videoupscaler/src/models/video_vae_v3/modules/attn_video_vae.py", line 20, in <module>
+367:    raise RuntimeError(
+368:RuntimeError: Failed to import diffusers.loaders.single_file_model because of the following error (look up to see its traceback):
+369:'flash_attn'
+371:[2026-08-03 10:14:09.055] Cannot import /workspace/custom_nodes/seedvr2_videoupscaler module for custom nodes: Failed to import diffusers.loaders.single_file_model because of the following error (look up to see its traceback):
+372:'flash_attn'
+386:[2026-08-03 10:14:09.057]    0.0 seconds (IMPORT FAILED): /workspace/custom_nodes/seedvr2_videoupscaler
+390:[2026-08-03 10:14:09.057]    0.1 seconds (IMPORT FAILED): /workspace/custom_nodes/ComfyUI_LayerStyle
+393:[2026-08-03 10:14:09.057]    0.4 seconds (IMPORT FAILED): /workspace/custom_nodes/was-node-suite-comfyui
+394:[2026-08-03 10:14:09.057]    0.8 seconds (IMPORT FAILED): /workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler

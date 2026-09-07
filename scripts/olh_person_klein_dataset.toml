@@ -1,0 +1,12 @@
+# olh_person character LoRA dataset for Flux.2 Klein base 9B
+[general]
+resolution = [1024, 1024]
+caption_extension = ".txt"
+batch_size = 1
+enable_bucket = true
+bucket_no_upscale = false
+
+[[datasets]]
+image_directory = "/work/datasets/olh_person_klein/images"
+cache_directory = "/work/datasets/olh_person_klein/cache"
+num_repeats = 10

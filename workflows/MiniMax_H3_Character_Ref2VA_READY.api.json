@@ -1,0 +1,498 @@
+{
+  "prompt": {
+    "454": {
+      "class_type": "ImageCompositeMasked",
+      "inputs": {
+        "destination": [
+          "460",
+          0
+        ],
+        "source": [
+          "457",
+          0
+        ],
+        "mask": [
+          "455_437",
+          0
+        ],
+        "x": 0,
+        "y": 0,
+        "resize_source": false
+      }
+    },
+    "456": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "454",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 0.15,
+        "resolution_steps": 1
+      }
+    },
+    "457": {
+      "class_type": "ImageInvert",
+      "inputs": {
+        "image": [
+          "460",
+          0
+        ]
+      }
+    },
+    "459": {
+      "class_type": "LoadVideo",
+      "inputs": {
+        "file": "",
+        "format": "image"
+      }
+    },
+    "460": {
+      "class_type": "GetVideoComponents",
+      "inputs": {
+        "video": [
+          "483",
+          0
+        ]
+      }
+    },
+    "463": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "464": {
+      "class_type": "MiniMaxH3ReferenceToVideo",
+      "inputs": {
+        "clip": [
+          "465",
+          0
+        ],
+        "vae": [
+          "470",
+          0
+        ],
+        "audio_vae": [
+          "474",
+          0
+        ],
+        "ref_images.ref_image_0": [
+          "496",
+          0
+        ],
+        "ref_videos.ref_video_0": [
+          "456",
+          0
+        ],
+        "ref_audios.ref_audio_0": [
+          "460",
+          1
+        ],
+        "prompt": [
+          "514",
+          0
+        ],
+        "width": [
+          "505",
+          0
+        ],
+        "height": [
+          "505",
+          1
+        ],
+        "length": [
+          "481",
+          1
+        ],
+        "ref_image_size": "match"
+      }
+    },
+    "465": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      }
+    },
+    "466": {
+      "class_type": "BasicGuider",
+      "inputs": {
+        "model": [
+          "522",
+          0
+        ],
+        "conditioning": [
+          "464",
+          0
+        ]
+      }
+    },
+    "467": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": 568133065308297,
+        "control": "fixed"
+      }
+    },
+    "468": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "res_multistep"
+      }
+    },
+    "469": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "467",
+          0
+        ],
+        "guider": [
+          "466",
+          0
+        ],
+        "sampler": [
+          "468",
+          0
+        ],
+        "sigmas": [
+          "473",
+          0
+        ],
+        "latent_image": [
+          "464",
+          1
+        ]
+      }
+    },
+    "470": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      }
+    },
+    "471": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "469",
+          0
+        ],
+        "vae": [
+          "474",
+          0
+        ]
+      }
+    },
+    "472": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "469",
+          0
+        ],
+        "vae": [
+          "470",
+          0
+        ]
+      }
+    },
+    "473": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "model": [
+          "522",
+          0
+        ],
+        "scheduler": "simple",
+        "steps": 10,
+        "denoise": 1
+      }
+    },
+    "474": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      }
+    },
+    "475": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "472",
+          0
+        ],
+        "audio": [
+          "471",
+          0
+        ],
+        "fps": 24,
+        "bit_depth": 8
+      }
+    },
+    "476": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "472",
+          0
+        ],
+        "audio": [
+          "460",
+          1
+        ],
+        "fps": 24,
+        "bit_depth": 8
+      }
+    },
+    "480": {
+      "class_type": "PrimitiveFloat",
+      "inputs": {
+        "value": 10
+      }
+    },
+    "481": {
+      "class_type": "ComfyMathExpression",
+      "inputs": {
+        "values.a": [
+          "480",
+          0
+        ],
+        "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      }
+    },
+    "482": {
+      "class_type": "SaveVideo",
+      "inputs": {
+        "video": [
+          "476",
+          0
+        ],
+        "filename_prefix": "MiniMax_H3_Character_Ref2VA",
+        "format": "auto",
+        "codec": "auto"
+      }
+    },
+    "483": {
+      "class_type": "Video Slice",
+      "inputs": {
+        "video": [
+          "459",
+          0
+        ],
+        "duration": [
+          "480",
+          0
+        ],
+        "start_time": 0,
+        "strict_duration": false
+      }
+    },
+    "496": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": ""
+      }
+    },
+    "498": {
+      "class_type": "PrimitiveStringMultiline",
+      "inputs": {
+        "value": "<Subject 1> should match <Picture 1> as closely as possible: preserve identity, facial features, hairstyle, hair color, body proportions, clothing and makeup."
+      }
+    },
+    "502": {
+      "class_type": "LoraLoaderModelOnly",
+      "inputs": {
+        "model": [
+          "463",
+          0
+        ],
+        "lora_name": "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors",
+        "strength_model": 1
+      }
+    },
+    "504": {
+      "class_type": "GetVideoComponents",
+      "inputs": {
+        "video": [
+          "459",
+          0
+        ]
+      }
+    },
+    "505": {
+      "class_type": "GetImageSize",
+      "inputs": {
+        "image": [
+          "504",
+          0
+        ]
+      }
+    },
+    "507": {
+      "class_type": "PrimitiveStringMultiline",
+      "inputs": {
+        "value": "Preserve the scene, background, lighting, composition, camera angle and camera movement from <Video 1>. Keep the spatial layout and timing consistent with the source video."
+      }
+    },
+    "509": {
+      "class_type": "PrimitiveStringMultiline",
+      "inputs": {
+        "value": "Preserve the action, pose changes, gestures and timing from <Video 1> as closely as possible. Keep natural motion and temporal consistency."
+      }
+    },
+    "510": {
+      "class_type": "StringConcatenate",
+      "inputs": {
+        "string_a": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>.\n",
+        "string_b": "",
+        "delimiter": ""
+      }
+    },
+    "511": {
+      "class_type": "StringConcatenate",
+      "inputs": {
+        "string_a": [
+          "510",
+          0
+        ],
+        "string_b": "\n\nretention_analysis:\n<Subject 1>: attribute_transfer - transfer the woman body, face, hair style, hair color, clothing and makeup\n<Video 1>: partially_preserved - preserve the background, preserve the action, the camera movements, the exact camera angle, the room setup, and the room lighting\n\n\ndetailed_description:\n",
+        "delimiter": ""
+      }
+    },
+    "512": {
+      "class_type": "StringConcatenate",
+      "inputs": {
+        "string_a": [
+          "511",
+          0
+        ],
+        "string_b": [
+          "507",
+          0
+        ],
+        "delimiter": ""
+      }
+    },
+    "513": {
+      "class_type": "StringConcatenate",
+      "inputs": {
+        "string_a": [
+          "512",
+          0
+        ],
+        "string_b": [
+          "498",
+          0
+        ],
+        "delimiter": ""
+      }
+    },
+    "514": {
+      "class_type": "StringConcatenate",
+      "inputs": {
+        "string_a": [
+          "513",
+          0
+        ],
+        "string_b": [
+          "509",
+          0
+        ],
+        "delimiter": ""
+      }
+    },
+    "520": {
+      "class_type": "MiniMaxH3ScheduledSolAttentionPatch",
+      "inputs": {
+        "model": [
+          "502",
+          0
+        ],
+        "enabled": true,
+        "tau_start": 1,
+        "tau_end": 0.6,
+        "curve": "linear",
+        "min_tokens": 4096,
+        "strict": false,
+        "dense_percent": 0.2,
+        "thresh_type": "diag",
+        "int8_qk": false,
+        "int8_pv": false,
+        "sink_conditioning": "exact_kv",
+        "dense_blocks": "0-4,-2,-1"
+      }
+    },
+    "521": {
+      "class_type": "MiniMaxH3FusedModulation",
+      "inputs": {
+        "model": [
+          "520",
+          0
+        ],
+        "enabled": true
+      }
+    },
+    "522": {
+      "class_type": "MiniMaxH3ChunkFeedForward",
+      "inputs": {
+        "model": [
+          "521",
+          0
+        ],
+        "enabled": true,
+        "chunks": 2,
+        "min_tokens": 8192
+      }
+    },
+    "455_436": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "455_438",
+          1
+        ],
+        "text": "The woman"
+      }
+    },
+    "455_437": {
+      "class_type": "SAM3_Detect",
+      "inputs": {
+        "model": [
+          "455_438",
+          0
+        ],
+        "image": [
+          "455_439",
+          0
+        ],
+        "conditioning": [
+          "455_436",
+          0
+        ],
+        "threshold": 0.5,
+        "refine_iterations": 2,
+        "individual_masks": false
+      }
+    },
+    "455_438": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sam3.1_multiplex_fp16.safetensors"
+      }
+    },
+    "455_439": {
+      "class_type": "GetVideoComponents",
+      "inputs": {
+        "video": [
+          "483",
+          0
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "peachbitch",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:next": "next dev",
+    "build": "prisma generate && next build",
+    "build:railway": "prisma generate && next build",
+    "start": "next start",
+    "start:railway": "node scripts/start-railway.mjs",
+    "lint": "eslint",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "tunnel": "node scripts/metalnode-tunnel.mjs",
+    "tunnel:llm": "node scripts/metalnode-llm-tunnel.mjs",
+    "stack": "node scripts/peach-stack.mjs",
+    "preflight": "node scripts/peach-preflight.mjs",
+    "test:smoke": "node scripts/smoke.mjs",
+    "sync:tg-catalog": "tsx scripts/sync-tg-catalog-assets.ts",
+    "tg:bot": "npx tsx scripts/tg-bot-dev.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@tailwindcss/postcss": "^4",
+    "@xyflow/react": "^12.11.2",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "jose": "^6.2.6",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "undici": "^8.10.0",
+    "uuid": "^14.0.1",
+    "zod": "^4.4.3",
+    "tsx": "^4.20.5",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "typescript": "^5"
+  }
+}

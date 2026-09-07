@@ -1,0 +1,217 @@
+{
+  "characters": [
+    {
+      "id": "olh_person",
+      "label": "olh_person (LoRA)",
+      "mode": "lora",
+      "trigger": "olh_person",
+      "description": "petite young woman, athletic slim body, long dark hair, natural face from character LoRA",
+      "notes": "Do not reinvent face identity; keep trigger early."
+    },
+    {
+      "id": "none",
+      "label": "Без персонажа (описать вручную)",
+      "mode": "custom",
+      "trigger": "",
+      "description": "",
+      "notes": "User will provide a short description; can save as preset."
+    },
+    {
+      "id": "male_bald_muscular",
+      "label": "Мужчина: bald muscular (канон)",
+      "mode": "text",
+      "trigger": "",
+      "description": "large bald muscular adult man",
+      "notes": "Stable male template for duo scenes."
+    }
+  ],
+  "poses": [
+    {
+      "id": "standing_doggy_lookback",
+      "label": "Standing doggy side (look back)",
+      "text": "side view standing doggy, bodies seen from the side at three-quarter angle, not first-person POV, not looking down from above, woman bent forward standing doggy on the floor, man standing behind her, his thick cock inside her pussy from behind, she turns her head and looks back over her shoulder",
+      "videoMotion": "The camera remains nearly static with a subtle, rhythmic handheld shake. The man drives his hips forward with powerful, deep thrusts, his thick cock sliding fully into her pussy and pulling back almost entirely with each forceful stroke. The woman’s body jolts forward with the impact, her breasts swaying and her hips undulating as she maintains her bent-over position. She keeps her head turned, locking eyes with him with an expression of intense pleasure, her lips parted. The friction creates a visible ripple through their skin at the point of contact. overall_soundscape: wet slapping sounds of skin on skin, deep guttural grunts from the man, and loud, rhythmic female moans and breathy gasps. non_diegetic_music: N/A"
+    },
+    {
+      "id": "standing_doggy_faceaway",
+      "label": "Standing doggy side (face away)",
+      "text": "side view standing doggy, bodies seen from the side at three-quarter angle, not first-person POV, not looking down from above, woman bent forward standing doggy on the floor, man standing behind her, his thick cock inside her pussy from behind, her face turned away, not looking at camera",
+      "videoMotion": "The man drives his hips forward in a steady, rhythmic cadence, delivering deep, forceful thrusts into the woman's pussy from behind. The woman's body jolts forward with each impact, her breasts swaying slightly as she grips the floor for stability, her face turned away in a state of pleasure. The motion is visceral and repetitive, with the man's pelvis slapping firmly against her buttocks, creating a wet, rhythmic thud. The camera remains static with a subtle, organic shake that emphasizes the intensity of the friction. overall_soundscape: heavy rhythmic slapping of skin, wet squelching sounds of penetration, deep guttural grunts from the man, and breathless, high-pitched moans from the woman. non_diegetic_music: N/A"
+    },
+    {
+      "id": "standing_doggy_pov_lookback",
+      "label": "Standing doggy POV (look back)",
+      "text": "First-person POV looking down from above from a standing man. She bent forward standing doggy on the floor, ass toward camera filling the frame, man standing behind her out of frame except his hips and cock, his thick cock comes straight from his body into her pussy from behind, continuous male pelvis and cock. She turns her head and looks back over her shoulder up into the camera",
+      "videoMotion": "The man thrusts his thick cock deeply into her pussy with a steady, rhythmic tempo, his hips driving forward with forceful, wet impacts that make her body jolt slightly forward. She remains bent over, her ass filling the frame and shaking with each heavy plunge, while she maintains a locked gaze back over her shoulder, eyes wide and lips parted. The camera remains static with a subtle, organic shake mirroring the physical exertion. The overall_soundscape is filled with the heavy, rhythmic slapping of skin on skin, deep guttural grunts from the man, wet squelching sounds of penetration, and her loud, breathless moans of pleasure as he bottoms out inside her. non_diegetic_music: N/A"
+    },
+    {
+      "id": "standing_doggy_pov_faceaway",
+      "label": "Standing doggy POV (face away)",
+      "text": "First-person POV looking down from above from a standing man. She bent forward standing doggy on the floor, ass toward camera filling the frame, man standing behind her out of frame except his hips and cock, his thick cock comes straight from his body into her pussy from behind, continuous male pelvis and cock. Her face turned away, not looking at camera",
+      "videoMotion": "The camera maintains a steady first-person POV with a slight, rhythmic handheld shake. The man's hips drive forward with powerful, deep thrusts, his thick cock sliding fully into her pussy and pulling back almost entirely before slamming home again. Her body jolts forward with each forceful impact, her ass cheeks trembling and vibrating under the pressure of the friction. The tempo is steady and primal, emphasizing the weight and depth of each penetration. The overall_soundscape is filled with the wet, rhythmic slapping of skin on skin, deep guttural male grunts, and high-pitched, breathless female moans that echo the pace of the thrusting. non_diegetic_music: N/A"
+    },
+    {
+      "id": "cowgirl",
+      "label": "Cowgirl",
+      "text": "woman completely nude straddling a man, on top sitting upright on his hips, his thick cock buried deep inside her pussy, thighs spread over him, hands on his chest, looking at him",
+      "videoMotion": "The woman maintains her upright posture, bouncing rhythmically up and down on the man's hips with a steady, medium tempo. Her breasts sway naturally with each vertical movement as she pushes her pelvis down firmly, ensuring his thick cock remains buried deep within her pussy. Her hands press into his chest for balance, her fingers digging slightly into his skin during the downward force of each thrust. The camera remains static with a subtle, handheld shake that syncs with the impact of her hips hitting his. overall_soundscape: wet squelching sounds of penetration, rhythmic skin-on-skin slapping, deep guttural moans from the man, and sharp, breathy gasps of pleasure from the woman."
+    },
+    {
+      "id": "missionary_faces",
+      "label": "Missionary (faces visible)",
+      "text": "woman lying on her back, man on top in missionary between her legs, his cock inside her, both faces visible, she looks up at him",
+      "videoMotion": "The couple remains locked in a deep missionary embrace, the camera holding a tight, slightly shaking close-up on their entwined faces. The man thrusts with a steady, rhythmic tempo, his hips driving forward with moderate force to maintain deep penetration while his chest presses firmly against hers. The woman's head tilts back slightly, her eyes locked onto his with an expression of intense pleasure, her breath hitching as her chest heaves in synchronization with his movements. Small, realistic tremors run through their bodies with every impact. overall_soundscape: heavy rhythmic breathing, wet squelching sounds of penetration, soft feminine moans, deep masculine grunts, and the muffled thud of hips. non_diegetic_music: N/A"
+    },
+    {
+      "id": "spooning",
+      "label": "Spooning",
+      "text": "woman lying on her side knees slightly bent, man spooning behind her, his thick cock buried in her pussy from behind, one arm wrapped around her waist, her profile face visible",
+      "videoMotion": "The couple remains locked in a tight spooning position, the camera holding a steady close-up with a slight handheld tremor. The man thrusts his thick cock deeply into her pussy with a slow, rhythmic tempo, his hips grinding firmly against her backside. Each forceful push causes her body to slide forward slightly before he pulls her back against him, his arm tightening around her waist to maintain the friction. Her profile face shows a blissful expression, her lips parted as she breathes heavily. The overall_soundscape is filled with the wet, squelching sounds of deep penetration, rhythmic skin-on-skin slaps, and low, guttural grunts from the man paired with soft, airy moans from the woman. non_diegetic_music: N/A"
+    },
+    {
+      "id": "wall_stand",
+      "label": "Wall stand",
+      "text": "woman standing facing the wall hands on the wall, man standing behind her fucking her cock inside, one hand on her hip, she turns her face slightly to the side, mid-thigh up framing",
+      "videoMotion": "The man drives his cock deep into her with a rhythmic, forceful tempo, his hips slamming firmly against her buttocks with each heavy thrust. The woman remains braced against the wall, her palms flat and fingers splayed, her body jolting forward slightly with every impact. He maintains a tight grip on her hip, pulling her back hard to maximize the depth of penetration. Her head tilts slightly to the side, eyes half-closed in pleasure, as her chest heaves with rapid breathing. The camera remains static with a subtle, organic shake that syncs with the intensity of the thrusts. overall_soundscape: rhythmic wet slapping sounds of skin on skin, deep guttural grunts from the man, and loud, breathless feminine moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "lap_sit",
+      "label": "Lap sit face-to-face",
+      "text": "man sitting nude, woman sitting on his lap facing him legs around his waist, his thick cock buried inside her, arms around each other, looking into each other's eyes",
+      "videoMotion": "The couple remains locked in a deep, intimate embrace, the woman sitting on the man's lap facing him with her legs wrapped tightly around his waist. The motion is a slow, rhythmic grinding, with the woman tilting her pelvis up and down in a sensual, undulating tempo that causes his thick cock to slide deeply in and out of her wet heat. Their bodies press firmly together, chests heaving with heavy breaths as they maintain intense eye contact. The man's hands grip her hips, guiding the force of each sliding thrust. The camera remains static with a subtle, handheld shake to emphasize the physical vibration of their friction. overall_soundscape: wet squelching sounds of penetration, rhythmic flesh slapping, deep guttural moans, and heavy synchronized breathing. non_diegetic_music: N/A"
+    },
+    {
+      "id": "prone_bone",
+      "label": "Prone bone",
+      "text": "woman lying on her stomach, man lying on top of her back, cock inside from behind prone bone, her face in profile",
+      "videoMotion": "The man maintains a steady, rhythmic pace, driving his hips forward with forceful, deep thrusts into the woman's backside while she remains pressed flat. Her body jolts slightly forward with each impact, her face turned to the side as her shoulders shrug with the momentum. The man's chest presses firmly against her back, his hands gripping her hips to anchor the movement. The camera remains static with a subtle, handheld shake that emphasizes the physical impact of each stroke. The overall_soundscape is filled with the wet, rhythmic slapping of skin on skin, deep guttural grunts from the man, and muffled, breathless moans from the woman."
+    },
+    {
+      "id": "sixty_nine",
+      "label": "69 *",
+      "text": "couple in 69 position, mutual oral sex, woman on top reversed, mouths on genitals, bodies stacked",
+      "videoMotion": "The couple remains locked in a tight 69, mouths working rhythmically on each other. Subtle rocking of hips, wet oral sounds, camera nearly static with organic shake. overall_soundscape: wet oral suction, muffled moans, heavy breathing. non_diegetic_music: N/A"
+    },
+    {
+      "id": "throatdown",
+      "label": "Throatdown *",
+      "text": "woman lying on her back head hanging upside down off the edge, man standing above feeding his thick cock straight down into her throat, upside-down deepthroat face fuck",
+      "videoMotion": "He thrusts down into her throat with a steady tempo while her head hangs inverted. Throat bulge, spit, eyes watering. Camera static tight on face and cock. overall_soundscape: wet gagging, throat sounds, male grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "titjob_pov",
+      "label": "POV Titjob *",
+      "text": "first-person POV looking down, woman presses her breasts around his thick cock and strokes a titjob, looking up at camera",
+      "videoMotion": "She slides her breasts up and down the shaft in a rhythmic titfuck, POV looking down. Soft breast compression, precum sheen. overall_soundscape: soft skin friction, breathy moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "her_pov",
+      "label": "Her POV *",
+      "text": "first-person POV from the woman looking down her own body at the partner between her legs, female gaze downward",
+      "videoMotion": "Camera is her eyes looking down; partner moves between her legs with rhythmic motion. Subtle handheld breath shake. overall_soundscape: her breathing, wet friction, partner grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "sideways_deepthroat_pov",
+      "label": "Sideways deepthroat POV *",
+      "text": "sideways POV deepthroat, woman taking thick cock deep into her throat from the side angle, cheek and jaw stretched, saliva, intense depth",
+      "videoMotion": "Sideways deepthroat thrusts with wet gagging, saliva strings, subtle handheld shake. overall_soundscape: wet throat sounds, muffled gagging, male grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "full_nelson_anal",
+      "label": "Full Nelson anal *",
+      "text": "fullnelsonpose, woman in full nelson position carried from behind by a man during anal sex, legs hooked over his arms, cock buried in her ass",
+      "videoMotion": "He holds her in full nelson and thrusts into her ass with a steady tempo. Legs hooked, body lifted. overall_soundscape: wet anal friction, skin slaps, moans, grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "doggy_dp_mounted",
+      "label": "Mounted doggy DP *",
+      "text": "d0ggy, double penetration, doggystyle, mounted doggystyle DP not cowgirl, two cocks penetrating pussy and ass from behind while she is on all fours",
+      "videoMotion": "Mounted doggy DP with dual rhythmic thrusts from behind. overall_soundscape: wet dual penetration, skin slaps, moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "gangbang_helper",
+      "label": "Gangbang all holes *",
+      "text": "all holes filled gangbang, multiple thick cocks penetrating mouth pussy and ass at once, group sex",
+      "videoMotion": "Multiple partners thrusting into mouth, pussy and ass with overlapping tempos. overall_soundscape: wet penetration, overlapping moans and grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "doggy_anal_adriano_pov",
+      "label": "POV doggy anal Adriano *",
+      "text": "first-person POV looking down Adriano doggy anal angle, woman on all fours ass toward camera, thick cock entering her anus from behind, cheeks spread",
+      "videoMotion": "POV doggy anal thrusts from Adriano angle, ass filling frame. overall_soundscape: wet anal squelch, skin slaps, moans, grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "doggy_bdsm_arms_legs",
+      "label": "Doggy BDSM arms on legs *",
+      "text": "arms tied around legs doggystyle BDSM bondage, woman bent over restrained, wrists bound to her legs, man fucking her from behind",
+      "videoMotion": "Restrained doggy with arms tied to legs, forceful thrusts from behind. overall_soundscape: rope creak, wet sex sounds, moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "frontal_anal_adriano",
+      "label": "Frontal anal Adriano *",
+      "text": "true anal frontal view Adriano style, woman on her back legs up toward camera, thick cock penetrating her anus facing the viewer",
+      "videoMotion": "Frontal anal thrusts with legs raised toward camera. overall_soundscape: wet anal friction, moans, grunts. non_diegetic_music: N/A"
+    },
+    {
+      "id": "standing_doggy_pov_lookback_amateur",
+      "label": "Standing doggy POV (look back) amateur *",
+      "text": "amateur handheld POV looking down from above from a standing man. She bent forward standing doggy on the floor, ass toward camera filling the frame, man standing behind her out of frame except his hips and cock, his thick cock comes straight from his body into her pussy from behind, continuous male pelvis and cock. She turns her head and looks back over her shoulder up into the camera",
+      "videoMotion": "Amateur POV doggy thrusts with handheld shake; she looks back over her shoulder. overall_soundscape: wet slapping, grunts, moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "standing_doggy_pov_faceaway_amateur",
+      "label": "Standing doggy POV (face away) amateur *",
+      "text": "amateur handheld POV looking down from above from a standing man. She bent forward standing doggy on the floor, ass toward camera filling the frame, man standing behind her out of frame except his hips and cock, his thick cock comes straight from his body into her pussy from behind, continuous male pelvis and cock. Her face turned away, not looking at camera",
+      "videoMotion": "Amateur POV doggy thrusts with handheld shake; face turned away. overall_soundscape: wet slapping, grunts, moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "blowjob_mouth_pov_amateur",
+      "label": "Blowjob POV amateur *",
+      "text": "",
+      "videoMotion": "Amateur POV blowjob with handheld shake and wet oral suction. overall_soundscape: wet oral sounds, muffled gagging, male moans. non_diegetic_music: N/A"
+    },
+    {
+      "id": "titjob_pov_amateur",
+      "label": "POV Titjob amateur *",
+      "text": "amateur handheld first-person POV looking down, woman presses her breasts around his thick cock and strokes a titjob, looking up at camera",
+      "videoMotion": "Amateur POV titjob with handheld shake. overall_soundscape: soft skin friction, breathy moans. non_diegetic_music: N/A"
+    }
+  ],
+  "styles": [
+    {
+      "id": "warm_lamp_bedroom",
+      "label": "Warm lamp (night light)",
+      "text": "Photorealistic erotic photo, warm practical lamp light, natural soft skin texture, shallow depth of field, candid realistic photo"
+    },
+    {
+      "id": "messy_bedroom",
+      "label": "Messy bedroom",
+      "text": "Photorealistic erotic photo at night in a bedroom, warm bedside lamp, messy sheets, pillows, candid realistic photo"
+    },
+    {
+      "id": "window_daylight",
+      "label": "Window daylight",
+      "text": "Photorealistic photo, soft natural window daylight, gentle side light, realistic skin pores, 85mm lens, shallow depth of field"
+    },
+    {
+      "id": "harsh_flash",
+      "label": "Harsh direct flash",
+      "text": "Photorealistic on-camera direct flash photo, harsh frontal flash, hard shadows, high contrast, clinical cold-white light, glossy skin specular hits, 35mm snapshot look, f/8, deep focus, raw unflattering flash aesthetic, sharp and crude"
+    },
+    {
+      "id": "cinematic_teal",
+      "label": "Cinematic teal-orange",
+      "text": "Cinematic photorealistic still, teal and orange color grade, dramatic soft key light, 50mm lens, filmic contrast, shallow DOF"
+    },
+    {
+      "id": "disposable_film",
+      "label": "Disposable film grain",
+      "text": "Photorealistic disposable camera look, soft optical focus, visible film grain, muted colors, no light leak, candid snapshot"
+    },
+    {
+      "id": "studio_softbox",
+      "label": "Clean studio softbox",
+      "text": "Clean studio photorealistic photo, softbox lighting, even skin illumination, sharp commercial detail, 85mm"
+    }
+  ]
+}

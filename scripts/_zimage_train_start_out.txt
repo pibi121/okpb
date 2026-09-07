@@ -1,0 +1,49 @@
+start
+
+===== CMD =====
+ls /workspace/datasets/olh_person_zimage/images/*.png | wc -l; ls /workspace/datasets/olh_person_zimage/images/*.txt | wc -l; head -1 /workspace/datasets/olh_person_zimage/images/olh_001.txt
+25
+25
+olh_person
+
+===== CMD =====
+
+set -e
+cd /workspace/train/ai-toolkit
+export HF_HOME=/workspace/hf_cache
+export HF_HUB_ENABLE_HF_TRANSFER=1
+mkdir -p /workspace/hf_cache /workspace/loras_out
+
+if [ ! -d venv ]; then
+  /opt/ComfyUI/.venv/bin/python -m venv --system-site-packages venv || python3 -m venv venv
+fi
+. venv/bin/activate
+python -m pip -q install -U pip setuptools wheel
+# core requirements — may take several minutes
+pip -q
+torch 2.11.0a0+a6c236b9fd.nv26.03.46836102 cuda True
+diffusers 0.39.0.dev0
+has ZImagePipeline True
+DEPS_OK
+
+--- ERR ---
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+spin 0.17 requires click!=8.3.0,<8.4,>=8, but you have click 8.4.2 which is incompatible.
+/workspace/train/ai-toolkit/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/workspace/train/ai-toolkit/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+
+===== CMD =====
+
+set -e
+cd /workspace/train/ai-toolkit
+export HF_HOME=/workspace/hf_cache
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export PYTHONUNBUFFERED=1
+# kill previous train if any
+pkill -f "run.py /workspace/train/olh_person_zimage_job.yaml" 2>/dev/null || true
+sleep 1
+nohup ./venv/bin/python run.py /workspace/train/olh_person_zimage_job.yaml \
+  > /workspace/loras_out/olh_person_zimage_train.log 2>&1 &
+echo $! >

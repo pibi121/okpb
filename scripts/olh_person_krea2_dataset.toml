@@ -1,0 +1,12 @@
+# olh_person character LoRA dataset for Krea 2 RAW
+[general]
+resolution = [1024, 1024]
+caption_extension = ".txt"
+batch_size = 1
+enable_bucket = true
+bucket_no_upscale = false
+
+[[datasets]]
+image_directory = "/work/datasets/olh_person_klein/images"
+cache_directory = "/work/datasets/olh_person_krea2/cache"
+num_repeats = 10

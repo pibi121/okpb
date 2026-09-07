@@ -1,0 +1,26 @@
+PROCS 842 bash -c setsid /opt/ComfyUI/.venv/bin/python -u /tmp/install_remix.py > /workspace/REMIX_DOWNLOAD.nohup 2>&1 < /dev/null
+857 /opt/ComfyUI/.venv/bin/python -u /tmp/install_remix.py
+897 bash -c python3 - <<'PY' import pathlib,subprocess r=subprocess.run(['pgrep','-af','install_remix'],capture_output=True,text=True) print('PROCS', r.stdout or 'none') for p in ['/workspace/REMIX_DOWNLOAD.log','/workspace/REMIX_DOWNLOAD.nohup']:   path=pathlib.Path(p)   if path.exists():     print('---', p, '---')     print(path.read_text(errors='replace')[-2000:]) PY
+
+--- /workspace/REMIX_DOWNLOAD.log ---
+Remix install
+[12:29:39] free before: 3.0 GB
+[12:29:39] deleted ultrarealFineTune_v4.safetensors (22.2 GB)
+[12:29:39] deleted t5xxl_fp16.safetensors (9.1 GB)
+[12:29:39] deleted clip_l.safetensors (0.2 GB)
+[12:29:39] free after cleanup: 34.6 GB
+[12:29:39] deleted z_image_bf16.safetensors (11.5 GB) to make room
+[12:29:39] free final: 46.0 GB
+[12:29:39] DL start Wan2.2_Remix_NSFW_i2v_14b_high_lighting_fp8_e4m3fn_v3.0.safetensors
+
+--- /workspace/REMIX_DOWNLOAD.nohup ---
+[12:29:39] free before: 3.0 GB
+[12:29:39] deleted ultrarealFineTune_v4.safetensors (22.2 GB)
+[12:29:39] deleted t5xxl_fp16.safetensors (9.1 GB)
+[12:29:39] deleted clip_l.safetensors (0.2 GB)
+[12:29:39] free after cleanup: 34.6 GB
+[12:29:39] deleted z_image_bf16.safetensors (11.5 GB) to make room
+[12:29:39] free final: 46.0 GB
+[12:29:39] DL start Wan2.2_Remix_NSFW_i2v_14b_high_lighting_fp8_e4m3fn_v3.0.safetensors
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+

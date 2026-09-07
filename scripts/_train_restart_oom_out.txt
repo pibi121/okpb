@@ -1,0 +1,8 @@
+start
+comfyui: stopped
+2 MiB, 32149 MiB
+STARTED_PID=10967
+    PID     ELAPSED CMD
+  10967       00:08 ./venv/bin/python -u run.py /workspace/train/olh_person_zimage_job.yaml
+4 MiB, 32147 MiB
+Running 1 job

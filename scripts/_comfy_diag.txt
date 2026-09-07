@@ -1,0 +1,72 @@
+=== procs ===
+root          83  0.0  0.0   4840  3072 ?        S    08:32   0:00 bash /usr/local/bin/comfy-watchdog.sh
+=== start script ===
+#!/usr/bin/env bash
+set -e
+cd /work/ComfyUI
+source /work/ai/venv/bin/activate
+exec python main.py --listen --port 8188 --enable-manager
+=== watchdog ===
+#!/usr/bin/env bash
+set -u
+
+LOG="/var/log/comfy-watchdog.log"
+MARKER="/var/run/metalnode-comfy-health.json"
+
+INTERVAL="${COMFY_WATCHDOG_INTERVAL:-10}"
+GRACE="${COMFY_WATCHDOG_GRACE:-30}"
+START_WAIT="${COMFY_WATCHDOG_START_WAIT:-20}"
+MAX_FAILS="${COMFY_WATCHDOG_MAX_FAILS:-4}"
+
+mkdir -p /var/log /var/run
+touch "$LOG"
+
+fail_count=0
+
+log(){
+  echo "$(date -Is) $*" >> "$LOG"
+}
+
+port_ok(){
+  curl -fsS --max-time 2 http://127.0.0.1:8188/system_stats >/dev/null 2>&1
+}
+
+python_alive(){
+  ps -eo args | awk '
+    /^python main.py --listen --port 8188/ {found=1}
+    /^\/work\/ai\/venv\/bin\/python main.py --listen --port 8188/ {found=1}
+    END {exit(found ? 0 : 1)}
+  '
+}
+
+write_health(){
+  local status="$1"
+  local reason="$2"
+  local err="$3"
+
+  /work/ai/venv/bin/python - "$MARKER" "$status" "$reason" "$err" <<'PY'
+import json, os, sys, time
+path, status, reason, err = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+old = {}
+try:
+    if os.path.exists(path):
+        old = json.load(open(path, "r"))
+except Exception:
+    old = {}
+
+if (
+    status == "healthy"
+    and old.get("status") == "healthy"
+    and old.get("reason") == reason
+    and not old.get("last_error")
+):
+    sys.exit(0)
+
+data = {
+    "status": status,
+    "reason": reason,
+    "last_error": err or None,
+=== remove duplicate ControlAltAI ===
+ControlAltAI-Nodes
+=== kill and start ===

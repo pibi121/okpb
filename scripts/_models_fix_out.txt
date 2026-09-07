@@ -1,0 +1,169 @@
+start
+
+===== CMD =====
+
+echo "=== diffusion ==="
+ls -lh /workspace/models/diffusion_models/ 2>/dev/null | head -40
+echo "=== vae ==="
+ls -lh /workspace/models/vae/ 2>/dev/null | head -40
+echo "=== loras ==="
+find /workspace/models/loras -type f 2>/dev/null | head -40
+echo "=== ultralytics ==="
+find /workspace/models -iname '*yolo*' -o -iname '*pussy*' -o -iname '*nipple*' -o -path '*/ultralytics/*' 2>/dev/null | head -40
+echo "=== sam ==="
+find /workspace/models -iname 'sam*' 2>/dev/null | head -20
+echo "=== seedvr / 
+=== diffusion ===
+total 46G
+-rw-r--r-- 1 root root 23G Aug  3 09:45 ultrarealFineTune_v4.safetensors
+-rw-r--r-- 1 root root 12G Aug  3 08:39 z_image_bf16.safetensors
+-rw-r--r-- 1 root root 12G Aug  3 07:58 z_image_turbo_bf16.safetensors
+=== vae ===
+total 320M
+-rw-r--r-- 1 root root 320M Aug  3 07:54 ae.safetensors
+=== loras ===
+=== ultralytics ===
+/workspace/models/ultralytics/bbox
+/workspace/models/ultralytics/bbox/face_yolov8m.pt
+/workspace/models/ultralytics/bbox/hand_yolov8s.pt
+/workspace/models/ultralytics/segm
+/workspace/models/ultralytics/segm/person_yolov8m-seg.pt
+=== sam ===
+/workspace/models/sams
+/workspace/models/sams/sam_vit_b_01ec64.pth
+=== seedvr / ema ===
+/dev/nvme0n1p4  3.7T  3.3T  439G  89% /workspace
+
+===== CMD =====
+
+python3 << 'PY'
+import json, os, glob, copy
+
+WF_GLOBS = [
+  "/workspace/user/default/workflows/*ALLinONE*.json",
+  "/workspace/user/default/workflows/*AllinOne*.json",
+  "/opt/ComfyUI/user/default/workflows/*ALLinONE*.json",
+]
+
+# replacements for string widget values
+REPL = {
+  "z-image-turbo-fp8-e4m3fn.safetensors": "z_image_turbo_bf16.safetensors",
+  "z-image-turbo-fp8.safetensors": "z_image_turbo_bf16.safetensors",
+  "ultrafluxVAEImproved_v10.safetensors": "ae.safetensors",
+  "ultrafluxVAEIm
+files ['/opt/ComfyUI/user/default/workflows/Z-Image ALLinONE v2.json', '/opt/ComfyUI/user/default/workflows/Z-Image-ALLinONE-v2.json', '/workspace/user/default/workflows/Z-Image ALLinONE v2.json', '/workspace/user/default/workflows/Z-Image-ALLinONE-v2.json']
+PATCHED /opt/ComfyUI/user/default/workflows/Z-Image ALLinONE v2.json changes 14
+  bypass node175 SeedVR2LoadDiTModel None
+  bypass node168 SeedVR2LoadVAEModel None
+  bypass node267 SAMLoader None
+  bypass node268 UltralyticsDetectorProvider None
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  bypass node171 SeedVR2VideoUpscaler None
+  cleared lora path Detailed_nipples_xl.safetensors
+  cleared lora path Detailed_nipples_xl.safetensors
+  bypass node275 FaceDetailer None
+  group noted Upscale2
+  group noted Nipple Detailer
+  group noted Face Detailer - Only use if faces are far away
+  group noted Pussy Detailer
+PATCHED /opt/ComfyUI/user/default/workflows/Z-Image-ALLinONE-v2.json changes 14
+  bypass node175 SeedVR2LoadDiTModel None
+  bypass node168 SeedVR2LoadVAEModel None
+  bypass node267 SAMLoader None
+  bypass node268 UltralyticsDetectorProvider None
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  bypass node171 SeedVR2VideoUpscaler None
+  cleared lora path Detailed_nipples_xl.safetensors
+  cleared lora path Detailed_nipples_xl.safetensors
+  bypass node275 FaceDetailer None
+  group noted Upscale2
+  group noted Nipple Detailer
+  group noted Face Detailer - Only use if faces are far away
+  group noted Pussy Detailer
+PATCHED /workspace/user/default/workflows/Z-Image ALLinONE v2.json changes 6
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  group noted Upscale2
+  group noted Nipple Detailer
+  group noted Face Detailer - Only use if faces are far away
+  group noted Pussy Detailer
+PATCHED /workspace/user/default/workflows/Z-Image-ALLinONE-v2.json changes 6
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  disabled power-lora Zimage\Detailed_Nipples_Z.safetensors
+  group noted Upscale2
+  group noted Nipple Detailer
+  group noted Face Detailer - Only use if faces are far away
+  group noted Pussy Detailer
+
+===== CMD =====
+
+set -e
+mkdir -p /workspace/models/ultralytics/bbox /workspace/models/sams /workspace/models/vae
+# face detector commonly used by Impact
+FACE_URL="https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt"
+if [ ! -f /workspace/models/ultralytics/bbox/face_yolov8m.pt ]; then
+  echo "DL face_yolov8m"
+  wget -q --show-progress -O /workspace/models/ultralytics/bbox/face_yolov8m.pt "$FACE_URL" || curl -L -o /workspace/models/ultralytics/bbox/face_yolov8m.pt "$FACE_URL" || echo FAIL_FACE
+fi
+/workspace/models/sams/:
+total 358M
+-rw-r--r-- 1 root root 358M May 12 09:11 sam_vit_b_01ec64.pth
+
+/workspace/models/ultralytics/bbox/:
+total 72M
+-rw-r--r-- 1 root root 50M May 12 09:11 face_yolov8m.pt
+-rw-r--r-- 1 root root 22M May 12 09:11 hand_yolov8s.pt
+
+===== CMD =====
+
+cat > /workspace/ALLINONE_STATUS.txt << 'EOF'
+All-in-One READY for first gen
+
+Patched workflow:
+- UNET -> z_image_turbo_bf16.safetensors
+- VAE  -> ae.safetensors
+- Bypassed: SeedVR, FaceDetailer/nipple/pussy detectors, missing nipple LoRAs
+
+Do:
+1. Ctrl+F5
+2. Workflow -> Open -> Z-Image-ALLinONE-v2
+3. Queue Prompt
+
+Later: re-enable FaceDetailer after detectors; SeedVR after weights.
+EOF
+cat /workspace/ALLINONE_STATUS.txt
+
+python3 << 'PY'
+import json, glob
+for p in glob.glob('/workspace/user/defa
+All-in-One READY for first gen
+
+Patched workflow:
+- UNET -> z_image_turbo_bf16.safetensors
+- VAE  -> ae.safetensors
+- Bypassed: SeedVR, FaceDetailer/nipple/pussy detectors, missing nipple LoRAs
+
+Do:
+1. Ctrl+F5
+2. Workflow -> Open -> Z-Image-ALLinONE-v2
+3. Queue Prompt
+
+Later: re-enable FaceDetailer after detectors; SeedVR after weights.
+Z-Image-ALLinONE-v2.json id 168 SeedVR2LoadVAEModel mode 4 w0 ema_vae_fp16.safetensors
+Z-Image-ALLinONE-v2.json id 268 UltralyticsDetectorProvider mode 4 w0 bbox/face_yolov8m.pt
+Z-Image-ALLinONE-v2.json id 272 UltralyticsDetectorProvider mode 4 w0 bbox/pussyV2.pt
+Z-Image-ALLinONE-v2.json id 2 CLIPLoader mode 0 w0 qwen_3_4b.safetensors
+Z-Image-ALLinONE-v2.json id 3 VAELoader mode 0 w0 ae.safetensors
+Z-Image-ALLinONE-v2.json id 1 UNETLoader mode 0 w0 z_image_turbo_bf16.safetensors
+Z-Image-ALLinONE-v2.json id 269 UltralyticsDetectorProvider mode 4 w0 bbox/nipples_yolov8s.pt
+bypassed_count 17 [(175, 'SeedVR2LoadDiTModel', None), (168, 'SeedVR2LoadVAEModel', None), (266, 'SAMLoader', None), (267, 'SAMLoader', None), (268, 'UltralyticsDetectorProvider', None), (273, 'SAMLoader', None), (272, 'UltralyticsDetectorProvider', None), (280, 'GetNode', 'Get_MOD'), (281, 'Power Lora Loader (rgthree)', None), (282, 'CLIPTextEncode', None), (270, 'FaceDetailer', None), (171, 'SeedVR2VideoUpscaler', None), (274, 'FaceDetailer', None), (279, 'GetNode', 'Get_MOD'), (275, 'FaceDetailer', None), (269, 'UltralyticsDetectorProvider', None), (150, 'FilmGrain', None)]
+Z-Image ALLinONE v2.json id 168 SeedVR2LoadVAEModel mode 4 w0 ema_vae_fp16.safetensors
+Z-Image ALLinONE v2.json id 268 UltralyticsDetectorProvider mode 4 w0 bbox/face_yolov8m.pt
+Z-Image ALLinONE v2.json id 272 UltralyticsDetectorProvider mode 4 w0 bbox/pussyV2.pt
+Z-Image ALLinONE v2.json id 2 CLIPLoader mode 0 w0 qwen_3_4b.safetensors
+Z-Image ALLinONE v2.json id 3 VAELoader mode 0 w0 ae.safetensors
+Z-Image ALLinONE v2.json id 1 UNETLoader mode 0 w0 z_image_turbo_bf16.safetensors
+Z-Image ALLinONE v2.json id 269 UltralyticsDetectorProvider mode 4 w0 bbox/nipples_yolov8s.pt
+bypassed_count 17 [(175, 'SeedVR2LoadDiTModel', None), (168, 'SeedVR2LoadVAEModel', None), (266, 'SAMLoader', None), (267, 'SAMLoader', None), (268, 'UltralyticsDetectorProvider', None), (273, 'SAMLoader', None), (272, 'UltralyticsDetectorProvider', None), (280, 'GetNode', 'Get_MOD'), (281, 'Power Lora Loader (rgthree)', None), (282, 'CLIPTextEncode', None), (270, 'FaceDetailer', None), (171, 'SeedVR2VideoUpscaler', None), (274, 'FaceDetailer', None), (279, 'GetNode', 'Get_MOD'), (275, 'FaceDetailer', None), (269, 'UltralyticsDetectorProvider', None), (150, 'FilmGrain', None)]

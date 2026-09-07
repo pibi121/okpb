@@ -1,0 +1,8 @@
+{
+  "llmHost": "NEW_LLM_IP",
+  "llmSshPort": 22,
+  "llmSshKeyPath": "C:\\Users\\Public\\metalnode-llm.key",
+  "llmOllamaUrl": "http://127.0.0.1:11435",
+  "ollamaRemote": true,
+  "notes": "Second GPU for Ollama only. Copy key, run: node scripts/metalnode-switch.mjs --llm-only --llm-host IP --llm-port PORT --llm-key path --llm-tunnel-port 11435"
+}

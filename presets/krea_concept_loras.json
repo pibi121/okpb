@@ -1,0 +1,457 @@
+{
+  "maxExtraLoras": 5,
+  "notes": "Put .safetensors under ComfyUI/models/loras/ using the exact `file` paths below. #12 footjob Klein cancelled. Rename your downloads to match `file` or edit `file` here.",
+  "mutexGroups": {
+    "realism": ["realism_snapshot", "realism_krea2", "realism_analog"],
+    "pov_camera": ["her_pov", "bj_pov"],
+    "penis_size": ["penis_size"],
+    "ass_size": ["ass_size"],
+    "breast_size": ["breast_size"]
+  },
+  "loras": [
+    {
+      "id": "tongue_out",
+      "file": "krea2/tongue_out_krea2.safetensors",
+      "label": "Tongue out",
+      "civitai": "https://civitai.red/models/2802404",
+      "defaultStrength": 0.85,
+      "strengthClip": 0.85,
+      "triggers": [],
+      "promptBoost": "tongue sticking out of open mouth",
+      "priority": 40,
+      "match": {
+        "tabIds": ["tongue_out"],
+        "poseIds": [],
+        "aliases": ["tongue out", "stick tongue", "высунутый язык", "язык наружу"]
+      }
+    },
+    {
+      "id": "hmcum_face",
+      "file": "krea2/hmcum_krea2.safetensors",
+      "label": "HMCum face",
+      "civitai": "https://civitai.red/models/2750024?modelVersionId=3093641",
+      "defaultStrength": 0.9,
+      "strengthClip": 0.9,
+      "triggers": [],
+      "promptBoost": "thick white cum on face",
+      "priority": 50,
+      "match": {
+        "tabIds": ["cum_on_face"],
+        "poseIds": [],
+        "aliases": ["cum on face", "facial cum", "сперма на лице", "камшот на лицо"]
+      }
+    },
+    {
+      "id": "galaxy_ace",
+      "file": "krea2/galaxyace_krea2.safetensors",
+      "label": "GalaxyAce",
+      "civitai": "https://civitai.red/models/2200329?modelVersionId=3069544",
+      "defaultStrength": 0.75,
+      "strengthClip": 0.75,
+      "triggers": [],
+      "promptBoost": "",
+      "priority": 20,
+      "mutexGroup": "realism",
+      "match": {
+        "tabIds": ["galaxy_ace"],
+        "poseIds": [],
+        "aliases": ["galaxyace", "galaxy ace", "гелекси", "galaxy"]
+      }
+    },
+    {
+      "id": "barphot_feet",
+      "file": "krea2/barphot_feet_krea2.safetensors",
+      "label": "BarPhot feet",
+      "civitai": "https://civitai.red/models/2391597?modelVersionId=3087419",
+      "defaultStrength": 0.7,
+      "strengthClip": 0.7,
+      "triggers": [],
+      "promptBoost": "detailed bare feet",
+      "priority": 35,
+      "match": {
+        "tabIds": ["feet_focus"],
+        "poseIds": [],
+        "aliases": ["bare feet", "foot fetish", "soles", "ступни", "ноги крупно", "feet closeup"]
+      }
+    },
+    {
+      "id": "penis_size",
+      "file": "krea2/penis_size_slider_krea2.safetensors",
+      "label": "Penis size slider",
+      "civitai": "https://civitai.red/models/2687793?modelVersionId=3154138",
+      "type": "slider",
+      "strengthClip": 0.5,
+      "triggers": [],
+      "promptBoost": "",
+      "priority": 55,
+      "mutexGroup": "penis_size",
+      "variants": {
+        "small": {
+          "strength": -0.75,
+          "tabIds": ["penis_small"],
+          "aliases": ["small penis", "small cock", "tiny dick", "маленький член"],
+          "promptBoost": "small thin penis"
+        },
+        "medium": {
+          "strength": 0.2,
+          "tabIds": ["penis_medium"],
+          "aliases": ["medium penis", "average cock", "средний член"],
+          "promptBoost": "medium penis"
+        },
+        "large": {
+          "strength": 0.9,
+          "tabIds": ["penis_large"],
+          "aliases": ["large penis", "big cock", "huge dick", "большой член", "огромный член"],
+          "promptBoost": "large thick penis"
+        }
+      }
+    },
+    {
+      "id": "ass_size",
+      "file": "krea2/ass_thighs_slider_krea2.safetensors",
+      "label": "Ass & thighs slider",
+      "civitai": "https://civitai.red/models/2554616?modelVersionId=3207249",
+      "type": "slider",
+      "strengthClip": 0.5,
+      "triggers": [],
+      "promptBoost": "",
+      "priority": 54,
+      "mutexGroup": "ass_size",
+      "variants": {
+        "small": {
+          "strength": -0.7,
+          "tabIds": ["ass_small"],
+          "aliases": ["small ass", "flat butt", "маленькая жопа"],
+          "promptBoost": "small butt"
+        },
+        "medium": {
+          "strength": 0.2,
+          "tabIds": ["ass_medium"],
+          "aliases": ["medium ass", "средняя жопа"],
+          "promptBoost": "round butt"
+        },
+        "large": {
+          "strength": 0.9,
+          "tabIds": ["ass_large"],
+          "aliases": ["big ass", "large butt", "thick thighs", "большая жопа", "пышные бёдра"],
+          "promptBoost": "large round ass, thick thighs"
+        }
+      }
+    },
+    {
+      "id": "breast_size",
+      "file": "krea2/breast_size_slider_krea2.safetensors",
+      "label": "Breast size slider",
+      "civitai": "https://civitai.red/models/2540187?modelVersionId=3131773",
+      "type": "slider",
+      "strengthClip": 0.5,
+      "triggers": [],
+      "promptBoost": "",
+      "priority": 53,
+      "mutexGroup": "breast_size",
+      "variants": {
+        "small": {
+          "strength": -0.7,
+          "tabIds": ["breasts_small"],
+          "aliases": ["small breasts", "flat chest", "маленькая грудь"],
+          "promptBoost": "small breasts"
+        },
+        "medium": {
+          "strength": 0.2,
+          "tabIds": ["breasts_medium"],
+          "aliases": ["medium breasts", "средняя грудь"],
+          "promptBoost": "medium breasts"
+        },
+        "large": {
+          "strength": 0.9,
+          "tabIds": ["breasts_large"],
+          "aliases": ["large breasts", "big tits", "huge breasts", "большая грудь", "большие сиськи"],
+          "promptBoost": "large breasts"
+        }
+      }
+    },
+    {
+      "id": "her_pov",
+      "file": "krea2/her_pov_krea2.safetensors",
+      "label": "Her POV",
+      "civitai": "https://civitai.red/models/2725753?modelVersionId=3066956",
+      "defaultStrength": 0.9,
+      "strengthClip": 0.9,
+      "triggers": [],
+      "promptBoost": "first-person POV from the woman looking down",
+      "priority": 60,
+      "mutexGroup": "pov_camera",
+      "match": {
+        "tabIds": ["her_pov"],
+        "poseIds": ["her_pov"],
+        "aliases": ["her pov", "female pov", "girl pov", "её пов", "пов девушки"]
+      }
+    },
+    {
+      "id": "pose_69",
+      "file": "krea2/pose_69_krea2.safetensors",
+      "label": "69 pose",
+      "civitai": "https://civitai.red/models/2809998?modelVersionId=3168808",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": [],
+      "promptBoost": "69 position mutual oral",
+      "priority": 65,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["sixty_nine"],
+        "aliases": ["69", "sixty nine", "sixty-nine"]
+      }
+    },
+    {
+      "id": "throatdown",
+      "file": "krea2/throatdown_krea2.safetensors",
+      "label": "Throatdown",
+      "civitai": "https://civitai.red/models/2849430?modelVersionId=3217538",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": ["tdwn"],
+      "promptBoost": "upside-down deepthroat, head hanging back, cock in throat",
+      "priority": 65,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["throatdown"],
+        "aliases": ["throatdown", "upside down blowjob", "upside-down deepthroat"]
+      }
+    },
+    {
+      "id": "titjob_pov",
+      "file": "krea2/titjob_pov_krea2.safetensors",
+      "label": "POV titjob",
+      "civitai": "https://civitai.red/models/2847618?modelVersionId=3215324",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": [],
+      "promptBoost": "POV titjob, titty fuck, breasts wrapped around cock",
+      "priority": 65,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["titjob_pov", "titjob_pov_amateur"],
+        "aliases": ["titjob", "titty fuck", "paizuri", "титджоб"]
+      }
+    },
+    {
+      "id": "bj_pov",
+      "file": "krea2/bj_pov_krea2.safetensors",
+      "label": "POV blowjob",
+      "civitai": "https://civitai.red/models/380283?modelVersionId=3152904",
+      "defaultStrength": 0.9,
+      "strengthClip": 0.9,
+      "triggers": [],
+      "promptBoost": "first-person POV blowjob looking down",
+      "priority": 64,
+      "mutexGroup": "pov_camera",
+      "match": {
+        "tabIds": [],
+        "poseIds": ["blowjob_mouth_pov_amateur"],
+        "aliases": ["pov blowjob", "blowjob pov", "минет пов"]
+      }
+    },
+    {
+      "id": "sideways_deepthroat",
+      "file": "krea2/sideways_deepthroat_krea2.safetensors",
+      "label": "Sideways deepthroat POV",
+      "civitai": "https://civitai.red/models/143472?modelVersionId=3214812",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": [],
+      "promptBoost": "sideways deepthroat, cock deep in throat from the side",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["sideways_deepthroat_pov"],
+        "aliases": ["sideways deepthroat", "side deepthroat"]
+      }
+    },
+    {
+      "id": "full_nelson_anal",
+      "file": "krea2/full_nelson_anal_krea2.safetensors",
+      "label": "Full Nelson anal",
+      "civitai": "https://civitai.red/models/199865?modelVersionId=3127220",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": ["fullnelsonpose"],
+      "promptBoost": "full nelson anal, woman carried from behind",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["full_nelson_anal"],
+        "aliases": ["full nelson", "fullnelson"]
+      }
+    },
+    {
+      "id": "doggy_dp_mounted",
+      "file": "krea2/doggy_dp_mounted_krea2.safetensors",
+      "label": "Mounted doggy DP",
+      "civitai": "https://civitai.red/models/2213833?modelVersionId=3156267",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": ["d0ggy"],
+      "promptBoost": "doggystyle double penetration, mounted doggy DP",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["doggy_dp_mounted"],
+        "aliases": ["doggy dp", "doggystyle dp", "mounted dp"]
+      }
+    },
+    {
+      "id": "gangbang_helper",
+      "file": "krea2/gangbang_helper_krea2.safetensors",
+      "label": "Gangbang helper",
+      "civitai": "https://civitai.red/models/2240240?modelVersionId=3159235",
+      "defaultStrength": 0.9,
+      "strengthClip": 0.9,
+      "triggers": [],
+      "promptBoost": "all holes filled, gangbang, multiple cocks",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["gangbang_helper"],
+        "aliases": ["gangbang", "all holes filled"]
+      }
+    },
+    {
+      "id": "doggy_anal_adriano",
+      "file": "krea2/doggy_anal_adriano_krea2.safetensors",
+      "label": "POV doggy anal Adriano",
+      "civitai": "https://civitai.red/models/2509925?modelVersionId=3160055",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": [],
+      "promptBoost": "POV doggy anal Adriano angle, cock in anus from behind",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["doggy_anal_adriano_pov"],
+        "aliases": ["adriano doggy", "pov doggy anal"]
+      }
+    },
+    {
+      "id": "doggy_bdsm_arms_legs",
+      "file": "krea2/doggy_bdsm_arms_legs_krea2.safetensors",
+      "label": "Doggy BDSM arms on legs",
+      "civitai": "https://civitai.red/models/2358990?modelVersionId=3220184",
+      "defaultStrength": 0.9,
+      "strengthClip": 0.9,
+      "triggers": [],
+      "promptBoost": "arms tied around legs, doggystyle BDSM bondage",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["doggy_bdsm_arms_legs"],
+        "aliases": ["arms tied legs", "bdsm doggy"]
+      }
+    },
+    {
+      "id": "frontal_anal_adriano",
+      "file": "krea2/frontal_anal_adriano_krea2.safetensors",
+      "label": "Frontal anal Adriano",
+      "civitai": "https://civitai.red/models/2527075?modelVersionId=3162834",
+      "defaultStrength": 0.95,
+      "strengthClip": 0.95,
+      "triggers": [],
+      "promptBoost": "true anal frontal view, legs up, cock in anus facing camera",
+      "priority": 66,
+      "match": {
+        "tabIds": [],
+        "poseIds": ["frontal_anal_adriano"],
+        "aliases": ["frontal anal", "adriano frontal"]
+      }
+    },
+    {
+      "id": "amateur_pov",
+      "file": "krea2/amateur_pov_krea2.safetensors",
+      "label": "Amateur POV",
+      "civitai": "https://civitai.red/models/2776852?modelVersionId=3126922",
+      "defaultStrength": 0.85,
+      "strengthClip": 0.85,
+      "triggers": [],
+      "promptBoost": "amateur handheld POV, candid phone-video look",
+      "priority": 58,
+      "match": {
+        "tabIds": [],
+        "poseIds": [
+          "standing_doggy_pov_lookback_amateur",
+          "standing_doggy_pov_faceaway_amateur",
+          "blowjob_mouth_pov_amateur",
+          "titjob_pov_amateur"
+        ],
+        "aliases": ["amateur pov", "amateur handheld"]
+      }
+    },
+    {
+      "id": "alt_girls",
+      "file": "krea2/alt_girls_krea2.safetensors",
+      "label": "Alt girls",
+      "civitai": "https://civitai.red/models/2757812?modelVersionId=3103326",
+      "defaultStrength": 0.75,
+      "strengthClip": 0.75,
+      "triggers": [],
+      "promptBoost": "alt girl aesthetic",
+      "priority": 30,
+      "match": {
+        "tabIds": ["alt_girl"],
+        "poseIds": [],
+        "aliases": ["alt girl", "alt girls", "альтушка", "альт девушка"]
+      }
+    },
+    {
+      "id": "realism_snapshot",
+      "file": "krea2/realistic_snapshot_krea2.safetensors",
+      "label": "Realistic snapshot",
+      "civitai": "https://civitai.red/models/2268008?modelVersionId=3084537",
+      "defaultStrength": 0.7,
+      "strengthClip": 0.7,
+      "triggers": [],
+      "promptBoost": "realistic snapshot photo",
+      "priority": 25,
+      "mutexGroup": "realism",
+      "match": {
+        "tabIds": ["realism_snapshot"],
+        "poseIds": [],
+        "aliases": ["realistic snapshot", "snapshot realism"]
+      }
+    },
+    {
+      "id": "realism_krea2",
+      "file": "krea2/krea2_realism_v2.safetensors",
+      "label": "Krea2 Realism",
+      "civitai": "https://civitai.red/models/2728365?modelVersionId=3090634",
+      "defaultStrength": 0.7,
+      "strengthClip": 0.7,
+      "triggers": [],
+      "promptBoost": "photorealistic",
+      "priority": 25,
+      "mutexGroup": "realism",
+      "match": {
+        "tabIds": ["realism_krea2"],
+        "poseIds": [],
+        "aliases": ["krea2 realism", "realism v2"]
+      }
+    },
+    {
+      "id": "realism_analog",
+      "file": "krea2/analog_madness_krea2.safetensors",
+      "label": "Analog Madness",
+      "enabled": false,
+      "civitai": "https://civitai.red/models/2759177?modelVersionId=3147091",
+      "defaultStrength": 0.7,
+      "strengthClip": 0.7,
+      "triggers": [],
+      "promptBoost": "analog film realistic photo",
+      "priority": 25,
+      "mutexGroup": "realism",
+      "match": {
+        "tabIds": ["realism_analog"],
+        "poseIds": [],
+        "aliases": ["analog madness", "analog realistic"]
+      }
+    }
+  ]
+}

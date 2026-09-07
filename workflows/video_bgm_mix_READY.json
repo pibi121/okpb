@@ -1,0 +1,143 @@
+{
+  "id": "a1b2c3d4-bgm-mix-001",
+  "revision": 0,
+  "last_node_id": 30,
+  "last_link_id": 30,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "VHS_LoadVideo",
+      "pos": [-700, 0],
+      "size": [320, 420],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [1]},
+        {"name": "frame_count", "type": "INT", "links": null},
+        {"name": "audio", "type": "AUDIO", "slot_index": 2, "links": [2]},
+        {"name": "video_info", "type": "VHS_VIDEOINFO", "slot_index": 3, "links": [3]}
+      ],
+      "title": "1) Клип — кнопка «choose video to upload» грузит файл с ТВОЕГО компьютера",
+      "properties": {"Node name for S&R": "VHS_LoadVideo"},
+      "widgets_values": {
+        "video": "",
+        "force_rate": 0,
+        "force_size": "Disabled",
+        "custom_width": 512,
+        "custom_height": 512,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1
+      }
+    },
+    {
+      "id": 2,
+      "type": "VHS_LoadAudio",
+      "pos": [-700, 500],
+      "size": [320, 120],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "AUDIO", "type": "AUDIO", "slot_index": 0, "links": [4]}
+      ],
+      "title": "2) BGM — вставь ПОЛНЫЙ путь, напр. /work/ComfyUI/output/audio/bgm_sensual_00001_.flac",
+      "properties": {"Node name for S&R": "VHS_LoadAudio"},
+      "widgets_values": {
+        "audio_file": "/work/ComfyUI/output/audio/bgm_sensual_00001_.flac",
+        "seek_seconds": 0,
+        "duration": 0
+      }
+    },
+    {
+      "id": 3,
+      "type": "DJ_VideoAudioMixer",
+      "pos": [-280, 80],
+      "size": [360, 280],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "images1", "type": "IMAGE", "link": 1},
+        {"name": "video_info1", "type": "VHS_VIDEOINFO", "link": 3},
+        {"name": "audio1", "type": "AUDIO", "link": 2, "shape": 7},
+        {"name": "images2", "type": "IMAGE", "link": null, "shape": 7},
+        {"name": "audio2", "type": "AUDIO", "link": null, "shape": 7},
+        {"name": "video_info2", "type": "VHS_VIDEOINFO", "link": null, "shape": 7},
+        {"name": "bgm", "type": "AUDIO", "link": 4, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "images_output", "type": "IMAGE", "slot_index": 0, "links": [5]},
+        {"name": "audio_output", "type": "AUDIO", "slot_index": 1, "links": [6]},
+        {"name": "video_info_output", "type": "VHS_VIDEOINFO", "links": null}
+      ],
+      "title": "3) Микс: BGM тихо (0.15–0.25)",
+      "properties": {"Node name for S&R": "DJ_VideoAudioMixer"},
+      "widgets_values": ["all", 0.2, 1.0, 1.5, "repeat_audio"]
+    },
+    {
+      "id": 4,
+      "type": "VHS_VideoCombine",
+      "pos": [160, 80],
+      "size": [360, 420],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 5},
+        {"name": "audio", "type": "AUDIO", "link": 6, "shape": 7},
+        {"name": "meta_batch", "type": "VHS_BatchManager", "link": null, "shape": 7},
+        {"name": "vae", "type": "VAE", "link": null, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "Filenames", "type": "VHS_FILENAMES", "links": null}
+      ],
+      "title": "4) Save final mp4",
+      "properties": {"Node name for S&R": "VHS_VideoCombine"},
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "Final/with_bgm",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "MarkdownNote",
+      "pos": [-700, 700],
+      "size": [900, 180],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## Тихий BGM поверх клипа\n\n1. Сначала `ace_step_bgm_READY` → wav/flac в `output/audio/`.\n2. Узел 1 (Клип): кнопка **choose video to upload** — грузишь свой файл прямо с компьютера.\n3. Узел 2 (BGM): вставляешь ПОЛНЫЙ путь на сервере к сгенерированному треку, напр. `/work/ComfyUI/output/audio/bgm_sensual_00001_.flac` (эта музыка генерируется на сервере, её не грузим с компа).\n4. `bgm_volume` по умолчанию **0.2** (приглушённо). Если громко — 0.1–0.15.\n5. `repeat_audio` — зацикливает короткий BGM под длину видео.\n\nГолос/foley MiniMax остаётся основным; музыка — фон."
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "IMAGE"],
+    [2, 1, 2, 3, 2, "AUDIO"],
+    [3, 1, 3, 3, 1, "VHS_VIDEOINFO"],
+    [4, 2, 0, 3, 6, "AUDIO"],
+    [5, 3, 0, 4, 0, "IMAGE"],
+    [6, 3, 1, 4, 1, "AUDIO"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.8, "offset": [800, 150]},
+    "frontendVersion": "1.36.14"
+  },
+  "version": 0.4
+}

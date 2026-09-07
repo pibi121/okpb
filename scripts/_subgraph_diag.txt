@@ -1,0 +1,32 @@
+/opt/ComfyUI/.venv/lib/python3.12/site-packages/comfyui_frontend_package/static/assets/dialogService-D9pTJcyh.js
+/opt/ComfyUI/.venv/lib64/python3.12/site-packages/comfyui_frontend_package/static/assets/dialogService-D9pTJcyh.js
+==== /workspace/user/default/workflows/Z-Image-ALLinONE-v2.json size 44731
+top_keys ['config', 'extra', 'groups', 'id', 'last_link_id', 'last_node_id', 'links', 'nodes', 'revision', 'version']
+version 0.4
+extra_keys ['workflowRendererVersion', 'ue_links', 'ds', 'links_added_by_ue', 'frontendVersion', 'VHS_latentpreview', 'VHS_latentpreviewrate', 'VHS_MetadataImage', 'VHS_KeepIntermediate']
+==== /workspace/user/default/workflows/Z-Image ALLinONE v2.json size 44731
+top_keys ['config', 'extra', 'groups', 'id', 'last_link_id', 'last_node_id', 'links', 'nodes', 'revision', 'version']
+version 0.4
+extra_keys ['workflowRendererVersion', 'ue_links', 'ds', 'links_added_by_ue', 'frontendVersion', 'VHS_latentpreview', 'VHS_latentpreviewrate', 'VHS_MetadataImage', 'VHS_KeepIntermediate']
+==== /opt/ComfyUI/blueprints/Z-Image-ALLinONE-v2.json size 44731
+top_keys ['config', 'extra', 'groups', 'id', 'last_link_id', 'last_node_id', 'links', 'nodes', 'revision', 'version']
+version 0.4
+extra_keys ['workflowRendererVersion', 'ue_links', 'ds', 'links_added_by_ue', 'frontendVersion', 'VHS_latentpreview', 'VHS_latentpreviewrate', 'VHS_MetadataImage', 'VHS_KeepIntermediate']
+==== blueprint files ====
+/opt/ComfyUI/blueprints/Depth to Image (Z-Image-Turbo).json 64491
+/opt/ComfyUI/blueprints/Pose to Image (Z-Image-Turbo).json 34028
+/opt/ComfyUI/blueprints/Text to Image (Z-Image-Turbo).json 27316
+/opt/ComfyUI/blueprints/Canny to Image (Z-Image-Turbo).json 40489
+/opt/ComfyUI/blueprints/Text to Image (Z-Image-Base).json 33712
+/opt/ComfyUI/blueprints/Z-Image-ALLinONE-v2.json 44731
+/workspace/user/default/workflows/Text to Image (Z-Image-Turbo).json 27316
+/workspace/user/default/workflows/Text to Image (Z-Image-Base).json 33712
+/workspace/user/default/workflows/Z-Image-Base.json 33712
+/workspace/user/default/workflows/Z-Image-ALLinONE-v2.json 44731
+/workspace/user/default/workflows/Z-Image ALLinONE v2.json 44731
+/opt/ComfyUI/user/default/workflows/Text to Image (Z-Image-Turbo).json 27316
+/opt/ComfyUI/user/default/workflows/Text to Image (Z-Image-Base).json 33712
+/opt/ComfyUI/user/default/workflows/Z-Image-Base.json 33712
+/opt/ComfyUI/user/default/workflows/Z-Image-ALLinONE-v2.json 44731
+/opt/ComfyUI/user/default/workflows/Z-Image ALLinONE v2.json 44731
+==== error string in comfy ====

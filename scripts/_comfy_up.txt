@@ -1,0 +1,58 @@
+keys=1356
+verywhere
+[2026-08-05 10:04:31.838]    0.0 seconds: /work/ComfyUI/custom_nodes/ComfyUI-post-processing-nodes
+[2026-08-05 10:04:31.838]    0.0 seconds: /work/ComfyUI/custom_nodes/masquerade-nodes-comfyui
+[2026-08-05 10:04:31.838]    0.0 seconds: /work/ComfyUI/custom_nodes/COMFYUI_PROMPTMODELS
+[2026-08-05 10:04:31.838]    0.0 seconds: /work/ComfyUI/custom_nodes/ComfyUI_essentials
+[2026-08-05 10:04:31.838]    0.1 seconds: /work/ComfyUI/custom_nodes/ControlAltAI-Nodes
+[2026-08-05 10:04:31.838]    0.1 seconds: /work/ComfyUI/custom_nodes/rgthree-comfy
+[2026-08-05 10:04:31.838]    0.1 seconds: /work/ComfyUI/custom_nodes/ComfyUI-Manager
+[2026-08-05 10:04:31.838]    0.1 seconds: /work/ComfyUI/custom_nodes/ComfyUI_tinyterraNodes
+[2026-08-05 10:04:31.838]    0.6 seconds: /work/ComfyUI/custom_nodes/ComfyUI-Impact-Pack
+[2026-08-05 10:04:31.838]    0.6 seconds: /work/ComfyUI/custom_nodes/ComfyUI-Impact-Subpack
+[2026-08-05 10:04:31.838]    1.0 seconds: /work/ComfyUI/custom_nodes/was-node-suite-comfyui
+[2026-08-05 10:04:31.838]    1.7 seconds: /work/ComfyUI/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler
+[2026-08-05 10:04:31.839] 
+[2026-08-05 10:04:31.844] Context impl SQLiteImpl.
+[2026-08-05 10:04:31.844] Will assume non-transactional DDL.
+[2026-08-05 10:04:31.903] Starting server
+
+[2026-08-05 10:04:31.903] To see the GUI go to: http://0.0.0.0:8188
+[2026-08-05 10:04:31.904] To see the GUI go to: http://[::]:8188
+[2026-08-05 10:04:33.297] Cannot connect to comfyregistry.
+[2026-08-05 10:04:33.310] FETCH DATA from: https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json[ComfyUI-Manager] Due to a network error, switching to local mode.
+=> custom-node-list.json
+=> Cannot connect to host raw.githubusercontent.com:443 ssl:default [No address 
+associated with hostname]
+[2026-08-05 10:04:33.354] FETCH DATA from: /work/ComfyUI/custom_nodes/ComfyUI-Manager/custom-node-list.json [DONE]
+[2026-08-05 10:04:33.435] [ComfyUI-Manager] All startup tasks have been completed.
+
+
+OK   Anything Everywhere
+OK   Blur
+OK   ChromaticAberration
+OK   ColorCorrect
+OK   FaceDetailer
+MISS Fast Groups Bypasser (rgthree)
+OK   FilmGrain
+OK   FluxResolutionNode
+MISS GetNode
+OK   Image Bloom Filter
+OK   Image Comparer (rgthree)
+OK   Image Lucy Sharpen
+OK   ImageCASharpening+
+OK   ImageResize+
+OK   Lora Loader Stack (rgthree)
+OK   Power Lora Loader (rgthree)
+OK   SAMLoader
+OK   SeedVR2LoadDiTModel
+OK   SeedVR2LoadVAEModel
+OK   SeedVR2VideoUpscaler
+MISS SetNode
+OK   UltralyticsDetectorProvider
+OK   ttN text
+
+fuzzy:
+  Fast Groups Bypasser (rgthree) => ['StabilityUpscaleFastNode']
+  GetNode => ['PRO_GetNode', 'TripoRetargetNode']
+  SetNode => ['PRO_SetNode', 'PRO_SetNodeNamed']

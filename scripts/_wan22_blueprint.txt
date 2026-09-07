@@ -1,0 +1,21 @@
+keys ['config', 'definitions', 'extra', 'groups', 'id', 'last_link_id', 'last_node_id', 'links', 'nodes', 'revision', 'version']
+has_subgraphs True n_nodes_top 1
+MODEL //huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
+MODEL //huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+MODEL //huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+MODEL //huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+MODEL //huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+MODEL //huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors
+MODEL umt5_xxl_fp8_e4m3fn_scaled.safetensors
+MODEL wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+MODEL wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+MODEL wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+MODEL wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+MODEL wan_2.1_vae.safetensors
+SG CLIPLoader ['umt5_xxl_fp8_e4m3fn_scaled.safetensors']
+SG VAELoader ['wan_2.1_vae.safetensors']
+SG UNETLoader ['wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors']
+SG UNETLoader ['wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors']
+SG LoraLoaderModelOnly ['wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors']
+SG LoraLoaderModelOnly ['wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors']
+-rw-r--r-- 1 root root 56K May 12 09:10 /opt/ComfyUI/blueprints/Image to Video (Wan 2.2).json

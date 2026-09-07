@@ -1,0 +1,60 @@
+start
+
+===== CMD =====
+
+set -e
+df -h /workspace | tail -1
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
+
+mkdir -p /workspace/datasets/olh_person_zimage/images
+mkdir -p /workspace/loras_out/olh_person_zimage
+mkdir -p /workspace/train
+
+# Ostris AI Toolkit
+export GIT_TERMINAL_PROMPT=0
+cd /workspace/train
+if [ ! -d ai-toolkit ]; then
+  git -c credential.helper= clone --depth 1 https://github.com/ostris/ai-toolkit.git ai-toolkit
+else
+  echo "ai-toolkit exists"
+fi
+
+# Training adapter (v1 stable)
+mkd
+/dev/nvme0n1p4  3.7T  3.3T  434G  89% /workspace
+NVIDIA GeForce RTX 5090, 32607 MiB
+
+--- ERR ---
+Cloning into 'ai-toolkit'...
+bash: line 49: warning: here-document at line 34 delimited by end-of-file (wanted `PY')
+bash: -c: line 50: syntax error: unexpected end of file
+
+===== CMD =====
+
+cat > /workspace/train/olh_person_zimage_job.yaml << 'EOF'
+# Ostris AI Toolkit job template — Z-Image Turbo character LoRA
+# Fill dataset path after images are uploaded. Start via toolkit UI or run.py
+job: extension
+config:
+  name: olh_person_zimage
+  process:
+    - type: sd_trainer
+      training_folder: /workspace/loras_out/olh_person_zimage
+      device: cuda:0
+      trigger_word: olh_person
+      network:
+        type: lora
+        linear: 16
+        linear_alpha: 16
+      save:
+        dty
+wrote job yaml
+52 /workspace/train/olh_person_zimage_job.yaml
+Z-Image character LoRA setup
+
+Folders:
+  images: /workspace/datasets/olh_person_zimage/images/
+  out:    /workspace/loras_out/olh_person_zimage/
+  adapter + ai-toolkit under /workspace/train/
+
+Next: upload 15-30 photos (+ .txt captions with olh_person), then start train.

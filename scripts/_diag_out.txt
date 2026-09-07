@@ -1,0 +1,137 @@
+=== logs ===
+/etc/supervisor/supervisord.conf:logfile=/dev/stdout
+/etc/supervisor/supervisord.conf:stdout_logfile=/dev/stdout
+/etc/supervisor/supervisord.conf:stdout_logfile_maxbytes=0
+/etc/supervisor/supervisord.conf:stdout_logfile=/dev/stdout
+/etc/supervisor/supervisord.conf:stdout_logfile_maxbytes=0
+/etc/supervisor/supervisord.conf:stdout_logfile=/dev/stdout
+/etc/supervisor/supervisord.conf:stdout_logfile_maxbytes=0
+=== seedvr import ===
+📊 Initial CUDA memory: 30.30GB free / 31.40GB total
+⚠️  SeedVR2 optimizations check: SageAttention ❌ | Flash Attention ❌ | Triton ✅
+💡 Optional: pip install sageattention flash-attn
+🔧 Conv3d workaround active: PyTorch 2.11.0, cuDNN 91900 (fixing VAE 3x memory bug)
+=== WAS import ===
+[34mWAS Node Suite: [0mOpenCV Python FFMPEG support is enabled[0m
+[34mWAS Node Suite [93mWarning: [0m`ffmpeg_bin_path` is not set in `/workspace/custom_nodes/was-node-suite-comfyui/was_suite_config.json` config file. Will attempt to use system ffmpeg binaries if available.[0m
+[34mWAS Node Suite: [0mFinished.[0m [32mLoaded[0m [0m220[0m [32mnodes successfully.[0m
+
+	[3m[93m"Believe you can and you're halfway there."[0m[3m - Theodore Roosevelt[0m
+
+WAS ok True
+Image Lucy Sharpen True
+Image Bloom Filter True
+=== comfy load custom nodes dry ===
+root        5661 12.7  0.2 92628656 1492644 ?    Sl   10:13   0:12 python main.py --listen 0.0.0.0 --port 9000 --base-directory /workspace --enable-manager --extra-model-paths-config /opt/ComfyUI/extra_model_paths.yaml
+PID=5661
+total 0
+lr-x------ 1 root root 64 Aug  3 10:15 0 -> pipe:[70084389]
+l-wx------ 1 root root 64 Aug  3 10:15 1 -> pipe:[70084390]
+lrwx------ 1 root root 64 Aug  3 10:15 10 -> /dev/nvidia-uvm
+lrwx------ 1 root root 64 Aug  3 10:15 11 -> /dev/nvidia-uvm
+lrwx------ 1 root root 64 Aug  3 10:15 12 -> /dev/nvidia1
+lrwx------ 1 root root 64 Aug  3 10:15 13 -> /dev/nvidia1
+lrwx------ 1 root root 64 Aug  3 10:15 14 -> /dev/nvidia1
+lrwx------ 1 root root 64 Aug  3 10:15 15 -> /dev/nvidia1
+lrwx------ 1 root root 64 Aug  3 10:15 16 -> socket:[70900219]
+FILE /opt/ComfyUI/user/comfyui_9000.prev2.log 12199
+FILE /opt/ComfyUI/user/comfyui_9000.prev.log 25837
+FILE /opt/ComfyUI/user/comfyui_9000.log 33351
+
+===STDERR===
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/__init__.py", line 6, in <module>
+    from .src.optimization.compatibility import ensure_triton_compat  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ImportError: attempted relative import with no known parent package
+Traceback (most recent call last):
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/utils/import_utils.py", line 1052, in _get_module
+    return importlib.import_module("." + module_name, self.__name__)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/loaders/single_file_model.py", line 32, in <module>
+    from .single_file_utils import (
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/loaders/single_file_utils.py", line 53, in <module>
+    from transformers import AutoImageProcessor
+  File "<frozen importlib._bootstrap>", line 1412, in _handle_fromlist
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2226, in __getattr__
+    module = self._get_module(self._class_to_module[name])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2460, in _get_module
+    raise e
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 2458, in _get_module
+    return importlib.import_module("." + module_name, self.__name__)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/models/auto/image_processing_auto.py", line 24, in <module>
+    from ...image_processing_utils import ImageProcessingMixin
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/image_processing_utils.py", line 34, in <module>
+    from .processing_utils import ImagesKwargs, Unpack
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/processing_utils.py", line 62, in <module>
+    from .utils.type_validators import (
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/type_validators.py", line 19, in <module>
+    from ..activations import ACT2FN
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/activations.py", line 22, in <module>
+    from .integrations.hub_kernels import use_kernel_forward_from_hub
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/integrations/hub_kernels.py", line 25, in <module>
+    from .flash_attention import flash_attention_forward
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/integrations/flash_attention.py", line 9, in <module>
+    _use_top_left_mask = flash_attn_supports_top_left_mask()
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/modeling_flash_attention_utils.py", line 43, in flash_attn_supports_top_left_mask
+    if is_flash_attn_2_available() or is_flash_attn_3_available() or is_flash_attn_4_available():
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py", line 965, in is_flash_attn_2_available
+    pkg.replace("_", "-") for pkg in PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]
+                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+KeyError: 'flash_attn'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 9, in <module>
+  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/interfaces/__init__.py", line 8, in <module>
+    from .video_upscaler import SeedVR2VideoUpscaler
+  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/interfaces/video_upscaler.py", line 10, in <module>
+    from ..utils.downloads import download_weight
+  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/utils/downloads.py", line 14, in <module>
+    from .model_registry import MODEL_REGISTRY, DEFAULT_VAE
+  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/utils/model_registry.py", line 14, in <module>
+    from ..models.video_vae_v3.modules.attn_video_vae import VideoAutoencoderKLWrapper
+  File "/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/src/models/video_vae_v3/modules/attn_video_vae.py", line 20, in <module>
+    from diffusers.models.autoencoders.vae import DecoderOutput, DiagonalGaussianDistribution
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/autoencoders/__init__.py", line 1, in <module>
+    from .autoencoder_asym_kl import AsymmetricAutoencoderKL
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/autoencoders/autoencoder_asym_kl.py", line 21, in <module>
+    from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/autoencoders/vae.py", line 24, in <module>
+    from ..unets.unet_2d_blocks import (
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/unets/__init__.py", line 6, in <module>
+    from .unet_2d import UNet2DModel
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/unets/unet_2d.py", line 23, in <module>
+    from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/unets/unet_2d_blocks.py", line 36, in <module>
+    from ..transformers.dual_transformer_2d import DualTransformer2DModel
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/transformers/__init__.py", line 6, in <module>
+    from .auraflow_transformer_2d import AuraFlowTransformer2DModel
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/models/transformers/auraflow_transformer_2d.py", line 23, in <module>
+    from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+  File "<frozen importlib._bootstrap>", line 1412, in _handle_fromlist
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/utils/import_utils.py", line 1042, in __getattr__
+    module = self._get_module(self._class_to_module[name])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ComfyUI/.venv/lib/python3.12/site-packages/diffusers/utils/import_utils.py", line 1054, in _get_module
+    raise RuntimeError(
+RuntimeError: Failed to import diffusers.loaders.single_file_model because of the following error (look up to see its traceback):
+'flash_attn'

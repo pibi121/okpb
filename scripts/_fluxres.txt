@@ -1,0 +1,65 @@
+{
+  "id": 46,
+  "type": "FluxResolutionNode",
+  "pos": [
+    77.29725776727231,
+    442.16348117814096
+  ],
+  "size": [
+    283.8779315082621,
+    214
+  ],
+  "flags": {},
+  "order": 17,
+  "mode": 0,
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "width",
+      "type": "INT",
+      "links": [
+        94
+      ]
+    },
+    {
+      "name": "height",
+      "type": "INT",
+      "links": [
+        95
+      ]
+    },
+    {
+      "name": "resolution",
+      "type": "STRING",
+      "links": null
+    },
+    {
+      "name": "preview",
+      "type": "IMAGE",
+      "links": null
+    }
+  ],
+  "properties": {
+    "cnr_id": "controlaltai-nodes",
+    "ver": "1.1.4",
+    "Node name for S&R": "FluxResolutionNode",
+    "ue_properties": {
+      "widget_ue_connectable": {},
+      "input_ue_unconnectable": {},
+      "version": "7.5.1"
+    }
+  },
+  "widgets_values": [
+    "1.5",
+    "1:1 (Perfect Square)",
+    "8",
+    false,
+    "1080:1920"
+  ],
+  "color": "#d37d7d",
+  "bgcolor": "#bf6969"
+}
+IDS [46]
+LINK [94, 46, 0, 60, 0, 'INT']
+LINK [95, 46, 1, 60, 1, 'INT']
+--- consumers of outputs ---

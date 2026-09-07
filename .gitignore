@@ -1,0 +1,81 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/src/generated/prisma
+
+# local uploads
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# durable local lab data (gallery binaries + db backups)
+/data/**
+!/data/gallery/.gitkeep
+!/data/backups/.gitkeep
+!/data/characters/.gitkeep
+
+# prisma local db
+/prisma/*.db
+/prisma/*.db-journal
+
+# metalnode / infra secrets
+/infra/*.key
+/infra/metalnode.local.json
+/infra/metalnode.llm.json
+metalnode_id_ed25519
+
+# cursor / temp
+.cursor/
+tmp_*
+/scripts/_tmp-*
+.tmp_*
+klein_fix_latest.png
+
+# large local datasets (not for git)
+/datasets/
+/samples/
+
+# optional local presets — ship all JSON registries needed on Railway
+/presets/*
+!/presets/*.json
+
+# keep workflows — needed for Comfy later

@@ -1,0 +1,62 @@
+59871 bash -c pgrep -af install_nodes_fix || echo done_proc; echo DONE_FILE; cat /work/INSTALL_NODES_FIX_DONE.txt 2>/dev/null || echo no; echo LOG_TAIL; tail -n 40 /work/INSTALL_NODES_FIX.log; echo NODES; ls /work/ComfyUI/custom_nodes
+DONE_FILE
+ok
+LOG_TAIL
+[09:59:42] $ /work/ai/venv/bin/pip install -q -r /work/ComfyUI/custom_nodes/COMFYUI_PROMPTMODELS/GETSETNODE_PRO/requirements.txt
+[09:59:43] $ /work/ai/venv/bin/pip install -q -r /work/ComfyUI/custom_nodes/COMFYUI_PROMPTMODELS/ComfyUI_GoogleAI/requirements.txt
+[09:59:43] $ /work/ai/venv/bin/pip install -q -r /work/ComfyUI/custom_nodes/COMFYUI_PROMPTMODELS/ComfyUI_GrokAI/requirements.txt
+[09:59:44] OK exists cg-use-everywhere
+[09:59:44] OK exists ComfyUI_tinyterraNodes
+[09:59:44] OK exists ComfyUI-Impact-Pack
+[09:59:44] $ /work/ai/venv/bin/pip install -q -r /work/ComfyUI/custom_nodes/ComfyUI-Impact-Pack/requirements.txt
+[09:59:44] rc=1 stderr=  error: subprocess-exited-with-error
+  
+  × git clone --filter=blob:none --quiet https://github.com/facebookresearch/sam2 /tmp/pip-req-build-gt17g3a6 did not run successfully.
+  │ exit code: 128
+  ╰─> [1 lines of output]
+      fatal: unable to access 'https://github.com/facebookresearch/sam2/': Could not resolve host: github.com
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+
+[notice] A new release of pip is available: 26.0.1 -> 26.2.1
+[notice] To update, run: /work/ai/venv/bin/python3 -m pip install --upgrade pip
+ERROR: Failed to build 'git+https://github.com/facebookresearch/sam2' when git clone --filter=blob:none --quiet https://github.com/facebookresearch/sam2 /tmp/pip-req-build-gt17g3a6
+ stdout=
+[09:59:44] $ /work/ai/venv/bin/python3 /work/ComfyUI/custom_nodes/ComfyUI-Impact-Pack/install.py
+[09:59:48] $ /work/ai/venv/bin/pip install -q ultralytics segment-anything piexif dill opencv-python-headless scipy scikit-image
+[09:59:49] === installed ===
+[09:59:49]   COMFYUI_PROMPTMODELS
+[09:59:49]   ComfyUI-ControlAltAI-Nodes
+[09:59:49]   ComfyUI-Impact-Pack
+[09:59:49]   ComfyUI-Impact-Subpack
+[09:59:49]   ComfyUI-Manager
+[09:59:49]   ComfyUI-SeedVR2_VideoUpscaler
+[09:59:49]   ComfyUI-post-processing-nodes
+[09:59:49]   ComfyUI_essentials
+[09:59:49]   ComfyUI_tinyterraNodes
+[09:59:49]   ControlAltAI-Nodes
+[09:59:49]   __pycache__
+[09:59:49]   cg-use-everywhere
+[09:59:49]   masquerade-nodes-comfyui
+[09:59:49]   rgthree-comfy
+[09:59:49]   was-node-suite-comfyui
+[09:59:49] DONE
+NODES
+COMFYUI_PROMPTMODELS
+ComfyUI-ControlAltAI-Nodes
+ComfyUI-Impact-Pack
+ComfyUI-Impact-Subpack
+ComfyUI-Manager
+ComfyUI-SeedVR2_VideoUpscaler
+ComfyUI-post-processing-nodes
+ComfyUI_essentials
+ComfyUI_tinyterraNodes
+ControlAltAI-Nodes
+__pycache__
+cg-use-everywhere
+example_node.py.example
+masquerade-nodes-comfyui
+rgthree-comfy
+was-node-suite-comfyui
+websocket_image_save.py

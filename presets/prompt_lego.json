@@ -1,0 +1,217 @@
+{
+  "lighting": [
+    {
+      "id": "hard_flash",
+      "label": "Hard Flash",
+      "aliases": ["hard flash", "harsh flash", "direct flash", "вспышка"],
+      "text": "on-camera direct flash, harsh frontal flash, hard shadows, high contrast, clinical cold-white light, glossy skin specular hits, 35mm snapshot look, f/8, deep focus, raw unflattering flash aesthetic"
+    },
+    {
+      "id": "warm_lamp",
+      "label": "Warm Lamp",
+      "aliases": ["warm lamp", "night light", "лампа"],
+      "text": "warm practical lamp light, soft falloff, natural indoor night ambience"
+    },
+    {
+      "id": "window_daylight",
+      "label": "Window Daylight",
+      "aliases": ["daylight", "window light", "дневной свет"],
+      "text": "soft natural window daylight, gentle side light, realistic soft shadows"
+    },
+    {
+      "id": "studio_softbox",
+      "label": "Studio Softbox",
+      "aliases": ["softbox", "studio light"],
+      "text": "clean softbox lighting, even skin illumination, controlled studio fill"
+    },
+    {
+      "id": "cinematic_key",
+      "label": "Cinematic Key",
+      "aliases": ["cinematic light", "dramatic light"],
+      "text": "dramatic soft key light, gentle rim, cinematic contrast"
+    }
+  ],
+  "events": [
+    {
+      "id": "cum_on_face",
+      "label": "Cum on face",
+      "aliases": ["cum on face", "facial", "cum face", "сперма на лице"],
+      "text": "fresh white cum on face, semen streaks on cheeks and lips",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "cum_on_chest",
+      "label": "Cum on chest",
+      "aliases": ["cum on chest", "cum tits", "сперма на груди"],
+      "text": "fresh white cum on chest and breasts",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "creampie",
+      "label": "Creampie",
+      "aliases": ["creampie", "cum inside"],
+      "text": "creampie, semen leaking from penetration",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "ahegao",
+      "label": "Ahegao",
+      "aliases": ["ahegao", "orgasm face"],
+      "text": "ahegao expression, rolling eyes, open mouth, overwhelmed pleasure",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "sweaty",
+      "label": "Sweaty",
+      "aliases": ["sweaty", "sweat", "пот"],
+      "text": "glistening sweat on skin, damp hair strands",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "tongue_out",
+      "label": "Tongue out",
+      "aliases": ["tongue out", "stick tongue", "высунутый язык"],
+      "text": "tongue sticking out of open mouth",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "feet_focus",
+      "label": "Feet focus",
+      "aliases": ["bare feet", "foot fetish", "ступни"],
+      "text": "detailed bare feet in frame",
+      "bindsTo": "previous_character"
+    },
+    {
+      "id": "alt_girl",
+      "label": "Alt girl",
+      "aliases": ["alt girl", "альтушка"],
+      "text": "alt girl aesthetic",
+      "bindsTo": "previous_character"
+    }
+  ],
+  "body": [
+    {
+      "id": "penis_small",
+      "label": "Penis small",
+      "aliases": ["small penis", "маленький член"],
+      "text": "small thin penis"
+    },
+    {
+      "id": "penis_medium",
+      "label": "Penis medium",
+      "aliases": ["medium penis", "средний член"],
+      "text": "medium penis"
+    },
+    {
+      "id": "penis_large",
+      "label": "Penis large",
+      "aliases": ["large penis", "big cock", "большой член"],
+      "text": "large thick penis"
+    },
+    {
+      "id": "ass_small",
+      "label": "Ass small",
+      "aliases": ["small ass", "маленькая жопа"],
+      "text": "small butt"
+    },
+    {
+      "id": "ass_medium",
+      "label": "Ass medium",
+      "aliases": ["medium ass", "средняя жопа"],
+      "text": "round butt"
+    },
+    {
+      "id": "ass_large",
+      "label": "Ass large",
+      "aliases": ["big ass", "большая жопа"],
+      "text": "large round ass, thick thighs"
+    },
+    {
+      "id": "breasts_small",
+      "label": "Breasts small",
+      "aliases": ["small breasts", "маленькая грудь"],
+      "text": "small breasts"
+    },
+    {
+      "id": "breasts_medium",
+      "label": "Breasts medium",
+      "aliases": ["medium breasts", "средняя грудь"],
+      "text": "medium breasts"
+    },
+    {
+      "id": "breasts_large",
+      "label": "Breasts large",
+      "aliases": ["large breasts", "big tits", "большая грудь"],
+      "text": "large breasts"
+    }
+  ],
+  "stylization": [
+    {
+      "id": "skin_texture_min",
+      "label": "Skin texture min",
+      "aliases": ["skin texture min", "pores light", "текстура кожи мин"],
+      "text": "realistic face skin texture, visible pores, fine skin detail",
+      "skinDetail": true,
+      "skinDetailStrength": 1.2
+    },
+    {
+      "id": "skin_texture_med",
+      "label": "Skin texture med",
+      "aliases": ["skin texture med", "skin texture medium", "текстура кожи средне"],
+      "text": "strong realistic face skin texture, visible pores, fine skin detail",
+      "skinDetail": true,
+      "skinDetailStrength": 1.6
+    },
+    {
+      "id": "skin_texture_max",
+      "label": "Skin texture max",
+      "aliases": ["skin texture max", "pores", "skin detail", "текстура кожи макс"],
+      "text": "maximum realistic face skin texture, visible pores, fine skin detail",
+      "skinDetail": true,
+      "skinDetailStrength": 1.7
+    },
+    {
+      "id": "photoreal_raw",
+      "label": "Photoreal Raw",
+      "aliases": ["photoreal", "raw photo"],
+      "text": "photorealistic raw photo, natural color, no beauty filter"
+    },
+    {
+      "id": "disposable_film",
+      "label": "Disposable Film",
+      "aliases": ["disposable", "film grain", "плёнка"],
+      "text": "disposable camera look, soft optical focus, visible film grain, muted colors, candid snapshot"
+    },
+    {
+      "id": "cinematic_teal",
+      "label": "Cinematic Teal-Orange",
+      "aliases": ["teal orange", "cinematic grade"],
+      "text": "cinematic teal and orange color grade, filmic contrast, shallow DOF"
+    },
+    {
+      "id": "galaxy_ace",
+      "label": "GalaxyAce",
+      "aliases": ["galaxyace", "galaxy ace", "гелекси"],
+      "text": "GalaxyAce stylized look"
+    },
+    {
+      "id": "realism_snapshot",
+      "label": "Realism Snapshot",
+      "aliases": ["realistic snapshot"],
+      "text": "realistic snapshot photo"
+    },
+    {
+      "id": "realism_krea2",
+      "label": "Krea2 Realism",
+      "aliases": ["krea2 realism"],
+      "text": "photorealistic Krea2 realism"
+    },
+    {
+      "id": "realism_analog",
+      "label": "Analog Madness",
+      "enabled": false,
+      "aliases": ["analog madness", "analog realistic"],
+      "text": "analog film realistic photo"
+    }
+  ]
+}

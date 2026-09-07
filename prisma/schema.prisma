@@ -1,0 +1,1245 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  avatarUrl    String?
+  ageConfirmed Boolean  @default(false)
+  credits      Int      @default(1000)
+  /// TG bot wallet: 1 персик = 1 ₽ номинал
+  balancePeaches Int    @default(0)
+  /// ru | en
+  locale       String   @default("ru")
+  /// TG promo: legacy first free photo (deprecated)
+  tgFreePhotoUsed Boolean @default(false)
+  /// TG promo: −30% on first paid video
+  tgFirstVideoDiscountUsed Boolean @default(false)
+  /// Last studio-cast free photo (daily limit)
+  tgStudioDailyUsedAt DateTime?
+  /// Last Mini App open (activates daily free when eligible)
+  tgLastMiniAppAt DateTime?
+  /// User may use 1 free studio photo today (set on Mini App visit)
+  tgStudioFreeReady Boolean @default(false)
+  /// LoRA welcome bonus window deadline
+  tgLoraBonusExpiresAt DateTime?
+  /// Remaining free photos after LoRA train (welcome pack)
+  tgLoraWelcomePhotosLeft Int @default(0)
+  /// Delayed onboarding push after welcome
+  tgWelcomePushSent Boolean @default(false)
+  tgWelcomePushDueAt DateTime?
+  /// web | telegram
+  source       String   @default("web")
+  /// owner | support | content | developer | empty = not staff
+  adminRole    String   @default("")
+  blocked      Boolean  @default(false)
+  blockedAt    DateTime?
+  blockReason  String   @default("")
+  adminNotes   String   @default("")
+  trafficLinkId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trafficLink           TrafficLink? @relation(fields: [trafficLinkId], references: [id], onDelete: SetNull)
+  platformAccounts      PlatformAccount[]
+  affiliateAttributions AffiliateAttribution[]
+  partnerProfile      PartnerProfile?
+  partnerAttribution  PartnerAttribution?
+  characters        Character[]
+  scenarios         Scenario[]
+  renderJobs        RenderJob[]
+  ledger            LedgerEntry[]
+  galleryItems      GalleryItem[]
+  peachPresets      PeachPreset[]
+  testSessions      TestSession[]
+  peachFilmProjects PeachFilmProject[]
+  storyPacks        StoryPack[]
+  templatePacks     TemplatePack[]
+  templateRuns      TemplateRun[]
+  promptKbEntries   PromptKbEntry[]
+  motionTemplates   MotionTemplate[]
+  motionRuns        MotionRun[]
+  socialTemplates   SocialTemplate[]
+  socialRef2VRuns   SocialRef2VRun[]
+  quickVideoRuns    QuickVideoRun[]
+  quickVideoTemplates QuickVideoTemplate[]
+  quickVideoTemplatePurchases QuickVideoTemplatePurchase[]
+  peachPhotoTemplates PeachPhotoTemplate[]
+  peachPhotoTemplatePurchases PeachPhotoTemplatePurchase[]
+  loraI2vTemplates      LoraI2vTemplate[]
+  testGalleryFolders TestGalleryFolder[]
+  tgCastFavorites   TgCastFavorite[]
+
+  @@index([trafficLinkId])
+  @@index([adminRole])
+  @@index([blocked])
+  @@index([source, createdAt])
+}
+
+model Character {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  description  String?
+  /// female | male
+  gender       String   @default("female")
+  consentGiven Boolean  @default(false)
+  status       String   @default("ready")
+  photoCount   Int      @default(0)
+  loraPath     String?
+  /// lookbook | lookbook_ready | lora_training | lora_ready
+  loraStatus   String   @default("lookbook")
+  /// Shared PeachBitch studio model (free daily photo tier)
+  isStudioCast Boolean  @default(false)
+  /// Ref2V identity only — no LoRA photo train (TG video)
+  videoRefOnly Boolean  @default(false)
+  triggerWord  String?
+  /// JSON Lookbook enums (see src/lib/lookbook.ts)
+  lookbookJson String   @default("{}")
+  /// TG Mini App / bot display name (studio cast cards)
+  tgDisplayName String  @default("")
+  /// TG Mini App cover image URL
+  tgCoverUrl    String  @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  renderJobs   RenderJob[]
+  galleryItems GalleryItem[]
+  tgFavorites  TgCastFavorite[]
+}
+
+/// Mini App: user favorited a studio cast actress.
+model TgCastFavorite {
+  id          String   @id @default(cuid())
+  userId      String
+  characterId String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, characterId])
+  @@index([userId])
+}
+
+model GalleryItem {
+  id           String   @id @default(cuid())
+  userId       String
+  characterId  String?
+  kind         String   @default("photo") // photo | video | film
+  title        String?
+  prompt       String?
+  editPrompt   String?
+  sourceUrl    String?
+  resultUrl    String
+  thumbUrl     String?
+  width        Int?
+  height       Int?
+  metaJson     String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+}
+
+model PeachPreset {
+  id          String   @id @default(cuid())
+  userId      String?
+  slug        String   @unique
+  title       String
+  kind        String   @default("photo") // photo | clip | film
+  /// JSON: pose/style/scenes/music flags etc.
+  payloadJson String   @default("{}")
+  notes       String?
+  isBuiltin   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Scenario {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  graphJson String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  renderJobs RenderJob[]
+}
+
+model RenderJob {
+  id           String   @id @default(cuid())
+  userId       String
+  scenarioId   String?
+  characterId  String?
+  phase        String   @default("full")
+  status       String   @default("queued")
+  progress     Int      @default(0)
+  totalCredits Int      @default(0)
+  resultUrl    String?
+  errorMessage String?
+  shotsJson    String   @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenario  Scenario?  @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  shots     ShotJob[]
+}
+
+model ShotJob {
+  id             String   @id @default(cuid())
+  renderJobId    String
+  orderIndex     Int
+  status         String   @default("queued")
+  actionType     String   @default("idle")
+  actionPrompt   String?
+  dialogueText   String?
+  camera         String   @default("medium")
+  locationJson   String   @default("{}")
+  audioJson      String?
+  durationSec    Int      @default(5)
+  billingCredits Int      @default(0)
+  workflow       String   @default("still_i2v")
+  continuity     String   @default("continue")
+  stillUrl       String?
+  resultUrl      String?
+  lastFrameUrl   String?
+  approved       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  renderJob RenderJob @relation(fields: [renderJobId], references: [id], onDelete: Cascade)
+}
+
+model LedgerEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  reason    String
+  metaJson  String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GpuVault {
+  id         String   @id @default("main")
+  balanceRub Int      @default(0)
+  maxWorkers Int      @default(1)
+  updatedAt  DateTime @updatedAt
+}
+
+/// Tester mode: one LLM prompt, N seed variations, +/- ratings.
+model TestSession {
+  id               String   @id @default(cuid())
+  userId           String
+  title            String?
+  /// none | lookbook | lora
+  characterMode    String   @default("none")
+  characterIdsJson String   @default("[]")
+  poseOn           Boolean  @default(false)
+  poseId           String?
+  styleOn          Boolean  @default(false)
+  styleId          String?
+  userNote         String   @default("")
+  composedPrompt   String?
+  variationCount   Int      @default(3)
+  width            Int      @default(888)
+  height           Int      @default(1176)
+  /// pending | ready | error
+  status           String   @default("pending")
+  error            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variants TestVariant[]
+}
+
+model TestVariant {
+  id        String   @id @default(cuid())
+  sessionId String
+  index     Int
+  seed      String
+  resultUrl String?
+  /// pending | ready | error
+  status    String   @default("pending")
+  error     String?
+  engine    String?
+  /// +1 | -1 | null (null = not rated; face/pose may stay null when N/A)
+  quality   Int?
+  face      Int?
+  promptFit Int?
+  poseFit   Int?
+  note      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session TestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+/// Pose / concept test gallery: folders of stills for rating keep/drop.
+model TestGalleryFolder {
+  id          String   @id @default(cuid())
+  userId      String
+  slug        String
+  title       String
+  characterId String?
+  /// lora_pose | …
+  kind        String   @default("lora_pose")
+  /// pending | running | ready | error
+  status      String   @default("pending")
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shots TestGalleryShot[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model TestGalleryShot {
+  id          String   @id @default(cuid())
+  folderId    String
+  poseId      String
+  poseLabel   String
+  /// 9_16 | 1_1 | 16_9
+  orientation String
+  width       Int
+  height      Int
+  seed        String?
+  /// pending | ready | error
+  status      String   @default("pending")
+  resultUrl   String?
+  engine      String?
+  error       String?
+  prompt      String?
+  /// -1 bad | 0 neutral | 1 good | null unrated
+  rating      Int?
+  sortIndex   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  folder TestGalleryFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+  @@index([folderId, poseId])
+}
+
+/// Peach mini-film project (Studio / Fast) — resumable wizard state.
+model PeachFilmProject {
+  id               String   @id @default(cuid())
+  userId           String
+  /// studio | fast
+  mode             String   @default("studio")
+  /// idea | script | storyboard | clips | stitch | done
+  step             String   @default("idea")
+  /// idle | busy | error
+  status           String   @default("idle")
+  title            String?
+  idea             String   @default("")
+  withDialogue     Boolean  @default(false)
+  characterIdsJson String   @default("[]")
+  poseIdsJson      String   @default("[]")
+  /// null = LLM chooses (3–8)
+  sceneCount       Int?
+  /// portrait | landscape | square
+  aspect           String   @default("portrait")
+  styleId          String?
+  seed             String?
+  /// Shared EN continuity anchors for all stills
+  filmBible        String   @default("")
+  scenesJson       String   @default("[]")
+  /// Parent gallery folder item id
+  folderItemId     String?
+  durationSec      Int      @default(6)
+  withMusic        Boolean  @default(false)
+  musicNote        String   @default("")
+  error            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Gold story templates you train beat-by-beat (still then video).
+model StoryPack {
+  id               String   @id @default(cuid())
+  userId           String
+  title            String
+  idea             String   @default("")
+  /// chase | delivery | talk | undress | sex | aftercare | other
+  genre            String   @default("other")
+  characterIdsJson String   @default("[]")
+  locationNote     String   @default("")
+  styleId          String?
+  /// draft | training | done
+  status           String   @default("draft")
+  error            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  beats StoryBeat[]
+
+  @@index([userId])
+}
+
+model StoryBeat {
+  id            String   @id @default(cuid())
+  packId        String
+  index         Int
+  title         String   @default("")
+  /// What is IN this frame (plot beat)
+  beat          String   @default("")
+  /// What must NOT appear
+  never         String   @default("")
+  isSex         Boolean  @default(false)
+  poseId        String?
+  stillPrompt   String   @default("")
+  videoPrompt   String   @default("")
+  stillItemId   String?
+  clipItemId    String?
+  /// draft | pending | ready | approved | rejected | error
+  stillStatus   String   @default("draft")
+  /// draft | pending | ready | approved | rejected | error | skipped
+  videoStatus   String   @default("draft")
+  stillFailNote String   @default("")
+  videoFailNote String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  pack StoryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([packId])
+}
+
+/// Template folder on platform: collect approved still+clip beats, then publish as reusable card.
+model TemplatePack {
+  id               String    @id @default(cuid())
+  userId           String
+  title            String
+  idea             String    @default("")
+  tagsJson         String    @default("[]")
+  characterIdsJson String    @default("[]")
+  locationNote     String    @default("")
+  /// assembling | published
+  status           String    @default("assembling")
+  /// Flattened text for tag search / future embeddings
+  searchText       String    @default("")
+  coverStillUrl    String?
+  stitchItemId     String?
+  publishedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  frames    TemplateFrame[]
+  kbEntries PromptKbEntry[]
+  runs      TemplateRun[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TemplateFrame {
+  id            String   @id @default(cuid())
+  packId        String
+  index         Int
+  title         String   @default("")
+  beat          String   @default("")
+  never         String   @default("")
+  stillPrompt   String   @default("")
+  videoPrompt   String   @default("")
+  /// Author default spoken lines for this beat (consumer can override)
+  dialogue      String   @default("")
+  durationSec   Int      @default(5)
+  poseId        String?
+  stillItemId   String?
+  clipItemId    String?
+  /// draft | approved
+  status        String   @default("draft")
+  stillFailNote String   @default("")
+  videoFailNote String   @default("")
+  /// Which character is alone in this frame: 0 = first, 1 = second, null = all characters
+  soloCharacterIndex Int?
+  /// Are the characters clothed in this frame?
+  clothed       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  pack TemplatePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([packId])
+}
+
+/// A consumer playthrough of a template with their own characters.
+model TemplateRun {
+  id                 String   @id @default(cuid())
+  userId             String
+  packId             String
+  characterIdsJson   String   @default("[]")
+  /// characters | stills | animate | done
+  step               String   @default("characters")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pack   TemplatePack       @relation(fields: [packId], references: [id], onDelete: Cascade)
+  frames TemplateRunFrame[]
+
+  @@index([userId])
+  @@index([packId])
+}
+
+model TemplateRunFrame {
+  id              String   @id @default(cuid())
+  runId           String
+  templateFrameId String
+  index           Int
+  stillItemId     String?
+  clipItemId      String?
+  videoNote       String   @default("")
+  dialogue        String   @default("")
+  videoPrompt     String   @default("")
+  durationSec     Int      @default(5)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  run TemplateRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
+model PromptKbEntry {
+  id              String   @id @default(cuid())
+  userId          String
+  templatePackId  String?
+  kind            String   @default("success")
+  text            String
+  tagsJson        String   @default("[]")
+  frameIndex      Int?
+  createdAt       DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templatePack TemplatePack? @relation(fields: [templatePackId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([templatePackId])
+}
+
+/// Social motion-transfer template (Wan Animate 2): driving video + reference still.
+model MotionTemplate {
+  id                 String   @id @default(cuid())
+  userId             String
+  title              String
+  notes              String   @default("")
+  /// Local /api/media URL of driving dance/motion video
+  drivingVideoUrl    String   @default("")
+  /// Local /api/media URL of Krea/reference still (pose-matched)
+  referenceImageUrl  String   @default("")
+  /// Preview result after admin generate
+  resultVideoUrl     String   @default("")
+  positivePrompt     String   @default("")
+  negativePrompt     String   @default("")
+  width              Int      @default(832)
+  height             Int      @default(480)
+  /// Frame count for Wan Animate 2 (step 4), default 81 ≈ 5s @16fps
+  frameCount         Int      @default(81)
+  fps                Int      @default(16)
+  /// draft | generating | ready | error
+  status             String   @default("draft")
+  published          Boolean  @default(false)
+  error              String?
+  engine             String?
+  metaJson           String   @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs MotionRun[]
+
+  @@index([userId])
+  @@index([published])
+}
+
+/// User (or admin test) run: template motion applied to a still.
+model MotionRun {
+  id                String   @id @default(cuid())
+  userId            String
+  templateId        String
+  characterId       String?
+  /// Still used for this run (upload or gallery)
+  referenceImageUrl String   @default("")
+  resultVideoUrl    String   @default("")
+  positivePrompt    String   @default("")
+  negativePrompt    String   @default("")
+  /// idle | busy | ready | error
+  status            String   @default("idle")
+  error             String?
+  engine            String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template MotionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([templateId])
+}
+
+/// Admin Ref2VA template: hidden driving video + Krea still prompt.
+model SocialTemplate {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  notes           String   @default("")
+  /// Hidden from user — motion source for MiniMax Ref2VA READY
+  drivingVideoUrl String   @default("")
+  /// Krea T2I prompt for character still (before video step)
+  kreaPhotoPrompt String   @default("")
+  /// MiniMax scene / motion text (optional overrides)
+  scenePrompt     String   @default("")
+  motionPrompt    String   @default("")
+  sam3Target      String   @default("The woman")
+  durationSec     Int      @default(10)
+  /// Admin preview after manual QA
+  previewVideoUrl String   @default("")
+  previewPhotoUrl String   @default("")
+  published       Boolean  @default(false)
+  /// draft | ready
+  status          String   @default("draft")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs SocialRef2VRun[]
+
+  @@index([userId])
+  @@index([published])
+}
+
+/// Social MiniMax Ref2VA run: Krea photo approval → READY workflow video.
+model SocialRef2VRun {
+  id               String   @id @default(cuid())
+  userId           String
+  templateId       String?
+  characterId      String?
+  title            String   @default("Social video")
+  /// krea_busy | awaiting_photo | video_busy | ready | error
+  status           String   @default("krea_busy")
+  /// Krea still shown to user for approve/regen
+  kreaPhotoUrl     String   @default("")
+  drivingVideoUrl  String   @default("")
+  resultVideoUrl   String   @default("")
+  width            Int      @default(768)
+  height           Int      @default(1344)
+  durationSec      Int      @default(6)
+  engine           String?
+  error            String?
+  /// Clothes checkbox: if false → nude; if true → wardrobeNote garments only
+  clothed          Boolean  @default(false)
+  wardrobeNote      String   @default("")
+  /// match_photo | portrait | landscape | square | match_video
+  orientation      String   @default("match_photo")
+  /// Legacy / debug
+  prompt           String   @default("")
+  refImageUrlsJson String   @default("[]")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template SocialTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([templateId])
+}
+
+/// Quick Ref2V: multi-image refs + text prompt → MiniMax video (no Krea step).
+model QuickVideoRun {
+  id               String   @id @default(cuid())
+  userId           String
+  title            String   @default("Quick video")
+  /// busy | ready | error
+  status           String   @default("busy")
+  prompt           String   @default("")
+  composedPrompt   String   @default("")
+  /// Selected characters — identity refs auto-picked from dataset
+  characterIdsJson String   @default("[]")
+  refImageUrlsJson String   @default("[]")
+  refVideoUrl      String   @default("")
+  /// Debug: slot kinds / labels in Ref2V order
+  refSlotsJson     String   @default("[]")
+  resultVideoUrl   String   @default("")
+  galleryItemId    String?
+  width            Int      @default(768)
+  height           Int      @default(1344)
+  durationSec      Int      @default(6)
+  orientation      String   @default("9_16")
+  engine           String?
+  error            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Published quick-video scene recipe (settings + baked refs; user supplies identity).
+model QuickVideoTemplate {
+  id                  String   @id @default(cuid())
+  userId              String
+  title               String
+  notes               String   @default("")
+  /// peach | bitch
+  category            String   @default("peach")
+  isJuice             Boolean  @default(false)
+  /// 0 = use default tier price in peaches
+  priceCredits        Int      @default(0)
+  /// Price in peaches when sold via TG (1 peach = 1 ₽)
+  pricePeaches        Int      @default(0)
+  /// Template includes spoken line — ask user before generate
+  hasSpeech           Boolean  @default(false)
+  /// English title (optional; fallback to title)
+  titleEn             String   @default("")
+  notesEn             String   @default("")
+  published           Boolean  @default(true)
+  sourceRunId         String   @default("")
+  shotsJson           String   @default("")
+  slotBlueprintJson   String   @default("[]")
+  identityPersonCount Int      @default(1)
+  hasLocationSlot     Boolean  @default(false)
+  defaultLocationUrl  String   @default("")
+  refVideoUrl         String   @default("")
+  previewVideoUrl     String   @default("")
+  previewPhotoUrl     String   @default("")
+  orientation         String   @default("9_16")
+  durationSec         Int      @default(6)
+  /// Published to Telegram bot + Mini App catalog
+  tgPublished         Boolean  @default(false)
+  /// Override title shown in TG (empty = use title)
+  tgDisplayTitle      String   @default("")
+  tgSortOrder         Int      @default(0)
+  previewIdentityKey  String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user      User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchases QuickVideoTemplatePurchase[]
+
+  @@index([userId])
+  @@index([category, published])
+  @@index([tgPublished, tgSortOrder])
+}
+
+/// One-time template unlock — no per-use template fee after purchase.
+model QuickVideoTemplatePurchase {
+  id          String   @id @default(cuid())
+  userId      String
+  templateId  String
+  paidCredits Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template QuickVideoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, templateId])
+  @@index([templateId])
+}
+
+/// Published photo-lab scene recipe (LEGO query + settings; user supplies character).
+model PeachPhotoTemplate {
+  id                 String   @id @default(cuid())
+  userId             String
+  title              String
+  notes              String   @default("")
+  /// peach | bitch
+  category           String   @default("peach")
+  isJuice            Boolean  @default(false)
+  priceCredits       Int      @default(0)
+  published          Boolean  @default(true)
+  sourceGalleryId    String   @default("")
+  legoQuery          String   @default("")
+  orientation        String   @default("9_16")
+  poseId             String   @default("")
+  styleId            String   @default("")
+  skinDetail         Boolean  @default(false)
+  skinDetailStrength Float    @default(1.2)
+  previewImageUrl    String   @default("")
+  /// Krea dual-ref scene (template preview / baked scene)
+  sceneImageUrl      String   @default("")
+  slotBlueprintJson  String   @default("[]")
+  identityPersonCount Int     @default(1)
+  hasLocationSlot    Boolean  @default(false)
+  defaultLocationUrl String   @default("")
+  refImageUrlsJson   String   @default("[]")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user      User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchases PeachPhotoTemplatePurchase[]
+
+  @@index([userId])
+  @@index([category, published])
+}
+
+model PeachPhotoTemplatePurchase {
+  id          String   @id @default(cuid())
+  userId      String
+  templateId  String
+  paidCredits Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template PeachPhotoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, templateId])
+  @@index([templateId])
+}
+
+/// LoRA still (Krea) → Minimax I2V recipe. Users need lora_ready characters.
+model LoraI2vTemplate {
+  id               String   @id @default(cuid())
+  userId           String
+  title            String
+  notes            String   @default("")
+  titleEn          String   @default("")
+  notesEn          String   @default("")
+  /// Krea T2I prompt (no author trigger — scrubbed on save)
+  stillPrompt      String   @default("")
+  negativePrompt   String   @default("")
+  /// Minimax I2V motion prompt
+  i2vPrompt        String   @default("")
+  orientation      String   @default("9_16")
+  durationSec      Int      @default(6)
+  pricePeaches     Int      @default(180)
+  published        Boolean  @default(false)
+  tgPublished      Boolean  @default(false)
+  tgDisplayTitle   String   @default("")
+  tgSortOrder      Int      @default(0)
+  /// sex|display|… comma-separated (same as photo filter)
+  sceneCategory    String   @default("")
+  previewImageUrl  String   @default("")
+  previewVideoUrl  String   @default("")
+  sourceStillId    String   @default("")
+  sourceVideoId    String   @default("")
+  /// Author identity for feed dedupe (not used as user identity)
+  previewIdentityKey String @default("")
+  requiresLora     Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([published, updatedAt])
+  @@index([tgPublished, tgSortOrder])
+}
+
+// ─── PeachBitch Telegram ───────────────────────────────────────────────────
+
+/// External identity (Telegram user id is stable across bot migrations).
+model PlatformAccount {
+  id             String   @id @default(cuid())
+  userId         String
+  platform       String   @default("telegram")
+  platformUserId String
+  username       String?
+  firstName      String?
+  lastName       String?
+  languageCode   String?
+  /// Active TG character for generation
+  activeCharacterId String?
+  /// idle | awaiting_lang | awaiting_rules | awaiting_photos | awaiting_speech | awaiting_character_name | awaiting_character_rename
+  chatState      String   @default("idle")
+  pendingJson    String   @default("{}")
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, platformUserId])
+  @@index([userId])
+}
+
+/// Active / retired bot instances (redirect peachbitch.com/bot).
+model BotInstance {
+  id          String    @id @default(cuid())
+  username    String
+  /// active | retired | banned
+  status      String    @default("active")
+  activatedAt DateTime  @default(now())
+  retiredAt   DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+}
+
+/// Traffic partner (arbitrage). code used in ?start=ref_CODE.
+model AffiliateAccount {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  /// percent of GMV (e.g. 50)
+  commissionPct   Int      @default(50)
+  /// active | paused
+  status          String   @default("active")
+  contact         String?
+  totalEarnedRub  Int      @default(0)
+  /// Minimum affiliate payout (USDT)
+  minPayoutUsdt   Int      @default(30)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  attributions AffiliateAttribution[]
+}
+
+/// Links user to affiliate (lifetime attribution on first touch).
+model AffiliateAttribution {
+  id          String   @id @default(cuid())
+  userId      String
+  affiliateId String
+  createdAt   DateTime @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  affiliate AffiliateAccount @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@index([affiliateId])
+}
+
+/// TG user partner program (50% commission in 🍑).
+model PartnerProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  code               String   @unique
+  commissionPct      Int      @default(50)
+  balancePeaches     Int      @default(0)
+  totalEarnedPeaches Int      @default(0)
+  status             String   @default("active")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  links         PartnerLink[]
+  commissions   PartnerCommission[]
+  withdrawals   PartnerWithdrawal[]
+  attributions  PartnerAttribution[]
+}
+
+model PartnerLink {
+  id                 String   @id @default(cuid())
+  partnerId          String
+  slug               String
+  label              String   @default("")
+  clicks             Int      @default(0)
+  signups            Int      @default(0)
+  /// Paid topups attributed to this link
+  purchases          Int      @default(0)
+  purchaseGrossPeaches Int    @default(0)
+  commissionPeaches  Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  partner      PartnerProfile       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  attributions PartnerAttribution[]
+
+  @@unique([partnerId, slug])
+  @@index([partnerId])
+}
+
+model PartnerAttribution {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  partnerId String
+  linkId    String?
+  createdAt DateTime @default(now())
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  link    PartnerLink?   @relation(fields: [linkId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+}
+
+model PartnerCommission {
+  id            String   @id @default(cuid())
+  partnerId     String
+  referredUserId String
+  /// Attribution link at purchase time (admin / per-link stats)
+  linkId        String?
+  grossPeaches  Int
+  amountPeaches Int
+  kind          String   @default("topup")
+  createdAt     DateTime @default(now())
+
+  partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, createdAt])
+}
+
+model PartnerWithdrawal {
+  id            String   @id @default(cuid())
+  partnerId     String
+  amountPeaches Int
+  status        String   @default("pending")
+  payoutDetails String   @default("")
+  adminNote     String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, status])
+}
+
+/// Own marketing start-links (not partner 50%). Payload: m_CODE
+model TrafficLink {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  label           String
+  note            String   @default("")
+  clicks          Int      @default(0)
+  signups         Int      @default(0)
+  purchases       Int      @default(0)
+  purchasePeaches Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users User[]
+}
+
+/// Grouped technical errors for the ops cabinet.
+model OpsError {
+  id             String   @id @default(cuid())
+  fingerprint    String   @unique
+  kind           String
+  title          String
+  sampleMessage  String   @default("")
+  sampleStack    String   @default("")
+  count          Int      @default(1)
+  lastUserId     String   @default("")
+  lastMetaJson   String   @default("{}")
+  /// Generation stage when last seen (queued|running|download|notify|…)
+  stage          String   @default("")
+  /// JSON array of {at,stage,detail} for the latest incident
+  timelineJson   String   @default("[]")
+  lastJobId      String   @default("")
+  lastRefType    String   @default("")
+  lastRefId      String   @default("")
+  buildVersion   String   @default("")
+  autoRetryCount Int      @default(0)
+  status         String   @default("open")
+  firstAt        DateTime @default(now())
+  lastAt         DateTime @default(now())
+
+  @@index([status, lastAt])
+  @@index([kind, lastAt])
+}
+
+/// Singleton ops switches + JSON blobs (prices, etc).
+model OpsSetting {
+  id                     String   @id @default("main")
+  maintenance            Boolean  @default(false)
+  maintenanceMessageRu   String   @default("")
+  maintenanceMessageEn   String   @default("")
+  loadMode               Boolean  @default(false)
+  loadMessageRu          String   @default("")
+  loadMessageEn          String   @default("")
+  lastBroadcastAt        DateTime?
+  pricesJson             String   @default("{}")
+  /// SLO baselines JSON (wait/run ms per function)
+  sloJson                String   @default("{}")
+  /// Orchestrator flags: pending burst requests, budget caps (no provider keys yet)
+  gpuOrchestratorJson    String   @default("{}")
+  updatedAt              DateTime @updatedAt
+}
+
+/// Registered GPU / Comfy workers (Metalnode now; RunPod/Vast later).
+model GpuWorker {
+  id              String    @id @default(cuid())
+  key             String    @unique
+  label           String
+  /// metalnode | runpod | vast | hostkey | manual
+  provider        String    @default("manual")
+  /// photo | video | lora | any
+  pool            String    @default("any")
+  comfyUrl        String    @default("")
+  enabled         Boolean   @default(true)
+  /// online | busy | offline | draining | dead | pending_provider
+  status          String    @default("unknown")
+  lastHeartbeatAt DateTime?
+  lastError       String    @default("")
+  currentJobId    String?
+  costRubPerHour  Int       @default(55)
+  metaJson        String    @default("{}")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  jobs            GpuJob[]
+
+  @@index([enabled, status])
+  @@index([pool, status])
+}
+
+/// Persistent GPU job ledger (survives Railway redeploy; drives /ops/load).
+model GpuJob {
+  id          String    @id @default(cuid())
+  kind        String
+  /// photo | video | lora | any
+  pool        String    @default("any")
+  /// queued | assigned | running | done | error | cancelled
+  status      String    @default("queued")
+  userId      String?
+  refType     String    @default("")
+  refId       String    @default("")
+  workerId    String?
+  stage       String    @default("queued")
+  timelineJson String   @default("[]")
+  error       String?
+  queuedAt    DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  waitMs      Int?
+  runMs       Int?
+  attempt     Int       @default(0)
+  metaJson    String    @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  worker GpuWorker? @relation(fields: [workerId], references: [id], onDelete: SetNull)
+
+  @@index([status, pool, queuedAt])
+  @@index([workerId, status])
+  @@index([refType, refId])
+  @@index([kind, finishedAt])
+  @@index([userId, createdAt])
+}
+
+/// Editable bot funnel copy (overrides i18n).
+model BotCopy {
+  id        String   @id @default(cuid())
+  slot      String   @unique
+  textRu    String   @default("")
+  textEn    String   @default("")
+  mediaUrl  String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
+/// Prepared system notices (queue, fail, maintenance…).
+model SystemNotice {
+  id        String   @id @default(cuid())
+  slot      String   @unique
+  title     String
+  textRu    String   @default("")
+  textEn    String   @default("")
+  mediaUrl  String   @default("")
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model Broadcast {
+  id          String    @id @default(cuid())
+  status      String    @default("draft")
+  title       String
+  bodyRu      String    @default("")
+  bodyEn      String    @default("")
+  mediaUrl    String    @default("")
+  filterJson  String    @default("{}")
+  createdById String    @default("")
+  sentCount   Int       @default(0)
+  failCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+}
+
+model AdminAudit {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  targetType String   @default("")
+  targetId   String   @default("")
+  detailJson String   @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+}
+
+model OpsExpense {
+  id         String   @id @default(cuid())
+  title      String
+  amountRub  Int
+  category   String   @default("other")
+  note       String   @default("")
+  spentAt    DateTime @default(now())
+  createdAt  DateTime @default(now())
+}
+
+/// Krea Identity Edit photo template for TG / Mini App.
+model PhotoTemplate {
+  id              String   @id @default(cuid())
+  title           String
+  notes           String   @default("")
+  /// basic | pose
+  tier            String   @default("basic")
+  pricePeaches    Int      @default(54)
+  editPrompt      String   @default("")
+  sceneImageUrl   String   @default("")
+  previewImageUrl String   @default("")
+  hasSpeech       Boolean  @default(false)
+  titleEn         String   @default("")
+  notesEn         String   @default("")
+  published       Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  /// Published to Telegram bot + Mini App catalog
+  tgPublished     Boolean  @default(false)
+  /// Override title shown in TG (empty = use title)
+  tgDisplayTitle  String   @default("")
+  /// sex | display | dirt | public | humiliation | empty = uncategorized
+  sceneCategory   String   @default("")
+  /// Author character id (feed: don't show same identity twice in a row)
+  previewIdentityKey String @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@index([tgPublished, sortOrder])
+}
+
+/// TG delivery queue — bot polls and sends to chat.
+model TgOutbox {
+  id               String    @id @default(cuid())
+  platformUserId   String
+  userId           String
+  kind             String
+  payloadJson      String    @default("{}")
+  sentAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([platformUserId, sentAt])
+  @@index([userId])
+}

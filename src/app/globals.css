@@ -1,0 +1,514 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+:root {
+  --background: #070708;
+  --foreground: #f4f1ec;
+  --peach: #ffcab0;
+  --apricot: #ff8a5c;
+  --coral: #ff6c85;
+  --peach-grad: linear-gradient(135deg, #ffcab0 0%, #ff8a5c 52%, #ff6c85 100%);
+  --peach-dim: color-mix(in srgb, #ff8a5c 18%, transparent);
+  --surface: #121214;
+  --surface-2: #18181b;
+  --muted: #8a8680;
+  --hairline: rgba(244, 241, 236, 0.08);
+  --hairline-strong: rgba(244, 241, 236, 0.14);
+  --ink: #140c0c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-peach: var(--peach);
+  --color-apricot: var(--apricot);
+  --color-coral: var(--coral);
+  --font-sans: var(--font-onest), "Satoshi", sans-serif;
+  --font-mono: var(--font-geist-mono);
+  --color-zinc-50: #121214;
+  --color-zinc-100: #18181b;
+  --color-zinc-200: #2a2a30;
+  --color-zinc-300: #3e3e44;
+  --color-zinc-400: #6f6c68;
+  --color-zinc-500: #8a8680;
+  --color-zinc-600: #b4afa8;
+  --color-zinc-700: #d2cdc6;
+  --color-rose-50: var(--peach-dim);
+  --color-rose-300: var(--apricot);
+  --color-rose-400: var(--apricot);
+  --color-rose-700: var(--apricot);
+  --color-rose-800: var(--coral);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Satoshi", var(--font-onest), Arial, Helvetica, sans-serif;
+  font-feature-settings: "ss01" on, "cv01" on;
+  letter-spacing: -0.011em;
+}
+
+::selection {
+  background: var(--apricot);
+  color: var(--ink);
+}
+
+.font-display {
+  font-family: "Satoshi", var(--font-onest), Arial, Helvetica, sans-serif;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+
+.text-glow {
+  text-shadow:
+    0 0 18px color-mix(in srgb, var(--peach) 40%, transparent),
+    0 0 48px color-mix(in srgb, var(--coral) 28%, transparent);
+}
+
+.text-grad {
+  background-image: var(--peach-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--apricot) 45%, transparent));
+}
+
+.btn-grad {
+  background-image: var(--peach-grad);
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--peach) 28%, transparent),
+    0 10px 32px color-mix(in srgb, var(--coral) 32%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  transition: filter 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.btn-grad:hover {
+  filter: brightness(1.08);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--peach) 45%, transparent),
+    0 14px 40px color-mix(in srgb, var(--coral) 42%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.hero-rails {
+  pointer-events: none;
+  position: absolute;
+  inset: -8% -4%;
+}
+
+.hero-rails::before,
+.hero-rails::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--peach) 28%,
+    var(--apricot) 50%,
+    var(--coral) 72%,
+    transparent 100%
+  );
+  opacity: 0.55;
+  filter: blur(0.4px);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--apricot) 70%, transparent);
+}
+
+.hero-rails::before {
+  left: 0;
+}
+
+.hero-rails::after {
+  right: 0;
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 38% 26% at 82% 6%, color-mix(in srgb, var(--coral) 26%, transparent), transparent 72%),
+    radial-gradient(ellipse 32% 24% at 8% 88%, color-mix(in srgb, var(--peach) 20%, transparent), transparent 70%),
+    radial-gradient(ellipse 22% 16% at 48% 38%, color-mix(in srgb, var(--apricot) 12%, transparent), transparent 68%);
+  animation: orb-shift 16s ease-in-out infinite;
+}
+
+@keyframes orb-shift {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: translate3d(-2%, 3%, 0) scale(1.08);
+  }
+}
+
+body::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    background: var(--surface);
+    border-color: var(--hairline-strong);
+    color: var(--foreground);
+    border-radius: 12px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--apricot) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--coral) 28%, transparent);
+  }
+
+  option {
+    background: var(--surface);
+    color: var(--foreground);
+  }
+}
+
+@layer utilities {
+  .bg-white {
+    background-color: var(--surface) !important;
+  }
+
+  .bg-white\/90 {
+    background-color: color-mix(in srgb, var(--surface) 90%, transparent) !important;
+    color: var(--foreground);
+  }
+
+  .text-zinc-800,
+  .text-zinc-900 {
+    color: var(--foreground) !important;
+  }
+
+  .bg-zinc-900,
+  .bg-zinc-800,
+  .bg-rose-700,
+  .bg-rose-800 {
+    background-image: var(--peach-grad) !important;
+    background-color: var(--apricot) !important;
+    color: var(--ink) !important;
+  }
+
+  .border-rose-700 {
+    border-color: var(--coral) !important;
+  }
+
+  .text-rose-700,
+  .text-rose-800,
+  .text-peach {
+    color: var(--peach) !important;
+  }
+
+  .hover\:border-rose-300:hover,
+  .hover\:border-rose-400:hover {
+    border-color: var(--apricot) !important;
+  }
+}
+
+/* —— Border Beam pulse (beam.jakubantalik.com/pulse) —— */
+.peach-beam {
+  position: relative;
+  isolation: isolate;
+}
+
+.peach-beam-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 55% 45% at 30% 20%, color-mix(in srgb, var(--peach) 35%, transparent), transparent 62%),
+    radial-gradient(ellipse 50% 50% at 80% 80%, color-mix(in srgb, var(--coral) 28%, transparent), transparent 60%);
+  filter: blur(18px);
+  animation: peach-breathe 2.4s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+  opacity: 0.55;
+}
+
+.peach-beam::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 140%;
+  height: 140%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 55%,
+    var(--peach) 70%,
+    var(--apricot) 78%,
+    var(--coral) 86%,
+    transparent 100%
+  );
+  animation: peach-beam-spin 3.4s linear infinite;
+}
+
+@keyframes peach-beam-spin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(1turn);
+  }
+}
+
+.peach-beam::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--surface);
+}
+
+.peach-beam-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  border-radius: inherit;
+}
+
+@keyframes peach-breathe {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.04);
+  }
+}
+
+/* —— Image generation canvas (aicss.dev) in peach gradient —— */
+.ig-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+}
+
+.ig-canvas {
+  position: relative;
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  background: #141416;
+  overflow: hidden;
+}
+
+.ig-wrap--fill .ig-canvas {
+  max-width: none;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.ig-dots {
+  position: absolute;
+  inset: 2px;
+  background-image: radial-gradient(circle, #6a6460 0.7px, transparent 1.3px);
+  background-size: 11px 11px;
+  background-repeat: space;
+  opacity: 0.35;
+}
+
+.ig-glow {
+  position: absolute;
+  inset: 2px;
+  background-image: radial-gradient(circle, #ffcab0 1.15px, transparent 1.65px);
+  background-size: 11px 11px;
+  background-repeat: space;
+  -webkit-mask-image:
+    radial-gradient(ellipse at center, #000 0%, transparent 60%),
+    radial-gradient(ellipse at center, #000 0%, transparent 62%);
+  mask-image:
+    radial-gradient(ellipse at center, #000 0%, transparent 60%),
+    radial-gradient(ellipse at center, #000 0%, transparent 62%);
+  -webkit-mask-repeat: no-repeat, no-repeat;
+  mask-repeat: no-repeat, no-repeat;
+  -webkit-mask-size: 72% 62%, 52% 52%;
+  mask-size: 72% 62%, 52% 52%;
+  -webkit-mask-position: 16% 20%, 30% 32%;
+  mask-position: 16% 20%, 30% 32%;
+  animation:
+    ig-morph 4.2s cubic-bezier(0.35, 1.55, 0.65, 1) infinite,
+    ig-breathe 1.9s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+}
+
+.ig-glow-wash {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--peach) 45%, transparent), transparent 55%),
+    radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--coral) 35%, transparent), transparent 50%);
+  filter: blur(22px);
+  animation: ig-breathe 1.9s cubic-bezier(0.66, 0, 0.34, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes ig-morph {
+  0% {
+    -webkit-mask-size: 52% 46%, 40% 40%;
+    mask-size: 52% 46%, 40% 40%;
+    -webkit-mask-position: 16% 20%, 30% 32%;
+    mask-position: 16% 20%, 30% 32%;
+  }
+  25% {
+    -webkit-mask-size: 46% 58%, 44% 38%;
+    mask-size: 46% 58%, 44% 38%;
+    -webkit-mask-position: 84% 16%, 66% 30%;
+    mask-position: 84% 16%, 66% 30%;
+  }
+  50% {
+    -webkit-mask-size: 60% 44%, 38% 46%;
+    mask-size: 60% 44%, 38% 46%;
+    -webkit-mask-position: 82% 84%, 62% 68%;
+    mask-position: 82% 84%, 62% 68%;
+  }
+  75% {
+    -webkit-mask-size: 48% 54%, 46% 40%;
+    mask-size: 48% 54%, 46% 40%;
+    -webkit-mask-position: 14% 82%, 34% 66%;
+    mask-position: 14% 82%, 34% 66%;
+  }
+  100% {
+    -webkit-mask-size: 52% 46%, 40% 40%;
+    mask-size: 52% 46%, 40% 40%;
+    -webkit-mask-position: 16% 20%, 30% 32%;
+    mask-position: 16% 20%, 30% 32%;
+  }
+}
+
+@keyframes ig-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ig-res {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: #c9c2bb;
+  background: rgba(12, 12, 14, 0.72);
+  padding: 2px 7px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+}
+
+.ig-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  max-width: 220px;
+}
+
+.ig-wrap--fill .ig-meta {
+  max-width: none;
+}
+
+.ig-label {
+  background: linear-gradient(
+    90deg,
+    #ffcab0 0%,
+    #ffcab0 28%,
+    #ff8a5c 42%,
+    #ff6c85 50%,
+    #ff8a5c 58%,
+    #ffcab0 72%,
+    #ffcab0 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: ig-shine 2.25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+  font-weight: 550;
+  font-size: 14px;
+}
+
+@keyframes ig-shine {
+  0%,
+  18% {
+    background-position: 100% 0;
+  }
+  82%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+.ig-prompt {
+  color: #8a8680;
+  font-size: 13px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peach-beam::before,
+  .peach-beam-glow,
+  .ig-glow,
+  .ig-glow-wash,
+  .ig-label,
+  .animate-\[ticker_40s_linear_infinite\] {
+    animation: none;
+  }
+}

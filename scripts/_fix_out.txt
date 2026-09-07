@@ -1,0 +1,153 @@
+start
+
+===== CMD =====
+
+/opt/ComfyUI/.venv/bin/python - << 'PY'
+import transformers, inspect, pathlib
+print('transformers', transformers.__version__)
+p = pathlib.Path(transformers.__file__).parent / 'utils' / 'import_utils.py'
+print('path', p)
+text = p.read_text(encoding='utf-8')
+# show the flash_attn line context
+idx = text.find('PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]')
+print('idx', idx)
+print(text[max(0,idx-200):idx+200] if idx>=0 else 'not found literal')
+# also check if key exists
+from transformers.utils impor
+transformers 5.8.0
+path /opt/ComfyUI/.venv/lib/python3.12/site-packages/transformers/utils/import_utils.py
+idx 30890
+n_version=True)
+    # FA4 is also distributed under "flash_attn", hence we need to check the naming here
+    is_available = is_available and "flash-attn" in [
+        pkg.replace("_", "-") for pkg in PACKAGE_DISTRIBUTION_MAPPING["flash_attn"]
+    ]
+
+    if not is_available or not (is_torch_cuda_available() or is_torch_mlu_available()):
+        return False
+
+    # Only allow versions >= 2.3.3 to av
+has mapping True
+False False
+[]
+
+===== CMD =====
+
+/opt/ComfyUI/.venv/bin/python - << 'PY'
+from pathlib import Path
+import transformers
+p = Path(transformers.__file__).parent / 'utils' / 'import_utils.py'
+text = p.read_text(encoding='utf-8')
+marker = '# PATCHED_FLASH_ATTN_KEYERROR'
+if marker in text:
+    print('already patched')
+else:
+    # Prefer adding missing mapping entries near PACKAGE_DISTRIBUTION_MAPPING definition
+    needle = 'PACKAGE_DISTRIBUTION_MAPPING'
+    # Safer: patch is_flash_attn_2_available body to catch KeyError
+    old = ''
+patched get() for flash_attn key
+
+===== CMD =====
+rm -f /workspace/custom_nodes/seedvr2_videoupscaler; ls -d /workspace/custom_nodes/*Seed* /workspace/custom_nodes/*seed* 2>/dev/null || true
+/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler
+
+===== CMD =====
+
+cd /opt/ComfyUI
+.venv/bin/python - << 'PY'
+import traceback
+# trigger transformers path used by seedvr
+try:
+    from transformers.utils.import_utils import is_flash_attn_2_available
+    print('is_flash_attn_2_available', is_flash_attn_2_available())
+except Exception:
+    traceback.print_exc()
+try:
+    from diffusers.models.autoencoders.vae import DecoderOutput
+    print('diffusers vae ok', DecoderOutput)
+except Exception:
+    traceback.print_exc()
+import sys
+sys.path.insert(0, '/workspace/custo
+is_flash_attn_2_available False
+diffusers vae ok <class 'diffusers.models.autoencoders.vae.DecoderOutput'>
+⚠️  SeedVR2 optimizations check: SageAttention ❌ | Flash Attention ❌ | Triton ✅
+💡 Optional: pip install sageattention flash-attn
+🔧 Conv3d workaround active: PyTorch 2.11.0, cuDNN 91900 (fixing VAE 3x memory bug)
+📊 Initial CUDA memory: 30.27GB free / 31.40GB total
+SeedVR module <module 'ComfyUI-SeedVR2_VideoUpscaler' from '/workspace/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/__init__.py'>
+has mappings False True
+[34mWAS Node Suite: [0mOpenCV Python FFMPEG support is enabled[0m
+[34mWAS Node Suite [93mWarning: [0m`ffmpeg_bin_path` is not set in `/workspace/custom_nodes/was-node-suite-comfyui/was_suite_config.json` config file. Will attempt to use system ffmpeg binaries if available.[0m
+[34mWAS Node Suite: [0mFinished.[0m [32mLoaded[0m [0m220[0m [32mnodes successfully.[0m
+
+	[3m[93m"Art is the light that shines even in the darkest corners."[0m[3m - Unknown[0m
+
+[34mWAS Node Suite: [0mOpenCV Python FFMPEG support is enabled[0m
+[34mWAS Node Suite [93mWarning: [0m`ffmpeg_bin_path` is not set in `/workspace/custom_nodes/was-node-suite-comfyui/was_suite_config.json` config file. Will attempt to use system ffmpeg binaries if available.[0m
+[34mWAS Node Suite: [0mFinished.[0m [32mLoaded[0m [0m220[0m [32mnodes successfully.[0m
+
+	[3m[93m"Creativity takes courage."[0m[3m - Henri Matisse[0m
+
+Lucy True
+
+===== CMD =====
+supervisorctl restart comfyui
+comfyui: stopped
+comfyui: started
+
+===== CMD =====
+
+python3 - << 'PY'
+import json, urllib.request, time
+needed=['FaceDetailer','Power Lora Loader (rgthree)','SeedVR2VideoUpscaler','SeedVR2LoadDiTModel','FluxResolutionNode','Image Lucy Sharpen','Image Bloom Filter','ColorCorrect']
+d=None
+for i in range(25):
+  try:
+    d=json.load(urllib.request.urlopen('http://127.0.0.1:9000/object_info', timeout=30)); break
+  except Exception as e:
+    print('wait', e); time.sleep(2)
+seed=[k for k in d if 'SeedVR' in k or 'Lucy' in k or 'Bloom' in k or 'Layer' i
+RELATED ['CLIPSetLastLayer', 'SkipLayerGuidanceSD3', 'SkipLayerGuidanceDiT', 'SkipLayerGuidanceDiTSimple', 'EmptyQwenImageLayeredLatentImage', 'SkipLayerGuidanceWanVideo', 'SeedVR2VideoUpscaler', 'SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2TorchCompileSettings', 'Image Bloom Filter', 'Image Lucy Sharpen', 'LayerFilter: AddGrain', 'LayerUtility: AnyRerouter', 'LayerUtility: BatchSelector', 'LayerMask: BlendIf Mask', 'LayerFilter: ChannelShake', 'LayerUtility: CheckMask', 'LayerUtility: CheckMaskV2', 'LayerColor: ColorAdapter', 'LayerColor: HSV', 'LayerColor: LAB', 'LayerColor: LUT Apply', 'LayerColor: RGB', 'LayerColor: YUV', 'LayerColor: AutoAdjust', 'LayerColor: AutoAdjustV2', 'LayerColor: AutoBrightness', 'LayerColor: Brightness & Contrast', 'LayerColor: BrightnessContrastV2', 'LayerColor: ColorBalance', 'LayerColor: ColorTemperature', 'LayerColor: Exposure', 'LayerColor: Gamma', 'LayerColor: Levels', 'LayerColor: Color of Shadow & Highlight', 'LayerColor: ColorofShadowHighlightV2', 'LayerUtility: ColorImage', 'LayerUtility: ColorImage V2', 'LayerFilter: ColorMap']
+HAVE ['FaceDetailer', 'Power Lora Loader (rgthree)', 'SeedVR2VideoUpscaler', 'SeedVR2LoadDiTModel', 'Image Lucy Sharpen', 'Image Bloom Filter', 'ColorCorrect']
+MISS ['FluxResolutionNode']
+seed_keys ['SeedVR2VideoUpscaler', 'SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2TorchCompileSettings']
+
+===== CMD =====
+
+cat > /workspace/ALLINONE_STATUS.txt << 'EOF'
+Z-Image All-in-One STATUS
+
+DONE:
+- Workflow: user/default/workflows/Z-Image-ALLinONE-v2.json
+- UNET: z_image_turbo_bf16.safetensors
+- VAE: ae.safetensors (ultraflux not downloaded)
+- Fixed transformers flash_attn KeyError (blocked WAS/SeedVR/LayerStyle)
+
+FRONTEND-ONLY (OK even if not in API): SetNode/GetNode (KJNodes), Fast Groups Bypasser (rgthree)
+
+STILL MAY BE RED:
+- FluxResolutionNode (ControlAltAI) - Manager Install Missing, or replace with wid
+Z-Image All-in-One STATUS
+
+DONE:
+- Workflow: user/default/workflows/Z-Image-ALLinONE-v2.json
+- UNET: z_image_turbo_bf16.safetensors
+- VAE: ae.safetensors (ultraflux not downloaded)
+- Fixed transformers flash_attn KeyError (blocked WAS/SeedVR/LayerStyle)
+
+FRONTEND-ONLY (OK even if not in API): SetNode/GetNode (KJNodes), Fast Groups Bypasser (rgthree)
+
+STILL MAY BE RED:
+- FluxResolutionNode (ControlAltAI) - Manager Install Missing, or replace with width/height ints
+- SeedVR model weights download on first use (needs disk space)
+
+YOUR STEPS:
+1. F5 in ComfyUI
+2. Load Z-Image-ALLinONE-v2
+3. If FluxResolution red: Manager -> Install Missing OR bypass and set size manually
+4. First test: Bypass SeedVR + nipple groups; generate
+5. Then enable FaceDetailer / SeedVR
+6. Realism LoRAs from the video are NOT downloaded yet
+

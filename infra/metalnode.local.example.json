@@ -1,0 +1,9 @@
+{
+  "host": "YOUR_GPU_HOST",
+  "sshPort": 22031,
+  "sshUser": "root",
+  "sshKeyPath": "C:\\Users\\Public\\metalnode.key",
+  "comfyUrl": "http://127.0.0.1:8188",
+  "tunnels": [8188],
+  "notes": "Copy to metalnode.local.json. Host/port/key come from your GPU provider, never commit the real file."
+}

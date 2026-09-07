@@ -1,0 +1,74 @@
+start
+
+===== CMD =====
+
+export GIT_TERMINAL_PROMPT=0
+cd /workspace/custom_nodes
+if [ -d ComfyUI_tinyterraNodes ]; then
+  echo EXISTS ComfyUI_tinyterraNodes
+elif [ -d comfyui_tinyterranodes ]; then
+  echo EXISTS comfyui_tinyterranodes
+else
+  git -c credential.helper= clone --depth 1 https://github.com/TinyTerra/ComfyUI_tinyterraNodes.git ComfyUI_tinyterraNodes
+fi
+ls -d *tiny* *ttN* 2>/dev/null || ls | grep -i tiny || tru
+ComfyUI_tinyterraNodes
+ComfyUI_tinyterraNodes
+
+--- ERR ---
+Cloning into 'ComfyUI_tinyterraNodes'...
+
+===== CMD =====
+supervisorctl restart comfyui
+comfyui: stopped
+comfyui: started
+
+===== CMD =====
+
+python3 - << 'PY'
+import json, urllib.request, time, collections
+
+# wait for API
+d=None
+for i in range(30):
+  try:
+    d=json.load(urllib.request.urlopen('http://127.0.0.1:9000/object_info', timeout=30)); break
+  except Exception as e:
+    print('wait', e); time.sleep(2)
+
+checks = [
+  'ttN text', 'ttN textDebug', 'ttN pipeLoader', 'ttN seed',
+  'FluxResolutionNode', 'SeedVR2VideoUpscaler', 'Image
+HAVE ['ttN text', 'ttN textDebug', 'ttN pipeLoader', 'ttN seed', 'FluxResolutionNode', 'SeedVR2VideoUpscaler', 'Image Lucy Sharpen', 'FaceDetailer', 'Power Lora Loader (rgthree)']
+MISS []
+ttN count 42
+ttN sample ['ttN tinyLoader', 'ttN conditioning', 'ttN KSampler_v2', 'ttN pipeLoader_v2', 'ttN pipeKSampler_v2', 'ttN pipeKSamplerAdvanced_v2', 'ttN pipeLoaderSDXL_v2', 'ttN pipeKSamplerSDXL_v2', 'ttN advanced xyPlot', 'ttN advPlot images', 'ttN advPlot range', 'ttN advPlot string', 'ttN advPlot combo', 'ttN advPlot merge', 'ttN pipeEDIT', 'ttN pipe2BASIC', 'ttN pipe2DETAILER', 'ttN pipeEncodeConcat', 'ttN pipeLoraStack', 'ttN multiModelMerge', 'ttN debugInput', 'ttN text', 'ttN textDebug', 'ttN concat', 'ttN text3BOX_3WAYconcat', 'ttN text7BOX_concat', 'ttN textCycleLine', 'ttN textOutput', 'ttN imageOutput', 'ttN imageREMBG']
+WF /workspace/user/default/workflows/Z-Image-ALLinONE-v2.json node_types 36 real_miss []
+WF /workspace/user/default/workflows/Z-Image ALLinONE v2.json node_types 36 real_miss []
+[2026-08-03 10:26:42.639] [92m[tinyterraNodes] [32mLoaded[0m
+[2026-08-03 10:26:42.679]    0.1 seconds: /workspace/custom_nodes/ComfyUI_tinyterraNodes
+
+===== CMD =====
+
+cat > /workspace/ALLINONE_STATUS.txt << 'EOF'
+Z-Image All-in-One UPDATE
+
+Installed: ComfyUI_tinyterraNodes (ttN text)
+
+Do:
+1. Ctrl+F5 in ComfyUI
+2. Close missing-nodes dialog or reload workflow Z-Image-ALLinONE-v2
+3. If still red LoRA models - Bypass those groups
+4. Queue
+EOF
+cat /workspace/ALLINONE_STATUS.txt
+
+Z-Image All-in-One UPDATE
+
+Installed: ComfyUI_tinyterraNodes (ttN text)
+
+Do:
+1. Ctrl+F5 in ComfyUI
+2. Close missing-nodes dialog or reload workflow Z-Image-ALLinONE-v2
+3. If still red LoRA models - Bypass those groups
+4. Queue

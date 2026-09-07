@@ -1,0 +1,36 @@
+start
+LICENSE
+README.md
+__init__.py
+boolean_basic_node.py
+boolean_reverse_node.py
+choose_upscale_model_node.py
+flux_attention_cleanup_node.py
+flux_attention_control_node.py
+flux_controlnet_node.py
+flux_resolution_cal_node.py
+
+ERR
+Cloning into 'ControlAltAI-Nodes'...
+comfyui: stopped
+comfyui: started
+HAVE ['FluxResolutionNode', 'SeedVR2VideoUpscaler', 'Image Lucy Sharpen', 'Image Bloom Filter', 'FaceDetailer', 'Power Lora Loader (rgthree)']
+MISS []
+[32mInitializing ControlAltAI Nodes[0m
+[2026-08-03 10:18:27.338]    0.0 seconds: /workspace/custom_nodes/ControlAltAI-Nodes
+Z-Image All-in-One READY
+
+Workflow: user/default/workflows/Z-Image-ALLinONE-v2.json
+UNET: z_image_turbo_bf16.safetensors
+VAE: ae.safetensors
+
+Nodes OK: FaceDetailer, Power Lora, SeedVR2*, Lucy Sharpen, Bloom, ColorCorrect, LayerStyle, FluxResolution, KJ Set/Get, rgthree
+
+Do this:
+1. F5
+2. Load Z-Image-ALLinONE-v2
+3. First run: Bypass SeedVR + NSFW LoRA groups if any missing models
+4. Queue Prompt
+5. Then enable FaceDetailer / SeedVR (models may auto-download)
+
+LoRAs from the video are not on disk yet - leave empty or download from Civitai.

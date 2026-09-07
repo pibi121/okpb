@@ -1,0 +1,294 @@
+    },
+    disableSections: ['network.conv'],
+    additionalSections: [
+      'datasets.multi_control_paths',
+      'sample.multi_ctrl_imgs',
+      'model.low_vram',
+      'model.layer_offloading',
+      'model.qie.match_target_res',
+    ],
+    gateUrl: 'https://huggingface.co/black-forest-labs/FLUX.2-dev',
+  },
+  {
+    name: 'zimage:turbo',
+    label: 'Z-Image Turbo (w/ Training Adapter)',
+    group: 'image',
+    defaults: {
+      // default updates when [selected, unselected] in the UI
+      'config.process[0].model.name_or_path': ['Tongyi-MAI/Z-Image-Turbo', defaultNameOrPath],
+      'config.process[0].model.quantize': [true, false],
+      'config.process[0].model.quantize_te': [true, false],
+      'config.process[0].model.low_vram': [true, false],
+      'config.process[0].train.unload_text_encoder': [false, false],
+      'config.process[0].sample.sampler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.noise_scheduler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.timestep_type': ['weighted', 'sigmoid'],
+      'config.process[0].model.qtype': ['qfloat8', 'qfloat8'],
+      'config.process[0].model.assistant_lora_path': [
+        'ostris/zimage_turbo_training_adapter/zimage_turbo_training_adapter_v2.safetensors',
+        undefined,
+      ],
+      'config.process[0].sample.guidance_scale': [1, 4],
+      'config.process[0].sample.sample_steps': [9, 25],
+    },
+    disableSections: ['network.conv'],
+    additionalSections: ['model.low_vram', 'model.layer_offloading', 'model.assistant_lora_path'],
+  },
+  {
+    name: 'zimage',
+    label: 'Z-Image',
+    group: 'image',
+    defaults: {
+      // default updates when [selected, unselected] in the UI
+      'config.process[0].model.name_or_path': ['Tongyi-MAI/Z-Image', defaultNameOrPath],
+      'config.process[0].model.quantize': [true, false],
+      'config.process[0].model.quantize_te': [true, false],
+      'config.process[0].model.low_vram': [true, false],
+      'config.process[0].train.unload_text_encoder': [false, false],
+      'config.process[0].sample.sampler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.noise_scheduler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.timestep_type': ['weighted', 'sigmoid'],
+      'config.process[0].model.qtype': ['qfloat8', 'qfloat8'],
+      'config.process[0].sample.sample_steps': [30, 25],
+    },
+    disableSections: ['network.conv'],
+    additionalSections: ['model.low_vram', 'model.layer_offloading'],
+  },
+  {
+    name: 'zimage:deturbo',
+    label: 'Z-Image De-Turbo (De-Distilled)',
+    group: 'image',
+    defaults: {
+      // default updates when [selected, unselected] in the UI
+      'config.process[0].model.name_or_path': ['ostris/Z-Image-De-Turbo', defaultNameOrPath],
+      'config.process[0].model.extras_name_or_path': ['Tongyi-MAI/Z-Image-Turbo', undefined],
+      'config.process[0].model.quantize': [true, false],
+      'config.process[0].model.quantize_te': [true, false],
+      'config.process[0].model.low_vram': [true, false],
+      'config.process[0].train.unload_text_encoder': [false, false],
+      'config.process[0].sample.sampler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.noise_scheduler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.timestep_type': ['weighted', 'sigmoid'],
+      'config.process[0].model.qtype': ['qfloat8', 'qfloat8'],
+      'config.process[0].sample.guidance_scale': [3, 4],
+      'config.process[0].sample.sample_steps': [25, 25],
+    },
+    disableSections: ['network.conv'],
+    additionalSections: ['model.low_vram', 'model.layer_offloading'],
+  },
+  {
+    name: 'ltx2',
+    label: 'LTX-2',
+=====
+54:    arch = "zimage"
+444:            meta = get_meta_for_safetensors(meta, name=self.arch)
+462:        return "zimage"
+=====
+import os
+from typing import List, Optional
+
+import huggingface_hub
+import torch
+import yaml
+from toolkit.config_modules import GenerateImageConfig, ModelConfig, NetworkConfig
+from toolkit.lora_special import LoRASpecialNetwork
+from toolkit.models.base_model import BaseModel
+from toolkit.basic import flush
+from toolkit.prompt_utils import PromptEmbeds
+from toolkit.samplers.custom_flowmatch_sampler import (
+    CustomFlowMatchEulerDiscreteScheduler,
+)
+from toolkit.accelerator import unwrap_model
+from optimum.quanto import freeze
+from toolkit.util.quantize import (
+    quantize,
+    get_qtype,
+    quantize_model,
+    dequantize_if_quantized,
+)
+from toolkit.memory_management import MemoryManager
+from toolkit.metadata import get_meta_for_safetensors
+from safetensors.torch import load_file, save_file
+
+from transformers import AutoTokenizer, Qwen3ForCausalLM
+from diffusers import AutoencoderKL
+
+try:
+    from diffusers import ZImagePipeline
+
+    # our subclass of the diffusers transformer with the universal loading /
+    # quantization mixin (see toolkit/models/classes/_mixin.py)
+    from toolkit.models.v2.z_image import ZImageTransformer2DModel
+except ImportError:
+    raise ImportError(
+        "Diffusers is out of date. Update diffusers to the latest version by doing pip uninstall diffusers and then pip install -r requirements.txt"
+    )
+
+
+scheduler_config = {
+    "num_train_timesteps": 1000,
+    "use_dynamic_shifting": False,
+    "shift": 3.0,
+}
+
+# repo to pull the vae / text encoder / tokenizer / config from when loading a
+# single-file checkpoint
+SINGLE_FILE_EXTRAS_REPO = "Tongyi-MAI/Z-Image-Turbo"
+
+
+class ZImageModel(BaseModel):
+    arch = "zimage"
+
+    def __init__(
+        self,
+        device,
+        model_config: ModelConfig,
+        dtype="bf16",
+        custom_pipeline=None,
+        noise_scheduler=None,
+        **kwargs,
+    ):
+        super().__init__(
+            device, model_config, dtype, custom_pipeline, noise_scheduler, **kwargs
+        )
+        self.is_flow_matching = True
+        self.is_transformer = True
+        self.target_lora_modules = ["ZImageTransformer2DModel"]
+        # set to True when loading a single-file checkpoint so we save back in that format
+        self.is_single_file = False
+        # repo to pull config/vae/te from when loading a single-file checkpoint
+        self.single_file_extras_repo = SINGLE_FILE_EXTRAS_REPO
+
+    # static method to get the noise scheduler
+    @staticmethod
+    def get_train_scheduler():
+        return CustomFlowMatchEulerDiscreteScheduler(**scheduler_config)
+
+    def get_bucket_divisibility(self):
+        return 8 * 2  # 8 for the VAE, 2 for patch size
+
+    def load_training_adapter(self, transformer: ZImageTransformer2DModel):
+        self.print_and_status_update("Loading assistant LoRA")
+        lora_path = self.model_config.assistant_lora_path
+        if not os.path.exists(lora_path):
+            # assume it is a hub path
+            lora_splits = lora_path.split("/")
+            if len(lora_splits) != 3:
+                raise ValueError(
+                    f"Assistant LoRA path {lora_path} is not a valid local path or hub path."
+                )
+            repo_id = "/".join(lora_splits[:2])
+            filename = lora_splits[2]
+            try:
+                lora_path = huggingface_hub.hf_hub_download(
+                    repo_id=repo_id,
+                    filename=filename,
+                )
+=====
+/workspace/train/ai-toolkit/config/examples/train_flex_redux.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_chroma_24gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_flex2_24gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_flux_kontext_24gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_hidream_48.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_omnigen2_24gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_qwen_image_24gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_qwen_image_edit_2509_32gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_qwen_image_edit_32gb.yaml
+/workspace/train/ai-toolkit/config/examples/train_lora_wan21_14b_24gb.yaml
+60:        arch: "qwen_image"
+---
+job: extension
+config:
+  # this name will be the folder and filename name
+  name: "my_first_qwen_image_lora_v1"
+  process:
+    - type: 'sd_trainer'
+      # root folder to save training sessions/samples/weights
+      training_folder: "output"
+      # uncomment to see performance stats in the terminal every N steps
+#      performance_log_every: 1000
+      device: cuda:0
+      # if a trigger word is specified, it will be added to captions of training data if it does not already exist
+      # alternatively, in your captions you can add [trigger] and it will be replaced with the trigger word
+      # Trigger words will not work when caching text embeddings
+#      trigger_word: "p3r5on"
+      network:
+        type: "lora"
+        linear: 16
+        linear_alpha: 16
+      save:
+        dtype: float16 # precision to save
+        save_every: 250 # save every this many steps
+        max_step_saves_to_keep: 4 # how many intermittent saves to keep
+      datasets:
+        # datasets are a folder of images. captions need to be txt files with the same name as the image
+        # for instance image2.jpg and image2.txt. Only jpg, jpeg, and png are supported currently
+        # images will automatically be resized and bucketed into the resolution specified
+        # on windows, escape back slashes with another backslash so
+        # "C:\\path\\to\\images\\folder"
+        - folder_path: "/path/to/images/folder"
+          caption_ext: "txt"
+          # default_caption: "a person" # if caching text embeddings, if you dont have captions, this will get cached
+          caption_dropout_rate: 0.05  # will drop out the caption 5% of time
+          shuffle_tokens: false  # shuffle caption order, split by commas
+          cache_latents_to_disk: true  # leave this true unless you have a large dataset
+          # if you OOM, 1024 may be too much, but should work
+          resolution: [ 512, 768, 1024 ]  # qwen image enjoys multiple resolutions
+      train:
+        batch_size: 1
+        # caching text embeddings is required for 24GB
+        cache_text_embeddings: true
+        
+        steps: 2000  # total number of steps to train 500 - 4000 is a good range
+        gradient_accumulation: 1
+        train_unet: true
+        train_text_encoder: false  # probably won't work with qwen image
+        gradient_checkpointing: true  # need the on unless you have a ton of vram
+        noise_scheduler: "flowmatch" # for training only
+        optimizer: "adamw8bit"
+        lr: 1e-4
+        # uncomment this to skip the pre training sample
+#        skip_first_sample: true
+        # uncomment to completely disable sampling
+#        disable_sampling: true
+        dtype: bf16
+      model:
+        # huggingface model name or path
+        name_or_path: "Qwen/Qwen-Image"
+        arch: "qwen_image"
+        quantize: true
+        # qtype_te: "qfloat8" Default float8 qquantization
+        # to use the ARA use the | pipe to point to hf path, or a local path if you have one.
+        # 3bit is required for 24GB
+        qtype: "uint3|ostris/accuracy_recovery_adapters/qwen_image_torchao_uint3.safetensors"
+        quantize_te: true
+        qtype_te: "qfloat8"
+        low_vram: true
+      sample:
+        sampler: "flowmatch" # must match train.noise_scheduler
+        sample_every: 250 # sample every this many steps
+        sample_start_step: 0 # start sampling at this step
+        width: 1024
+        height: 1024
+        prompts:
+          # you can add [trigger] to the prompts here and it will be replaced with the trigger word
+          # - "[trigger] holding a sign that says 'I LOVE PROMPTS!'"\ 
+          - "woman with red hair, playing chess at the park, bomb going off in the background"
+          - "a woman holding a coffee cup, in a beanie, sitting at a cafe"
+          - "a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini"
+          - "a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background"
+          - "a bear building a log cabin in the snow covered mountains"
+          - "woman playing the guitar, on stage, singing a song, laser lights, punk rocker"
+          - "hipster man with a beard, building a chair, in a wood shop"
+          - "photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop"
+          - "a man holding a sign that says, 'this is a sign'"
+          - "a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle"
+        neg: ""
+        seed: 42
+        walk_seed: true
+        guidance_scale: 3
+        sample_steps: 25
+# you can add any additional meta info here. [name] is replaced with config name at top
+meta:
+  name: "[name]"
+  version: '1.0'

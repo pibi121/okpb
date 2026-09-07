@@ -6,10 +6,13 @@ import {
 } from "@/lib/tg/bot-update";
 import { ensureTgBootstrap } from "@/lib/tg/tg-bootstrap";
 import { pollTgLoraTrainings } from "@/lib/tg/lora-train-poller";
+import { pollTgFunnelDrips } from "@/lib/tg/funnel-drip";
 
 /** Throttle LoRA completion polls — webhook traffic is frequent. */
 let lastLoraPollAt = 0;
 const LORA_POLL_EVERY_MS = 45_000;
+let lastFunnelPollAt = 0;
+const FUNNEL_POLL_EVERY_MS = 30_000;
 
 /** Telegram webhook (production). Same handlers as `npm run tg:bot`. */
 export async function POST(req: Request) {
@@ -45,6 +48,12 @@ export async function POST(req: Request) {
       lastLoraPollAt = now;
       void pollTgLoraTrainings().catch((e) =>
         console.error("[tg/webhook] lora poll", e),
+      );
+    }
+    if (now - lastFunnelPollAt >= FUNNEL_POLL_EVERY_MS) {
+      lastFunnelPollAt = now;
+      void pollTgFunnelDrips().catch((e) =>
+        console.error("[tg/webhook] funnel poll", e),
       );
     }
   } catch (e) {

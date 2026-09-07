@@ -123,6 +123,19 @@ export async function tgSendAnimation(
   });
 }
 
+/** Telegram video note (кругляшок). `videoNote` = file_id or HTTPS URL. */
+export async function tgSendVideoNote(
+  chatId: number | string,
+  videoNote: string,
+  extra: Record<string, unknown> = {},
+) {
+  return tgApi("sendVideoNote", {
+    chat_id: chatId,
+    video_note: videoNote,
+    ...extra,
+  });
+}
+
 export async function tgAnswerCallbackQuery(
   callbackQueryId: string,
   text?: string,

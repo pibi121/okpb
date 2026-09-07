@@ -8,7 +8,14 @@ import { resolveTgCatalogAssetUrl } from "@/lib/tg/catalog-asset-url";
 import { publicSiteBaseUrl } from "@/lib/tg/public-site-url";
 
 /** Bundled onboarding / top-up media in `public/tg/media/`. */
-export type TgMediaSlot = "start" | "welcome" | "photo_upload" | "topup";
+export type TgMediaSlot =
+  | "start"
+  | "welcome"
+  | "photo_upload"
+  | "topup"
+  | "funnel_5m"
+  | "funnel_40m"
+  | "funnel_6h";
 
 const mediaOverlay: Partial<Record<TgMediaSlot, string>> = {};
 
@@ -24,6 +31,9 @@ const ENV: Record<TgMediaSlot, string> = {
   welcome: "TG_VIDEO_WELCOME",
   photo_upload: "TG_GIF_PHOTO_UPLOAD",
   topup: "TG_GIF_TOPUP",
+  funnel_5m: "TG_VIDEO_FUNNEL_5M",
+  funnel_40m: "TG_VIDEO_FUNNEL_40M",
+  funnel_6h: "TG_VIDEO_FUNNEL_6H",
 };
 
 /** Default static files (override via env with file_id or URL). */
@@ -32,6 +42,9 @@ const BUNDLED: Record<TgMediaSlot, string> = {
   welcome: "/tg/media/onboard-2.mp4",
   photo_upload: "/tg/media/onboard-3.jpg",
   topup: "/tg/media/topup.jpg",
+  funnel_5m: "/tg/media/funnel-5m-announce.mp4",
+  funnel_40m: "/tg/media/funnel-40m.png",
+  funnel_6h: "/tg/media/funnel-6h-feed.mp4",
 };
 
 export function tgSiteBaseUrl(): string {

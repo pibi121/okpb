@@ -31,6 +31,11 @@ export async function resetTgOnboarding(
         tgLoraWelcomePhotosLeft: 0,
         tgWelcomePushSent: false,
         tgWelcomePushDueAt: null,
+        tgFunnelAnchorAt: null,
+        tgFunnel5mSent: false,
+        tgFunnel10mIdleSent: false,
+        tgFunnel40mSent: false,
+        tgFunnel6hSent: false,
       },
     }),
     prisma.platformAccount.updateMany({

@@ -6,6 +6,7 @@ import {
   scheduleWelcomePush,
   startLoraBonusWindow,
 } from "@/lib/tg/tg-promo";
+import { scheduleFunnelDrip } from "@/lib/tg/funnel-drip";
 import { tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { tgRulesArticleUrl } from "@/lib/tg/rules";
 import { langInlineKeyboard } from "@/lib/tg/character-bot";
@@ -88,6 +89,7 @@ export async function sendWelcomeAfterRules(
 ) {
   await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
   await scheduleWelcomePush(userId);
+  await scheduleFunnelDrip(userId);
   await tgSendMediaMessage(chatId, "welcome", t("welcome_after_rules", locale), {
     reply_markup: welcomeKeyboard(locale),
   });

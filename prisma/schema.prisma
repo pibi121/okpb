@@ -36,6 +36,12 @@ model User {
   /// Delayed onboarding push after welcome
   tgWelcomePushSent Boolean @default(false)
   tgWelcomePushDueAt DateTime?
+  /// Funnel drip anchor = welcome after rules ("Ну что, пофантазируем?")
+  tgFunnelAnchorAt DateTime?
+  tgFunnel5mSent Boolean @default(false)
+  tgFunnel10mIdleSent Boolean @default(false)
+  tgFunnel40mSent Boolean @default(false)
+  tgFunnel6hSent Boolean @default(false)
   /// web | telegram
   source       String   @default("web")
   /// owner | support | content | developer | empty = not staff
@@ -1076,6 +1082,10 @@ model OpsSetting {
   sloJson                String   @default("{}")
   /// Orchestrator flags: pending burst requests, budget caps (no provider keys yet)
   gpuOrchestratorJson    String   @default("{}")
+  /// Funnel video-note file_ids + one-shot capture mode ("" | "ru" | "en")
+  tgFunnelNoteRuFileId   String   @default("")
+  tgFunnelNoteEnFileId   String   @default("")
+  tgFunnelNoteCapture    String   @default("")
   updatedAt              DateTime @updatedAt
 }
 

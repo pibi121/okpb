@@ -12,6 +12,9 @@ export type OpsSettings = {
   pricesJson: string;
   sloJson: string;
   gpuOrchestratorJson: string;
+  tgFunnelNoteRuFileId: string;
+  tgFunnelNoteEnFileId: string;
+  tgFunnelNoteCapture: string;
 };
 
 const DEFAULT_MAINT_RU =
@@ -49,6 +52,9 @@ export async function getOpsSettings(): Promise<OpsSettings> {
     pricesJson: row.pricesJson || "{}",
     sloJson: row.sloJson || "{}",
     gpuOrchestratorJson: row.gpuOrchestratorJson || "{}",
+    tgFunnelNoteRuFileId: row.tgFunnelNoteRuFileId || "",
+    tgFunnelNoteEnFileId: row.tgFunnelNoteEnFileId || "",
+    tgFunnelNoteCapture: row.tgFunnelNoteCapture || "",
   };
   cache = { at: Date.now(), value };
   return value;

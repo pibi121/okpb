@@ -101,6 +101,14 @@ import {
 } from "@/lib/tg/user";
 import { isTgDevResetMessage, resetTgOnboarding } from "@/lib/tg/dev-reset";
 import { maybeSendWelcomePush } from "@/lib/tg/tg-promo";
+import {
+  maybeSendFunnelDrips,
+} from "@/lib/tg/funnel-drip";
+import {
+  handleFunnelNoteCommand,
+  isFunnelNoteCommand,
+  tryCaptureFunnelVideoNote,
+} from "@/lib/tg/funnel-note-capture";
 import { isTestPromoMessage, redeemTestPromo } from "@/lib/tg/test-promo";
 import { goToMainMenu, routeMenuText } from "@/lib/tg/menu-routing";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
@@ -118,6 +126,7 @@ export type TgUpdateMessage = {
   from?: TelegramBotUser;
   text?: string;
   photo?: Array<{ file_id: string }>;
+  video_note?: { file_id: string; length?: number; duration?: number };
   web_app_data?: { data: string };
 };
 
@@ -1478,6 +1487,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     await maybeSendWelcomePush(chatId, user.id, locale, (body, extra) =>
       tgSendMessage(chatId, body, extra),
     );
+    await maybeSendFunnelDrips(chatId, user.id);
 
     if (await handleGenerationCallback(
       chatId,
@@ -1523,6 +1533,20 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     );
     await sendStartPitch(chatId);
     return;
+  }
+
+  if (text && isFunnelNoteCommand(text)) {
+    const { reply } = await handleFunnelNoteCommand(text);
+    await tgSendMessage(chatId, reply);
+    return;
+  }
+
+  if (msg.video_note?.file_id) {
+    const captured = await tryCaptureFunnelVideoNote(msg.video_note.file_id);
+    if (captured.captured) {
+      await tgSendMessage(chatId, captured.reply || "✅ Saved.");
+      return;
+    }
   }
 
   if (text && isTestPromoMessage(text)) {
@@ -1571,6 +1595,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   await maybeSendWelcomePush(chatId, user.id, locale, (body, extra) =>
     tgSendMessage(chatId, body, extra),
   );
+  await maybeSendFunnelDrips(chatId, user.id);
 
   if (chatState === "onboarding_awaiting_name" && text) {
     await onOnboardNameEntered(

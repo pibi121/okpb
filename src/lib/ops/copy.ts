@@ -12,6 +12,7 @@ export const FUNNEL_SLOTS: { slot: TgI18nKey; title: string }[] = [
   { slot: "onboard_pick_studio_btn", title: "Кнопка: готовый персонаж" },
   { slot: "onboard_create_char_btn", title: "Кнопка: создать свою модель" },
   { slot: "help_title", title: "Помощь" },
+  { slot: "help_guide_btn", title: "Кнопка: инструкция" },
   { slot: "help_rules_btn", title: "Кнопка: политика/правила/оферта" },
   { slot: "help_support_btn", title: "Кнопка: поддержка" },
   { slot: "gen_insufficient", title: "Не хватает персиков" },
@@ -50,8 +51,26 @@ async function scrubStartPitchPlaver() {
   });
 }
 
+let helpCopySynced = false;
+
+/** Force-sync help text + guide button from code (ops may still edit later). */
+async function syncHelpCopyFromCode() {
+  if (helpCopySynced) return;
+  helpCopySynced = true;
+  for (const slot of ["help_title", "help_guide_btn"] as const) {
+    const d = M[slot];
+    if (!d) continue;
+    await prisma.botCopy.upsert({
+      where: { slot },
+      create: { slot, textRu: d.ru, textEn: d.en },
+      update: { textRu: d.ru, textEn: d.en },
+    });
+  }
+}
+
 export async function loadCopyOverlay() {
   await scrubStartPitchPlaver();
+  await syncHelpCopyFromCode();
   const rows = await prisma.botCopy.findMany();
   const textRows = rows
     .filter((r) => !r.slot.startsWith("media_"))

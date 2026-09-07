@@ -16,7 +16,7 @@ export function tgSupportUrl(): string {
 export function tgReserveLinks(): string {
   const raw = process.env.TG_RESERVE_LINKS?.trim();
   if (raw) return raw;
-  return "t.me/peachbitch_bot";
+  return "https://t.me/+6aVo5HU0Yrc4NjYy";
 }
 
 /** In-app path to the same rules article as onboarding step 2. */

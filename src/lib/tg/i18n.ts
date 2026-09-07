@@ -642,20 +642,19 @@ Your balance: {balance}🍑
   },
 
   help_title: {
-    ru: `<b>Помощь</b>
+    ru: `📩 Поддержка: {support}
+🔗 Не потеряй бота, если забанят, актуальная версия в чате: https://t.me/+6aVo5HU0Yrc4NjYy
 
-📩 Поддержка: {support}
-🔗 Резервы: {reserves}
+Не понимаешь, как пользоваться ботом? Нажми на кнопку ниже с инструкцией!`,
+    en: `📩 Support: {support}
+🔗 Don’t lose the bot if it gets banned — current version in the chat: https://t.me/+6aVo5HU0Yrc4NjYy
 
-Политика, правила и оферта — в кнопке ниже.
-Язык интерфейса можно сменить кнопкой 👇`,
-    en: `<b>Help</b>
+Not sure how to use the bot? Tap the guide button below!`,
+  },
 
-📩 Support: {support}
-🔗 Backups: {reserves}
-
-Policy, rules & offer — button below.
-Change language with the button 👇`,
+  help_guide_btn: {
+    ru: "📖 Инструкция, как пользоваться",
+    en: "📖 How to use guide",
   },
 
   help_rules_btn: {

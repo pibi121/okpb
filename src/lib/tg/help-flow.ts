@@ -3,8 +3,8 @@ import { t, tFormat } from "@/lib/tg/i18n";
 import { langInlineKeyboard } from "@/lib/tg/character-bot";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { tgRulesArticleUrl } from "@/lib/tg/rules";
+import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 import {
-  tgReserveLinks,
   tgSupportContact,
   tgSupportUrl,
 } from "@/lib/tg/support";
@@ -14,11 +14,16 @@ export async function sendHelp(chatId: number, locale: TgLocale) {
     chatId,
     tFormat("help_title", locale, {
       support: tgSupportContact(),
-      reserves: tgReserveLinks(),
     }),
     {
       reply_markup: {
         inline_keyboard: [
+          [
+            {
+              text: t("help_guide_btn", locale),
+              web_app: { url: tgMiniAppUrl("guide") },
+            },
+          ],
           [
             {
               text: t("help_rules_btn", locale),

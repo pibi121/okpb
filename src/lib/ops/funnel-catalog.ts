@@ -550,6 +550,13 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "Открыл правила внутри Mini App.",
   ),
   S(
+    "miniapp.screen.guide",
+    "miniapp",
+    "support",
+    "Mini App экран: Инструкция",
+    "Открыл страницу «Инструкция, как пользоваться».",
+  ),
+  S(
     "miniapp.screen.other",
     "miniapp",
     "navigation",
@@ -739,5 +746,6 @@ export function resolveMiniAppPath(pathname: string): string {
   if (p.startsWith("/tg/partner")) return "miniapp.screen.partner";
   if (p.startsWith("/tg/profile")) return "miniapp.screen.profile";
   if (p.startsWith("/tg/rules")) return "miniapp.screen.rules";
+  if (p.startsWith("/tg/guide")) return "miniapp.screen.guide";
   return "miniapp.screen.other";
 }

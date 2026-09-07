@@ -70,6 +70,7 @@ const UI = {
     balance: "Баланс",
     legalRules: "Политика, правила, оферта",
     legalSupport: "Поддержка",
+    guide: "Инструкция, как пользоваться",
   },
   en: {
     openInTg: "Open from Telegram Mini App",
@@ -86,6 +87,7 @@ const UI = {
     balance: "Balance",
     legalRules: "Policy, rules & offer",
     legalSupport: "Support",
+    guide: "How to use",
   },
 } as const;
 
@@ -427,6 +429,7 @@ function TgScreenTracker() {
       if (p.startsWith("/tg/partner")) return "miniapp.screen.partner";
       if (p.startsWith("/tg/profile")) return "miniapp.screen.profile";
       if (p.startsWith("/tg/rules")) return "miniapp.screen.rules";
+      if (p.startsWith("/tg/guide")) return "miniapp.screen.guide";
       return "miniapp.screen.other";
     })();
     trackMiniAppClient(key, { path });
@@ -452,14 +455,22 @@ export function TgShell({
   status?: unknown;
   error?: unknown;
 }) {
+  const u = UI[locale];
   return (
     <div className="tg-shell">
       <TgScreenTracker />
-      <header className="tg-header">
-        <div className="tg-brand">
+      <header className="tg-header tg-header--bar">
+        <Link href="/tg" className="tg-header-logo" aria-label="Peach Bitch">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/tg/peach-logo.png" alt="Peach Bitch" className="tg-logo" />
-        </div>
+        </Link>
+        <Link
+          href="/tg/guide"
+          className="tg-header-guide"
+          onClick={() => trackMiniAppClient("miniapp.action", { action: "open_guide" })}
+        >
+          {u.guide}
+        </Link>
       </header>
       {children}
       <TgLegalFooter locale={locale} />

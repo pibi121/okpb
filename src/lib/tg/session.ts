@@ -59,6 +59,10 @@ export type TgPending = {
   confirmMessageId?: number;
   /** Confirm message is photo/video (edit caption) vs text */
   confirmHasMedia?: boolean;
+  /** Auto-send rules after start pitch (epoch ms) */
+  rulesAutoAt?: number;
+  /** Rules already auto-sent for this onboarding attempt */
+  rulesAutoSent?: boolean;
 };
 
 export async function getTgSession(platformUserId: string) {

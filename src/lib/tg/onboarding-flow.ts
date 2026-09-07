@@ -9,7 +9,6 @@ import {
 import { scheduleFunnelDrip } from "@/lib/tg/funnel-drip";
 import { tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { tgRulesArticleUrl } from "@/lib/tg/rules";
-import { langInlineKeyboard } from "@/lib/tg/character-bot";
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
 import { showPhotoUploadProgress } from "@/lib/tg/photo-upload-ui";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
@@ -30,11 +29,73 @@ import {
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { tryStartLoraTraining } from "@/lib/tg/lora-onboard";
+import { mainMenuExtra } from "@/lib/tg/menu";
+
+const RULES_AUTO_MS = 5_000;
 
 export async function sendStartPitch(chatId: number) {
-  await tgSendMediaMessage(chatId, "start", t("start_pitch", "ru"), {
-    reply_markup: langInlineKeyboard(),
+  await tgSendMediaMessage(chatId, "start", t("start_pitch", "ru"));
+}
+
+/** First /start for new users: pitch → default RU → rules in ~5s. */
+export async function beginOnboardingWithoutLang(
+  chatId: number,
+  userId: string,
+) {
+  const platformUserId = String(chatId);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { locale: "ru" },
   });
+  const rulesAutoAt = Date.now() + RULES_AUTO_MS;
+  await setTgSession(platformUserId, {
+    chatState: "awaiting_rules",
+    clearPending: true,
+    pending: { rulesAutoAt, rulesAutoSent: false },
+  });
+  await sendStartPitch(chatId);
+
+  setTimeout(() => {
+    void maybeSendAutoRules(chatId, userId).catch((e) =>
+      console.error("[tg-onboard] auto rules", e),
+    );
+  }, RULES_AUTO_MS + 50);
+}
+
+/** Send rules once when due (timer, poll, or next inbound). */
+export async function maybeSendAutoRules(
+  chatId: number,
+  userId: string,
+): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { ageConfirmed: true, locale: true },
+  });
+  if (!user || user.ageConfirmed) return false;
+
+  const platformUserId = String(chatId);
+  const session = await getTgSession(platformUserId);
+  const pending = parsePending(session?.pendingJson || "{}");
+  if (pending.rulesAutoSent) return false;
+  if (session?.chatState && session.chatState !== "awaiting_rules") return false;
+
+  const due = pending.rulesAutoAt || 0;
+  if (!due || due > Date.now()) return false;
+
+  const locale: TgLocale = user.locale === "en" ? "en" : "ru";
+  await setTgSession(platformUserId, {
+    chatState: "awaiting_rules",
+    pending: { ...pending, rulesAutoSent: true, rulesAutoAt: due },
+  });
+  await sendRulesStep(chatId, locale);
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId,
+    platformUserId,
+    eventKey: "bot.rules.shown",
+    meta: { locale, auto: true },
+  });
+  return true;
 }
 
 export async function sendRulesStep(chatId: number, locale: TgLocale) {
@@ -58,14 +119,17 @@ export async function onLanguagePicked(
 ) {
   await prisma.user.update({ where: { id: userId }, data: { locale } });
   const platformUserId = String(chatId);
-  await setTgSession(platformUserId, { chatState: "awaiting_rules" });
+  await setTgSession(platformUserId, {
+    chatState: "awaiting_rules",
+    pending: { rulesAutoSent: true },
+  });
   await sendRulesStep(chatId, locale);
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
     platformUserId,
     eventKey: "bot.rules.shown",
-    meta: { locale },
+    meta: { locale, fromLangSwitch: true },
   });
 }
 
@@ -100,6 +164,8 @@ export async function sendWelcomeAfterRules(
   await tgSendMediaMessage(chatId, "welcome", t("welcome_after_rules", locale), {
     reply_markup: welcomeKeyboard(locale),
   });
+  // Telegram: one message = either inline OR reply keyboard — attach menu separately.
+  await tgSendMessage(chatId, t("menu_ready_hint", locale), mainMenuExtra(locale));
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
@@ -191,7 +257,7 @@ export async function onOnboardPhotoReceived(
   const need = Math.max(0, TG_MIN_LORA_PHOTOS - n);
 
   const session = await getTgSession(platformUserId);
-  const pending = parsePending(session?.pendingJson);
+  const pending = parsePending(session?.pendingJson || "{}");
 
   await showPhotoUploadProgress({
     chatId,

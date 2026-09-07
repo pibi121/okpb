@@ -24,6 +24,7 @@ export const M: Dict = {
   bot_name: { ru: "PeachBitch", en: "PeachBitch" },
 
   /** Start pitch — always shown in Russian first (PDF). */
+  /** Start pitch — always shown in Russian first (no language picker). */
   start_pitch: {
     ru: `🍑<b>С Peachbitch ты воплотишь все свои фантазии</b>. Без ограничений, без цензуры, с тотальной защитой конфиденциальности!
 
@@ -31,20 +32,14 @@ export const M: Dict = {
 
 — Реалистичные фото и видео 18+
 — Маркетплейс готовых шаблонов на любой вкус
-— Высочайшее качество, как будто сняли вживую
-
-<b>Для начала, выбери язык 👇</b>
-<b>(Select a language)</b>`,
+— Высочайшее качество, как будто сняли вживую`,
     en: `🍑<b>With Peachbitch you can bring every fantasy to life</b>. No limits, no censorship, total privacy!
 
 Just upload a photo of your character and create anything your imagination dares 🤯💦
 
 — Realistic 18+ photos & videos
 — Marketplace of ready-made templates
-— Top quality, as if shot live
-
-<b>Choose your language 👇</b>
-<b>(Select a language)</b>`,
+— Top quality, as if shot live`,
   },
 
   rules_step: {
@@ -622,6 +617,11 @@ Your balance: {balance}🍑
 🟠 <b>Tap "Characters"</b> to pick who to use for photos or create a new model. For video you don't need a trained character — just send reference photos before generating.
 
 💳 <b>Tap "Balance"</b> to check or top up`,
+  },
+
+  menu_ready_hint: {
+    ru: "Меню снизу всегда под рукой 👇",
+    en: "Menu is always at the bottom 👇",
   },
 
   menu_generation: { ru: "📹 Генерация", en: "📹 Generation" },

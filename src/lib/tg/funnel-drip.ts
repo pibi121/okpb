@@ -254,6 +254,39 @@ export async function maybeSendFunnelDrips(
 let funnelPollBusy = false;
 let lastFunnelPollAt = 0;
 
+/** Catch missed auto-rules timers (process restart / cold start). */
+export async function pollAutoRules(limit = 40): Promise<void> {
+  const { maybeSendAutoRules } = await import("@/lib/tg/onboarding-flow");
+  const accounts = await prisma.platformAccount.findMany({
+    where: { platform: "telegram", chatState: "awaiting_rules" },
+    select: {
+      platformUserId: true,
+      userId: true,
+      pendingJson: true,
+      user: { select: { ageConfirmed: true } },
+    },
+    take: limit,
+  });
+  for (const a of accounts) {
+    if (a.user.ageConfirmed) continue;
+    let pending: { rulesAutoAt?: number; rulesAutoSent?: boolean } = {};
+    try {
+      pending = JSON.parse(a.pendingJson || "{}") as typeof pending;
+    } catch {
+      continue;
+    }
+    if (pending.rulesAutoSent) continue;
+    if (!pending.rulesAutoAt || pending.rulesAutoAt > Date.now()) continue;
+    const chatId = Number(a.platformUserId);
+    if (!Number.isFinite(chatId)) continue;
+    try {
+      await maybeSendAutoRules(chatId, a.userId);
+    } catch (e) {
+      console.error("[tg-auto-rules]", a.userId, e);
+    }
+  }
+}
+
 /** Background: push due drips without waiting for user to open chat. */
 export async function pollTgFunnelDrips(limit = 25): Promise<void> {
   if (funnelPollBusy) return;
@@ -261,6 +294,7 @@ export async function pollTgFunnelDrips(limit = 25): Promise<void> {
   funnelPollBusy = true;
   lastFunnelPollAt = Date.now();
   try {
+    await pollAutoRules(Math.min(40, limit));
     const now = new Date();
     const due5 = new Date(now.getTime() - MS_5M);
     const users = await prisma.user.findMany({

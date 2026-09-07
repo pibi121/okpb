@@ -52,6 +52,7 @@ async function scrubStartPitchPlaver() {
 }
 
 let helpCopySynced = false;
+let startPitchSynced = false;
 
 /** Force-sync help text + guide button from code (ops may still edit later). */
 async function syncHelpCopyFromCode() {
@@ -68,9 +69,22 @@ async function syncHelpCopyFromCode() {
   }
 }
 
+/** Drop language-picker lines from start_pitch if still in DB overlay. */
+async function syncStartPitchFromCode() {
+  if (startPitchSynced) return;
+  startPitchSynced = true;
+  const d = M.start_pitch;
+  await prisma.botCopy.upsert({
+    where: { slot: "start_pitch" },
+    create: { slot: "start_pitch", textRu: d.ru, textEn: d.en },
+    update: { textRu: d.ru, textEn: d.en },
+  });
+}
+
 export async function loadCopyOverlay() {
   await scrubStartPitchPlaver();
   await syncHelpCopyFromCode();
+  await syncStartPitchFromCode();
   const rows = await prisma.botCopy.findMany();
   const textRows = rows
     .filter((r) => !r.slot.startsWith("media_"))

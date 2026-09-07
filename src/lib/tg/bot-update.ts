@@ -37,7 +37,9 @@ import {
   templatePriceLabel,
 } from "@/lib/tg/generation-flow";
 import {
+  beginOnboardingWithoutLang,
   confirmRulesAndWelcome,
+  maybeSendAutoRules,
   onLanguagePicked,
   onOnboardBackToName,
   onOnboardKindPicked,
@@ -45,7 +47,6 @@ import {
   onOnboardPhotoReceived,
   sendGenerationKindPicker,
   sendRulesStep,
-  sendStartPitch,
   sendWelcomeAfterRules,
   startOnboardCharacter,
 } from "@/lib/tg/onboarding-flow";
@@ -220,8 +221,7 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
     eventKey: "bot.start",
     meta: { payload: payload || "" },
   });
-  await setTgSession(String(chatId), { chatState: "awaiting_lang", clearPending: true });
-  await sendStartPitch(chatId);
+  await beginOnboardingWithoutLang(chatId, user.id);
 }
 
 async function handlePhoto(
@@ -1431,6 +1431,9 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 
   const { trackBotCallback, trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackBotCallback(user.id, platformUserId, data);
+  if (!user.ageConfirmed) {
+    await maybeSendAutoRules(chatId, user.id);
+  }
 
   const lang = parseLangCb(data);
   if (lang) {
@@ -1570,7 +1573,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       chatId,
       "🔄 <b>Сброс</b>\n\nОнбординг и промо обнулены. Персонажи и баланс сохранены.\n\n<i>Onboarding reset. Characters & balance kept.</i>",
     );
-    await sendStartPitch(chatId);
+    await beginOnboardingWithoutLang(chatId, user.id);
     return;
   }
 
@@ -1619,15 +1622,23 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   }
 
   if (!user.ageConfirmed) {
-    if (chatState === "awaiting_lang") {
-      await sendStartPitch(chatId);
+    await maybeSendAutoRules(chatId, user.id);
+    if (chatState === "awaiting_lang" || chatState === "awaiting_rules") {
+      // Legacy awaiting_lang: nudge into rules flow without language picker.
+      const session2 = await getTgSession(platformUserId);
+      const pending2 = parsePending(session2?.pendingJson || "{}");
+      if (!pending2.rulesAutoSent) {
+        await setTgSession(platformUserId, {
+          chatState: "awaiting_rules",
+          pending: { ...pending2, rulesAutoAt: Date.now(), rulesAutoSent: false },
+        });
+        await maybeSendAutoRules(chatId, user.id);
+      } else {
+        await sendRulesStep(chatId, locale);
+      }
       return;
     }
-    if (chatState === "awaiting_rules") {
-      await sendRulesStep(chatId, locale);
-      return;
-    }
-    await sendStartPitch(chatId);
+    await beginOnboardingWithoutLang(chatId, user.id);
     return;
   }
 

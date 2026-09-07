@@ -1,7 +1,5 @@
 import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
-import { castsMiniAppUrl } from "@/lib/tg/studio-cast";
-import { tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import {
   scheduleWelcomePush,
   startLoraBonusWindow,
@@ -29,7 +27,7 @@ import {
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { tryStartLoraTraining } from "@/lib/tg/lora-onboard";
-import { mainMenuExtra } from "@/lib/tg/menu";
+import { sendMainMenuHub } from "@/lib/tg/menu";
 
 const RULES_AUTO_MS = 5_000;
 
@@ -133,25 +131,6 @@ export async function onLanguagePicked(
   });
 }
 
-function welcomeKeyboard(locale: TgLocale) {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: t("onboard_pick_studio_btn", locale),
-          web_app: { url: castsMiniAppUrl() },
-        },
-      ],
-      [
-        {
-          text: t("onboard_create_char_btn", locale),
-          web_app: { url: tgLoraTrainMiniAppUrl() },
-        },
-      ],
-    ],
-  };
-}
-
 export async function sendWelcomeAfterRules(
   chatId: number,
   platformUserId: string,
@@ -161,17 +140,14 @@ export async function sendWelcomeAfterRules(
   await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
   await scheduleWelcomePush(userId);
   await scheduleFunnelDrip(userId);
-  await tgSendMediaMessage(chatId, "welcome", t("welcome_after_rules", locale), {
-    reply_markup: welcomeKeyboard(locale),
-  });
-  // Telegram: one message = either inline OR reply keyboard — attach menu separately.
-  await tgSendMessage(chatId, t("menu_ready_hint", locale), mainMenuExtra(locale));
+  // Skip "Добро пожаловать…" — go straight to hub («пофантазируем») + CTAs.
+  await sendMainMenuHub(chatId, userId, locale, { attachReplyKeyboard: true });
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
     platformUserId,
     eventKey: "bot.welcome.after_rules",
-    meta: { locale },
+    meta: { locale, hubDirect: true },
   });
 }
 

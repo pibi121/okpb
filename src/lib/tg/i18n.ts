@@ -619,6 +619,16 @@ Your balance: {balance}🍑
 💳 <b>Tap "Balance"</b> to check or top up`,
   },
 
+  hub_open_studio_btn: {
+    ru: "Открыть студию PornBitch",
+    en: "Open PornBitch studio",
+  },
+
+  hub_guide_btn: {
+    ru: "Инструкция, как пользоваться",
+    en: "How to use guide",
+  },
+
   menu_ready_hint: {
     ru: "Меню снизу всегда под рукой 👇",
     en: "Menu is always at the bottom 👇",

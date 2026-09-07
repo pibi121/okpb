@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { setI18nOverlay, type TgI18nKey } from "@/lib/tg/i18n";
+import { M, setI18nOverlay, type TgI18nKey } from "@/lib/tg/i18n";
 import { setMediaOverlay, type TgMediaSlot } from "@/lib/tg/media-assets";
 
 /** Funnel + help texts that are safe to edit from the cabinet. */
@@ -28,8 +28,30 @@ export const MEDIA_COPY_SLOTS: { slot: TgMediaSlot; title: string; dbSlot: strin
   ];
 
 let loaded = false;
+let loadedAt = 0;
+let plaverScrubbed = false;
+const OVERLAY_TTL_MS = 15_000;
+
+/** Drop leftover PlaVER watermark from seeded start_pitch once. */
+async function scrubStartPitchPlaver() {
+  if (plaverScrubbed) return;
+  const row = await prisma.botCopy.findUnique({ where: { slot: "start_pitch" } });
+  plaverScrubbed = true;
+  if (!row) return;
+  const has =
+    /PlaVER/i.test(row.textRu || "") || /PlaVER/i.test(row.textEn || "");
+  if (!has) return;
+  await prisma.botCopy.update({
+    where: { slot: "start_pitch" },
+    data: {
+      textRu: M.start_pitch.ru,
+      textEn: M.start_pitch.en,
+    },
+  });
+}
 
 export async function loadCopyOverlay() {
+  await scrubStartPitchPlaver();
   const rows = await prisma.botCopy.findMany();
   const textRows = rows
     .filter((r) => !r.slot.startsWith("media_"))
@@ -43,10 +65,14 @@ export async function loadCopyOverlay() {
   }
   setMediaOverlay(media);
   loaded = true;
+  loadedAt = Date.now();
 }
 
+/** Load once, then refresh from DB so bot process picks up ops /copy edits. */
 export async function ensureCopyOverlay() {
-  if (!loaded) await loadCopyOverlay();
+  if (!loaded || Date.now() - loadedAt > OVERLAY_TTL_MS) {
+    await loadCopyOverlay();
+  }
 }
 
 export async function seedFunnelCopy(defaults: Record<string, { ru: string; en: string }>) {

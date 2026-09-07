@@ -25,9 +25,7 @@ export const M: Dict = {
 
   /** Start pitch — always shown in Russian first (PDF). */
   start_pitch: {
-    ru: `🔐 <code>PlaVER</code>
-
-🍑<b>С Peachbitch ты воплотишь все свои фантазии</b>. Без ограничений, без цензуры, с тотальной защитой конфиденциальности!
+    ru: `🍑<b>С Peachbitch ты воплотишь все свои фантазии</b>. Без ограничений, без цензуры, с тотальной защитой конфиденциальности!
 
 Просто загружаешь фотографию своего персонажа и творишь с ним всё, на что хватит фантазии и смелости 🤯💦
 
@@ -37,9 +35,7 @@ export const M: Dict = {
 
 <b>Для начала, выбери язык 👇</b>
 <b>(Select a language)</b>`,
-    en: `🔐 <code>PlaVER</code>
-
-🍑<b>With Peachbitch you can bring every fantasy to life</b>. No limits, no censorship, total privacy!
+    en: `🍑<b>With Peachbitch you can bring every fantasy to life</b>. No limits, no censorship, total privacy!
 
 Just upload a photo of your character and create anything your imagination dares 🤯💦
 

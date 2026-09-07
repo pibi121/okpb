@@ -42,7 +42,7 @@ export async function sendRulesStep(chatId: number, locale: TgLocale) {
     rulesUrl: tgRulesArticleUrl(locale),
   });
   await tgSendMessage(chatId, body, {
-    link_preview_options: { is_disabled: false },
+    link_preview_options: { is_disabled: true },
     reply_markup: {
       inline_keyboard: [
         [{ text: t("rules_agree_btn", locale), callback_data: "rules:agree" }],

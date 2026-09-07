@@ -119,6 +119,7 @@ import {
   listStudioCasts,
 } from "@/lib/tg/studio-cast";
 import { showPhotoUploadProgress } from "@/lib/tg/photo-upload-ui";
+import { ensureCopyOverlay } from "@/lib/ops/copy";
 
 export type TgUpdateMessage = {
   message_id: number;
@@ -1387,6 +1388,7 @@ async function handleLookbookCallback(
 }
 
 export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
+  await ensureCopyOverlay();
   const data = cq.data || "";
   const chatId = cq.message?.chat.id;
   if (!chatId) {
@@ -1517,6 +1519,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 }
 
 export async function handleTgMessage(msg: TgUpdateMessage) {
+  await ensureCopyOverlay();
   const chatId = msg.chat.id;
   const platformUserId = String(chatId);
   const from = msg.from || { id: chatId };

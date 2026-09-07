@@ -7,6 +7,8 @@ import { handleTgMessage, handleTgCallbackQuery, flushTgOutbox } from "../src/li
 import { pollTgLoraTrainings } from "../src/lib/tg/lora-train-poller";
 import { pollTgFunnelDrips } from "../src/lib/tg/funnel-drip";
 import { tgApi } from "../src/lib/tg/telegram-api";
+import { bootOps } from "../src/lib/ops/seed";
+import { ensureCopyOverlay } from "../src/lib/ops/copy";
 
 type TgUpdate = {
   update_id: number;
@@ -17,10 +19,13 @@ type TgUpdate = {
 async function poll() {
   let offset = 0;
   console.log("[tg-bot] polling…");
+  await bootOps().catch((e) => console.error("[tg-bot] bootOps", e));
+  await ensureCopyOverlay().catch((e) => console.error("[tg-bot] copy", e));
   setInterval(() => {
     void flushTgOutbox().catch((e) => console.error("[tg-outbox]", e));
     void pollTgLoraTrainings().catch((e) => console.error("[tg-lora-poll]", e));
     void pollTgFunnelDrips().catch((e) => console.error("[tg-funnel-poll]", e));
+    void ensureCopyOverlay().catch(() => undefined);
   }, 2000);
 
   for (;;) {

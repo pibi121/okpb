@@ -47,11 +47,15 @@ function buildWhere(f: BroadcastFilter) {
   };
 }
 
-export async function runBroadcast(id: string) {
+export async function runBroadcast(
+  id: string,
+  opts?: { skipCooldown?: boolean },
+) {
   const row = await prisma.broadcast.findUnique({ where: { id } });
   if (!row || row.status === "sending") return;
   const settings = await getOpsSettings();
   if (
+    !opts?.skipCooldown &&
     settings.lastBroadcastAt &&
     Date.now() - settings.lastBroadcastAt.getTime() < 30 * 60 * 1000
   ) {

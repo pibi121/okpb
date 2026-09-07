@@ -140,3 +140,25 @@ export async function formatNotice(
   }
   return s;
 }
+
+/** Mass-send a system notice template to the audience (ops «отправить сейчас»). */
+export async function sendNoticeBroadcastNow(slot: string, actorId: string) {
+  const notice = await prisma.systemNotice.findUnique({ where: { slot } });
+  if (!notice) throw new Error("Уведомление не найдено");
+  if (!notice.textRu.trim()) throw new Error("Нужен русский текст");
+
+  const { runBroadcast } = await import("@/lib/ops/broadcast");
+  const row = await prisma.broadcast.create({
+    data: {
+      title: `Notice · ${notice.title}`,
+      bodyRu: notice.textRu,
+      bodyEn: notice.textEn,
+      mediaUrl: notice.mediaUrl || "",
+      filterJson: JSON.stringify({ who: "all", skipQuietDays: 0 }),
+      createdById: actorId,
+      status: "draft",
+    },
+  });
+  await runBroadcast(row.id, { skipCooldown: true });
+  return { broadcastId: row.id };
+}

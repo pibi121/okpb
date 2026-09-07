@@ -83,6 +83,7 @@ model User {
   loraI2vTemplates      LoraI2vTemplate[]
   testGalleryFolders TestGalleryFolder[]
   tgCastFavorites   TgCastFavorite[]
+  funnelEvents      FunnelEvent[]
 
   @@index([trafficLinkId])
   @@index([adminRole])
@@ -1252,4 +1253,34 @@ model TgOutbox {
 
   @@index([platformUserId, sentAt])
   @@index([userId])
+}
+
+/// Product funnel: every meaningful click/screen for ops + AI export.
+model FunnelEvent {
+  id             String   @id @default(cuid())
+  userId         String
+  platformUserId String   @default("")
+  at             DateTime @default(now())
+  /// Days since signup (0 = first calendar day window from createdAt)
+  dayIndex       Int      @default(0)
+  /// bot | miniapp | system
+  surface        String
+  /// Machine key from funnel catalog
+  eventKey       String
+  /// Human title (RU) for AI / ops
+  stepTitle      String
+  /// Longer plain-language explanation of what happened
+  stepDetail     String   @default("")
+  /// traffic | partner | organic | unknown
+  sourceKind     String   @default("unknown")
+  sourceCode     String   @default("")
+  metaJson       String   @default("{}")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, at])
+  @@index([at])
+  @@index([eventKey, at])
+  @@index([sourceKind, sourceCode, at])
+  @@index([surface, at])
 }

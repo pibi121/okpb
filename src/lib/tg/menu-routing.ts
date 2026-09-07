@@ -30,21 +30,29 @@ export async function routeMenuText(
 ): Promise<boolean> {
   if (!text) return false;
 
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  const trackMenu = (eventKey: string) =>
+    trackFunnelEventBg({ userId, platformUserId, eventKey, surface: "bot" });
+
   if (isMenuText(text, "menu_main")) {
+    trackMenu("bot.menu.main");
     await goToMainMenu(chatId, platformUserId, userId, locale);
     return true;
   }
   if (isMenuText(text, "menu_generation")) {
+    trackMenu("bot.menu.generation");
     await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
     await sendGenerationKindPicker(chatId, locale);
     return true;
   }
   if (isMenuText(text, "menu_characters")) {
+    trackMenu("bot.menu.characters");
     await setTgSession(platformUserId, { chatState: "idle" });
     await sendCharactersList(chatId, userId, platformUserId, locale);
     return true;
   }
   if (isMenuText(text, "menu_balance")) {
+    trackMenu("bot.menu.balance");
     await setTgSession(platformUserId, { chatState: "idle" });
     const bal = await getBalancePeaches(userId);
     await tgSendMessage(chatId, tFormat("balance_with_topup_hint", locale, { n: bal }), {
@@ -55,6 +63,7 @@ export async function routeMenuText(
     return true;
   }
   if (isMenuText(text, "menu_earn")) {
+    trackMenu("bot.menu.earn");
     await setTgSession(platformUserId, { chatState: "idle" });
     const { getPartnerDashboard, partnerStartLink } = await import(
       "@/lib/tg/partner-program"
@@ -90,6 +99,7 @@ export async function routeMenuText(
     return true;
   }
   if (isMenuText(text, "menu_community")) {
+    trackMenu("bot.menu.community");
     await setTgSession(platformUserId, { chatState: "idle" });
     await tgSendMessage(chatId, t("community_text", locale), {
       reply_markup: {
@@ -101,11 +111,13 @@ export async function routeMenuText(
     return true;
   }
   if (isMenuText(text, "menu_help")) {
+    trackMenu("bot.menu.help");
     await setTgSession(platformUserId, { chatState: "idle" });
     await sendHelp(chatId, locale);
     return true;
   }
   if (isMenuText(text, "topup_btn")) {
+    trackMenu("bot.menu.topup");
     await sendTopupPrompt(chatId, locale);
     return true;
   }

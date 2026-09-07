@@ -8,6 +8,7 @@ export const OPS_SECTIONS = [
   "errors",
   "queue",
   "load",
+  "analytics",
   "links",
   "copy",
   "notices",
@@ -24,8 +25,17 @@ export type OpsSection = (typeof OPS_SECTIONS)[number];
 
 const ROLE_SECTIONS: Record<OpsRole, OpsSection[]> = {
   owner: [...OPS_SECTIONS],
-  support: ["dashboard", "users", "jobs", "errors", "queue", "load"],
-  content: ["dashboard", "jobs", "links", "copy", "notices", "dev"],
+  support: ["dashboard", "users", "jobs", "errors", "queue", "load", "analytics"],
+  content: [
+    "dashboard",
+    "jobs",
+    "analytics",
+    "links",
+    "copy",
+    "notices",
+    "broadcasts",
+    "dev",
+  ],
   developer: [
     "dashboard",
     "users",
@@ -33,6 +43,7 @@ const ROLE_SECTIONS: Record<OpsRole, OpsSection[]> = {
     "errors",
     "queue",
     "load",
+    "analytics",
     "copy",
     "notices",
     "bot",

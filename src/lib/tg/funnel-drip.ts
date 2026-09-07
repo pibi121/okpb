@@ -170,6 +170,13 @@ export async function maybeSendFunnelDrips(
       data: { tgFunnel5mSent: true },
     });
     user.tgFunnel5mSent = true;
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId: String(chatId),
+      eventKey: "system.drip.5m",
+      surface: "system",
+    });
   }
 
   if (!user.tgFunnel10mIdleSent && now >= anchor + MS_10M) {
@@ -192,6 +199,13 @@ export async function maybeSendFunnelDrips(
         data: { tgFunnel10mIdleSent: true },
       });
       user.tgFunnel10mIdleSent = true;
+      const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+      trackFunnelEventBg({
+        userId,
+        platformUserId: String(chatId),
+        eventKey: "system.drip.10m_idle",
+        surface: "system",
+      });
     }
   }
 
@@ -207,6 +221,13 @@ export async function maybeSendFunnelDrips(
       data: { tgFunnel40mSent: true },
     });
     user.tgFunnel40mSent = true;
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId: String(chatId),
+      eventKey: "system.drip.40m",
+      surface: "system",
+    });
   }
 
   if (!user.tgFunnel6hSent && now >= anchor + MS_6H) {
@@ -219,6 +240,13 @@ export async function maybeSendFunnelDrips(
     await prisma.user.update({
       where: { id: userId },
       data: { tgFunnel6hSent: true },
+    });
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId: String(chatId),
+      eventKey: "system.drip.6h",
+      surface: "system",
     });
   }
 }

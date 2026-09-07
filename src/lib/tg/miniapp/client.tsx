@@ -219,6 +219,12 @@ export function useTgMiniApp() {
         method: "POST",
       }).catch(() => undefined);
 
+      void fetchWithRetry(initData, "/api/tg/funnel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventKey: "miniapp.open" }),
+      }).catch(() => undefined);
+
       try {
         await refresh();
         setStatus("ready");
@@ -238,11 +244,57 @@ export function useTgMiniApp() {
   );
 
   const sendAction = useCallback((payload: Record<string, unknown>) => {
+    void tgFetch(initDataRef.current, "/api/tg/funnel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventKey: "miniapp.send_to_bot",
+        meta: { action: payload?.action || payload?.type || "sendData" },
+      }),
+    }).catch(() => undefined);
     window.Telegram?.WebApp?.sendData(JSON.stringify(payload));
     window.Telegram?.WebApp?.close();
   }, []);
 
-  return { status, error, profile, locale, setLocale, refresh, sendAction, apiFetch };
+  const trackEvent = useCallback(
+    (eventKey: string, meta?: Record<string, unknown>) => {
+      void tgFetch(initDataRef.current, "/api/tg/funnel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventKey, meta }),
+      }).catch(() => undefined);
+    },
+    [],
+  );
+
+  return {
+    status,
+    error,
+    profile,
+    locale,
+    setLocale,
+    refresh,
+    sendAction,
+    apiFetch,
+    trackEvent,
+  };
+}
+
+function trackMiniAppClient(eventKey: string, meta?: Record<string, unknown>) {
+  try {
+    const initData = window.Telegram?.WebApp?.initData || "";
+    if (!initData) return;
+    void fetch("/api/tg/funnel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tg-Init-Data": initData,
+      },
+      body: JSON.stringify({ eventKey, meta }),
+    }).catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
@@ -259,37 +311,61 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
 
   return (
     <nav className="tg-tabbar">
-      <Link href="/tg" className={feedActive ? "active" : ""}>
+      <Link
+        href="/tg"
+        className={feedActive ? "active" : ""}
+        onClick={() => trackMiniAppClient("miniapp.tab.feed")}
+      >
         <span className="tg-tab-ico">
           <TgTabIcon id="feed" active={feedActive} />
         </span>
         {u.feed}
       </Link>
-      <Link href="/tg/gallery" className={galleryActive ? "active" : ""}>
+      <Link
+        href="/tg/gallery"
+        className={galleryActive ? "active" : ""}
+        onClick={() => trackMiniAppClient("miniapp.tab.gallery")}
+      >
         <span className="tg-tab-ico">
           <TgTabIcon id="gallery" active={galleryActive} />
         </span>
         {u.gallery}
       </Link>
-      <Link href="/tg/characters" className={charsActive ? "active" : ""}>
+      <Link
+        href="/tg/characters"
+        className={charsActive ? "active" : ""}
+        onClick={() => trackMiniAppClient("miniapp.tab.characters")}
+      >
         <span className="tg-tab-ico">
           <TgTabIcon id="chars" active={charsActive} />
         </span>
         {u.chars}
       </Link>
-      <Link href="/tg/photo" className={photoActive ? "active" : ""}>
+      <Link
+        href="/tg/photo"
+        className={photoActive ? "active" : ""}
+        onClick={() => trackMiniAppClient("miniapp.tab.photo")}
+      >
         <span className="tg-tab-ico">
           <TgTabIcon id="photo" active={photoActive} />
         </span>
         {u.photo}
       </Link>
-      <Link href="/tg/video" className={videoActive ? "active" : ""}>
+      <Link
+        href="/tg/video"
+        className={videoActive ? "active" : ""}
+        onClick={() => trackMiniAppClient("miniapp.tab.video")}
+      >
         <span className="tg-tab-ico">
           <TgTabIcon id="video" active={videoActive} />
         </span>
         {u.video}
       </Link>
-      <Link href="/tg/profile" className={profileActive ? "active" : ""}>
+      <Link
+        href="/tg/profile"
+        className={profileActive ? "active" : ""}
+        onClick={() => trackMiniAppClient("miniapp.tab.profile")}
+      >
         <span className="tg-tab-ico">
           <TgTabIcon id="profile" active={profileActive} />
         </span>
@@ -306,6 +382,7 @@ export function TgLegalFooter({ locale }: { locale: "ru" | "en" }) {
 
   const openSupport = (e: React.MouseEvent) => {
     e.preventDefault();
+    trackMiniAppClient("miniapp.footer.support");
     const tg = window.Telegram?.WebApp;
     if (tg?.openTelegramLink) {
       tg.openTelegramLink(support);
@@ -316,7 +393,11 @@ export function TgLegalFooter({ locale }: { locale: "ru" | "en" }) {
 
   return (
     <footer className="tg-legal-footer">
-      <Link href={rulesHref} className="tg-legal-link">
+      <Link
+        href={rulesHref}
+        className="tg-legal-link"
+        onClick={() => trackMiniAppClient("miniapp.footer.rules")}
+      >
         {u.legalRules}
       </Link>
       <span className="tg-legal-dot" aria-hidden>
@@ -327,6 +408,30 @@ export function TgLegalFooter({ locale }: { locale: "ru" | "en" }) {
       </a>
     </footer>
   );
+}
+
+function TgScreenTracker() {
+  const path = usePathname();
+  useEffect(() => {
+    const key = (() => {
+      const p = path.replace(/\/+$/, "") || "/tg";
+      if (p === "/tg" || p === "/tg/templates") return "miniapp.screen.feed";
+      if (p.startsWith("/tg/gallery")) return "miniapp.screen.gallery";
+      if (p.startsWith("/tg/characters") || p === "/tg/casts") {
+        return "miniapp.screen.characters";
+      }
+      if (p.startsWith("/tg/photo") || p === "/tg/studio-photo") {
+        return "miniapp.screen.photo";
+      }
+      if (p.startsWith("/tg/video")) return "miniapp.screen.video";
+      if (p.startsWith("/tg/partner")) return "miniapp.screen.partner";
+      if (p.startsWith("/tg/profile")) return "miniapp.screen.profile";
+      if (p.startsWith("/tg/rules")) return "miniapp.screen.rules";
+      return "miniapp.screen.other";
+    })();
+    trackMiniAppClient(key, { path });
+  }, [path]);
+  return null;
 }
 
 export function TgShell({
@@ -349,6 +454,7 @@ export function TgShell({
 }) {
   return (
     <div className="tg-shell">
+      <TgScreenTracker />
       <header className="tg-header">
         <div className="tg-brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}

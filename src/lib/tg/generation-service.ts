@@ -511,6 +511,13 @@ export async function startTgVideoGeneration(opts: {
   speechFills?: SpeechSlotFill[];
 }): Promise<TgGenerateResult> {
   await assertGenerationOpen(opts.userId);
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId: opts.userId,
+    platformUserId: opts.platformUserId,
+    eventKey: "bot.gen.started",
+    meta: { kind: "video", templateId: opts.templateId, characterId: opts.characterId },
+  });
   const loraI2v = await prisma.loraI2vTemplate.findFirst({
     where: { id: opts.templateId, tgPublished: true },
   });
@@ -721,6 +728,13 @@ export async function startTgPhotoGeneration(opts: {
   loraWelcome?: boolean;
 }): Promise<TgGenerateResult> {
   await assertGenerationOpen(opts.userId);
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId: opts.userId,
+    platformUserId: opts.platformUserId,
+    eventKey: "bot.gen.started",
+    meta: { kind: "photo", templateId: opts.templateId, characterId: opts.characterId },
+  });
   const row = await getPhotoTemplate(opts.templateId);
   if (!row) throw new Error("Шаблон не найден");
 

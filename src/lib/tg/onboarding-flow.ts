@@ -60,6 +60,13 @@ export async function onLanguagePicked(
   const platformUserId = String(chatId);
   await setTgSession(platformUserId, { chatState: "awaiting_rules" });
   await sendRulesStep(chatId, locale);
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId,
+    platformUserId,
+    eventKey: "bot.rules.shown",
+    meta: { locale },
+  });
 }
 
 function welcomeKeyboard(locale: TgLocale) {
@@ -92,6 +99,13 @@ export async function sendWelcomeAfterRules(
   await scheduleFunnelDrip(userId);
   await tgSendMediaMessage(chatId, "welcome", t("welcome_after_rules", locale), {
     reply_markup: welcomeKeyboard(locale),
+  });
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId,
+    platformUserId,
+    eventKey: "bot.welcome.after_rules",
+    meta: { locale },
   });
 }
 

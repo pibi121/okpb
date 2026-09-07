@@ -44,6 +44,13 @@ export async function handleTopupAmount(
 
   if (userId && process.env.TG_TOPUP_STUB_CREDIT !== "0") {
     await creditPeaches(userId, amount, "tg_topup_stub", { amount });
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId,
+      eventKey: "bot.topup.paid",
+      meta: { amount, stub: true },
+    });
   }
 
   const { mainMenuExtra } = await import("@/lib/tg/menu");

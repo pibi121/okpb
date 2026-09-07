@@ -156,6 +156,7 @@ async function applyLocale(userId: string, locale: TgLocale) {
 async function handleStart(chatId: number, from: TelegramBotUser, payload?: string) {
   const user = await findOrCreateTelegramUserFromBot(from, payload);
   const locale = localeFromUser(user.locale);
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
 
   const { assertUserCanUseBot } = await import("@/lib/ops/gate");
   const gate = await assertUserCanUseBot(user.id, locale);
@@ -166,6 +167,12 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
 
   // Mini App → bot album upload for a specific LoRA draft character.
   if (payload?.startsWith("photos_") && user.ageConfirmed) {
+    trackFunnelEventBg({
+      userId: user.id,
+      platformUserId: String(chatId),
+      eventKey: "bot.start.photos_upload",
+      meta: { payload },
+    });
     const characterId = payload.slice("photos_".length).trim();
     const ch = await prisma.character.findFirst({
       where: {
@@ -197,10 +204,22 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
   }
 
   if (user.ageConfirmed) {
+    trackFunnelEventBg({
+      userId: user.id,
+      platformUserId: String(chatId),
+      eventKey: "bot.start.returning",
+      meta: { payload: payload || "" },
+    });
     await sendMainMenuHub(chatId, user.id, locale);
     return;
   }
 
+  trackFunnelEventBg({
+    userId: user.id,
+    platformUserId: String(chatId),
+    eventKey: "bot.start",
+    meta: { payload: payload || "" },
+  });
   await setTgSession(String(chatId), { chatState: "awaiting_lang", clearPending: true });
   await sendStartPitch(chatId);
 }
@@ -248,6 +267,14 @@ async function handlePhoto(
     `tg_${Date.now()}.jpg`,
     { maxPhotos },
   );
+
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId,
+    platformUserId,
+    eventKey: "bot.photo.uploaded",
+    meta: { characterId: character.id, chatState, before },
+  });
 
   if (
     chatState === "onboarding_awaiting_photos" ||
@@ -1402,12 +1429,21 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   const session = await getTgSession(platformUserId);
   const pending = parsePending(session?.pendingJson || "{}");
 
+  const { trackBotCallback, trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackBotCallback(user.id, platformUserId, data);
+
   const lang = parseLangCb(data);
   if (lang) {
     await tgAnswerCallbackQuery(cq.id);
     if (!user.ageConfirmed) {
       await onLanguagePicked(chatId, user.id, lang);
     } else {
+      trackFunnelEventBg({
+        userId: user.id,
+        platformUserId,
+        eventKey: "bot.lang.switch",
+        meta: { locale: lang },
+      });
       await applyLocale(user.id, lang);
       locale = lang;
       await tgSendMessage(chatId, t("lang_switched", locale), mainMenuExtra(locale));

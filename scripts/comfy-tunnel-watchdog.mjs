@@ -1,19 +1,14 @@
 /**
  * Keep Comfy :8188 alive during a testing session.
- * Restarts paramiko tunnel if system_stats fails twice in a row.
+ * Restarts tunnel (openssh / paramiko / ssh2) if system_stats fails twice in a row.
  *
  *   node scripts/comfy-tunnel-watchdog.mjs
  */
 import http from "node:http";
-import { spawn, spawnSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { ensureComfyTunnel } from "./railway-comfy-tunnel.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const STARTER = path.join(ROOT, "scripts", "start-comfy-tunnel-detached.mjs");
 const TICK_MS = 15_000;
 const FAIL_BEFORE_RESTART = 2;
-const LOCAL_PORT = 8188;
 
 function pingComfy(timeoutMs = 4000) {
   return new Promise((resolve) => {
@@ -34,31 +29,17 @@ function pingComfy(timeoutMs = 4000) {
   });
 }
 
-function restartTunnel() {
-  console.log(`[watchdog] ${new Date().toISOString()} comfy down → restart tunnel`);
-  // Free local port + kill any leftover tunnel processes (ssh/paramiko) so the restart can bind :8188.
+async function restartTunnel() {
+  console.log(`[watchdog] ${new Date().toISOString()} comfy down → ensureComfyTunnel`);
   try {
-    spawnSync(
-      "sh",
-      [
-        "-lc",
-        `fuser -k ${LOCAL_PORT}/tcp >/dev/null 2>&1 || true; ` +
-          `pkill -f \"paramiko-comfy-tunnel.py\" >/dev/null 2>&1 || true; ` +
-          `pkill -f \"-L 127.0.0.1:${LOCAL_PORT}:127.0.0.1:8188\" >/dev/null 2>&1 || true; ` +
-          `true`,
-      ],
-      { stdio: "ignore", timeout: 5000 },
+    const r = await ensureComfyTunnel();
+    console.log(`[watchdog] tunnel result: ${r.reason} ok=${r.ok}`);
+  } catch (e) {
+    console.error(
+      `[watchdog] tunnel restart failed:`,
+      e instanceof Error ? e.message : e,
     );
-  } catch {
-    // ignore
   }
-  const child = spawn(process.execPath, [STARTER], {
-    cwd: ROOT,
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-  });
-  child.unref();
 }
 
 let fails = 0;
@@ -74,7 +55,7 @@ setInterval(async () => {
   fails += 1;
   console.log(`[watchdog] ${new Date().toISOString()} comfy ping fail (${fails})`);
   if (fails >= FAIL_BEFORE_RESTART) {
-    restartTunnel();
+    await restartTunnel();
     fails = 0;
   }
 }, TICK_MS);

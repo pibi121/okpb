@@ -32,7 +32,17 @@ const STATUS_PATH =
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let tunnelProc = null;
+/** @type {import("ssh2").Client | null} */
+let ssh2Client = null;
+/** @type {import("node:net").Server | null} */
+let ssh2Server = null;
 let lastTunnelError = "";
+
+function tunnelAlive() {
+  if (ssh2Client && ssh2Server?.listening) return true;
+  if (tunnelProc && !tunnelProc.killed && tunnelProc.exitCode == null) return true;
+  return false;
+}
 
 function writeTunnelStatus(patch) {
   try {
@@ -141,13 +151,27 @@ function findPython() {
 }
 
 function findSsh() {
-  for (const name of ["ssh", "/usr/bin/ssh", "/bin/ssh"]) {
+  const candidates = [
+    "ssh",
+    "/usr/bin/ssh",
+    "/bin/ssh",
+    "/root/.nix-profile/bin/ssh",
+    "/nix/var/nix/profiles/default/bin/ssh",
+  ];
+  for (const name of candidates) {
     const r = spawnSync(name, ["-V"], { encoding: "utf8", windowsHide: true });
     // ssh -V writes to stderr; status may be 0
     if (r.status === 0 || /OpenSSH/i.test(String(r.stderr || r.stdout || ""))) {
       return name;
     }
   }
+  const which = spawnSync(
+    "sh",
+    ["-c", "command -v ssh || true"],
+    { encoding: "utf8", windowsHide: true },
+  );
+  const found = String(which.stdout || "").trim().split(/\r?\n/)[0];
+  if (found && found.includes("ssh")) return found;
   return null;
 }
 
@@ -187,7 +211,7 @@ function attachTunnelHandlers(proc, label) {
   });
 }
 
-function startTunnel() {
+function startChildTunnel() {
   if (tunnelProc && !tunnelProc.killed && tunnelProc.exitCode == null) {
     return tunnelProc;
   }
@@ -213,7 +237,6 @@ function startTunnel() {
 
   const sshBin = findSsh();
   if (!sshBin) {
-    log("no python/paramiko and no ssh binary — cannot open tunnel");
     return null;
   }
 
@@ -245,6 +268,101 @@ function startTunnel() {
   });
   attachTunnelHandlers(tunnelProc, "ssh");
   return tunnelProc;
+}
+
+/** Pure-JS fallback when the container has no openssh/paramiko. */
+async function startSsh2Tunnel() {
+  if (tunnelAlive() && ssh2Server?.listening) return true;
+  try {
+    const { Client } = await import("ssh2");
+    const net = await import("node:net");
+    const privateKey = fs.readFileSync(KEY_PATH);
+
+    await new Promise((resolve, reject) => {
+      const conn = new Client();
+      const fail = (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastTunnelError = classifyTunnelError(msg);
+        log(`ssh2 error: ${msg}`);
+        try {
+          conn.end();
+        } catch {
+          /* ignore */
+        }
+        ssh2Client = null;
+        reject(err instanceof Error ? err : new Error(msg));
+      };
+
+      conn.on("ready", () => {
+        log("ssh2 connected — binding local forward");
+        const server = net.createServer((socket) => {
+          conn.forwardOut(
+            "127.0.0.1",
+            0,
+            "127.0.0.1",
+            8188,
+            (err, stream) => {
+              if (err || !stream) {
+                socket.destroy();
+                return;
+              }
+              socket.pipe(stream);
+              stream.pipe(socket);
+            },
+          );
+        });
+        server.on("error", fail);
+        server.listen(Number(LOCAL_PORT), "127.0.0.1", () => {
+          ssh2Client = conn;
+          ssh2Server = server;
+          log(`ssh2 tunnel listening on 127.0.0.1:${LOCAL_PORT}`);
+          resolve(undefined);
+        });
+      });
+      conn.on("error", fail);
+      conn.on("close", () => {
+        log("ssh2 connection closed");
+        try {
+          ssh2Server?.close();
+        } catch {
+          /* ignore */
+        }
+        ssh2Client = null;
+        ssh2Server = null;
+        writeTunnelStatus({
+          ok: false,
+          reason: "tunnel_exit",
+          error: lastTunnelError || "ssh2 closed",
+        });
+      });
+      conn.connect({
+        host: HOST,
+        port: Number(SSH_PORT) || 22,
+        username: SSH_USER,
+        privateKey,
+        readyTimeout: 40_000,
+        keepaliveInterval: 15_000,
+      });
+    });
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    lastTunnelError = classifyTunnelError(msg);
+    writeTunnelStatus({
+      ok: false,
+      reason: "ssh2_error",
+      error: lastTunnelError,
+    });
+    return false;
+  }
+}
+
+async function startTunnel() {
+  if (tunnelAlive()) return true;
+  const child = startChildTunnel();
+  if (child) return true;
+  log("no python/paramiko/openssh — trying ssh2 (Node) tunnel…");
+  return startSsh2Tunnel();
 }
 
 function sshBaseArgs(sshBin) {
@@ -361,24 +479,24 @@ export async function ensureComfyTunnel() {
   }
 
   log(`starting tunnel -> ${HOST}:${SSH_PORT} (local :${LOCAL_PORT})`);
-  const proc = startTunnel();
-  if (!proc) {
+  const okStart = await startTunnel();
+  if (!okStart) {
     writeTunnelStatus({
       ok: false,
       reason: "no_tunnel_backend",
-      error: "нет ssh/paramiko для туннеля",
+      error: "нет ssh/paramiko/ssh2 для туннеля",
     });
     return { ok: false, reason: "no_tunnel_backend" };
   }
 
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     if (await pingComfy()) {
       log("COMFY_OK");
       writeTunnelStatus({ ok: true, reason: "tunnel", error: "" });
       return { ok: true, reason: "tunnel" };
     }
-    if (!tunnelProc || tunnelProc.killed || tunnelProc.exitCode != null) {
+    if (!tunnelAlive()) {
       log("tunnel process died early — abort wait");
       break;
     }

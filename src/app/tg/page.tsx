@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { orderFeedMixed, orderFeedNewest } from "@/lib/tg/feed-order";
 import { injectVerticalBanners, type BannerDto } from "@/lib/tg/banners";
-import { TgFeedBannerCard } from "@/lib/tg/miniapp/banners-ui";
+import {
+  TgFeedBannerCard,
+  filterVerticalBannersDue,
+  markVerticalBannersShown,
+} from "@/lib/tg/miniapp/banners-ui";
 
 type VideoTpl = {
   id: string;
@@ -229,7 +233,13 @@ export default function TgFeedPage() {
       return;
     }
     const ordered = newest ? orderFeedNewest(pool) : orderFeedMixed(pool);
-    setItems(injectVerticalBanners(ordered, vBanners));
+    const due = filterVerticalBannersDue(vBanners);
+    const mixed = injectVerticalBanners(ordered, due);
+    setItems(mixed);
+    const shown = mixed
+      .filter((row): row is Extract<FeedRow, { kind: "banner" }> => row.kind === "banner")
+      .map((row) => row.id);
+    if (shown.length) markVerticalBannersShown(shown);
   }, [pool, newest, vBanners]);
 
   useEffect(() => {

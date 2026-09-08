@@ -4,6 +4,51 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BannerDto } from "@/lib/tg/banners";
 
+const VBANNER_SEEN_KEY = "pb_vbanner_seen_v1";
+const VBANNER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function readSeenMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(VBANNER_SEEN_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSeenMap(map: Record<string, number>) {
+  try {
+    localStorage.setItem(VBANNER_SEEN_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+/** Vertical banners not shown to this device in the last 24h (per banner id). */
+export function filterVerticalBannersDue(banners: BannerDto[]): BannerDto[] {
+  if (typeof window === "undefined") return banners;
+  const map = readSeenMap();
+  const now = Date.now();
+  return banners.filter((b) => {
+    const at = map[b.id];
+    return !at || now - at >= VBANNER_COOLDOWN_MS;
+  });
+}
+
+export function markVerticalBannersShown(bannerIds: string[]) {
+  if (typeof window === "undefined" || !bannerIds.length) return;
+  const map = readSeenMap();
+  const now = Date.now();
+  for (const id of bannerIds) {
+    const clean = id.replace(/^banner-/, "");
+    map[clean] = now;
+    map[id] = now;
+  }
+  writeSeenMap(map);
+}
+
 function openHref(href: string, router: ReturnType<typeof useRouter>) {
   const raw = (href || "").trim();
   if (!raw) return;
@@ -73,7 +118,9 @@ export function TgBannerCarousel({
   );
 }
 
-export function useHorizontalBanners(apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+export function useHorizontalBanners(
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+) {
   const [banners, setBanners] = useState<BannerDto[]>([]);
   useEffect(() => {
     let cancelled = false;

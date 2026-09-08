@@ -8,6 +8,7 @@ import {
   TgBannerCarousel,
   useHorizontalBanners,
 } from "@/lib/tg/miniapp/banners-ui";
+import { TgCostBalanceBar } from "@/lib/tg/miniapp/cost-balance-bar";
 
 type PhotoTpl = {
   id: string;
@@ -34,6 +35,8 @@ const UI = {
     emptyChar: "Нет обученных моделей — создай свою",
     create: "🚀 Создать модель",
     err: "Ошибка",
+    topup: "Пополнить баланс",
+    needPeaches: "Недостаточно персиков",
   },
   en: {
     title: "Make photo",
@@ -50,6 +53,8 @@ const UI = {
     emptyChar: "No trained models — create yours",
     create: "🚀 Create model",
     err: "Error",
+    topup: "Top up balance",
+    needPeaches: "Not enough peaches",
   },
 } as const;
 
@@ -59,7 +64,7 @@ function PhotoPageInner() {
   const presetTpl = params.get("templateId") || "";
   const presetCharacterId = params.get("characterId") || params.get("castId") || "";
 
-  const { status, error, profile, locale, apiFetch, refresh } =
+  const { status, error, profile, locale, apiFetch, refresh, sendAction } =
     useTgMiniApp();
   const u = UI[locale];
   const banners = useHorizontalBanners(apiFetch);
@@ -112,9 +117,7 @@ function PhotoPageInner() {
       };
       if (j.error === "insufficient_balance") {
         setErr(
-          locale === "en"
-            ? `Not enough peaches (need ${j.need}, have ${j.balance})`
-            : `Недостаточно персиков (нужно ${j.need}, есть ${j.balance})`,
+          `${u.needPeaches} (${j.need ?? selected?.pricePeaches} / ${j.balance ?? profile?.balancePeaches ?? 0})`,
         );
       } else {
         setErr(j.error || u.err);
@@ -122,6 +125,14 @@ function PhotoPageInner() {
       return;
     }
     void refresh();
+    try {
+      sessionStorage.setItem(
+        "tg_just_generated",
+        JSON.stringify({ at: Date.now(), kind: "photo" }),
+      );
+    } catch {
+      /* ignore */
+    }
     router.push("/tg/gallery");
   };
 
@@ -225,13 +236,33 @@ function PhotoPageInner() {
               {u.back}
             </button>
             <p className="tg-section-hint" style={{ marginTop: "0.55rem" }}>
-              {selected.title} · {selected.pricePeaches} 🍑
+              {selected.title}
             </p>
+            <TgCostBalanceBar
+              cost={selected.pricePeaches}
+              balance={profile?.balancePeaches ?? 0}
+              locale={locale}
+              onTopup={() => sendAction({ action: "topup" })}
+            />
             <h2 style={{ fontSize: "1rem", margin: "0.75rem 0 0.35rem" }}>
               {u.pickChar}
             </h2>
           </div>
-          {err && <p className="tg-error">{err}</p>}
+          {err && (
+            <div style={{ padding: "0 0.75rem" }}>
+              <p className="tg-error">{err}</p>
+              {(err.includes(u.needPeaches) || /персик|peach/i.test(err)) && (
+                <button
+                  type="button"
+                  className="tg-primary-btn"
+                  style={{ width: "100%", marginTop: "0.35rem" }}
+                  onClick={() => sendAction({ action: "topup" })}
+                >
+                  {u.topup}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="tg-section">
             <p className="tg-muted tg-section-hint">{u.showcase}</p>

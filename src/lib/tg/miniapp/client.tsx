@@ -48,10 +48,35 @@ export type TgMiniAppProfile = {
 
 /** Filled from /api/tg/me so TgShell footer picks up Railway TG_SUPPORT_CONTACT. */
 let cachedSupportUrl = "https://t.me/peachbitch_support";
+let cachedBalancePeaches = 0;
+let cachedTopupHandler: (() => void) | null = null;
+const shellListeners = new Set<() => void>();
 
 function rememberSupportUrl(url?: string) {
   const next = url?.trim();
   if (next) cachedSupportUrl = next;
+}
+
+function rememberShellWallet(balance?: number, topup?: () => void) {
+  if (typeof balance === "number") cachedBalancePeaches = balance;
+  if (topup) cachedTopupHandler = topup;
+  shellListeners.forEach((fn) => fn());
+}
+
+function useShellWallet() {
+  const [bal, setBal] = useState(cachedBalancePeaches);
+  useEffect(() => {
+    const sync = () => setBal(cachedBalancePeaches);
+    shellListeners.add(sync);
+    sync();
+    return () => {
+      shellListeners.delete(sync);
+    };
+  }, []);
+  return {
+    balance: bal,
+    topup: () => cachedTopupHandler?.(),
+  };
 }
 
 const UI = {
@@ -71,6 +96,7 @@ const UI = {
     legalRules: "Политика, правила, оферта",
     legalSupport: "Поддержка",
     guide: "Инструкция, как пользоваться",
+    topupLink: "Пополнить",
   },
   en: {
     openInTg: "Open from Telegram Mini App",
@@ -88,6 +114,7 @@ const UI = {
     legalRules: "Policy, rules & offer",
     legalSupport: "Support",
     guide: "How to use",
+    topupLink: "Top up",
   },
 } as const;
 
@@ -176,6 +203,7 @@ export function useTgMiniApp() {
     }
     const data = (await res.json()) as TgMiniAppProfile;
     rememberSupportUrl(data.supportUrl);
+    rememberShellWallet(data.balancePeaches);
     setProfile(data);
     if (data.locale === "en" || data.locale === "ru") setLocale(data.locale);
     return data;
@@ -257,6 +285,12 @@ export function useTgMiniApp() {
     window.Telegram?.WebApp?.sendData(JSON.stringify(payload));
     window.Telegram?.WebApp?.close();
   }, []);
+
+  useEffect(() => {
+    rememberShellWallet(profile?.balancePeaches, () =>
+      sendAction({ action: "topup" }),
+    );
+  }, [profile?.balancePeaches, sendAction]);
 
   const trackEvent = useCallback(
     (eventKey: string, meta?: Record<string, unknown>) => {
@@ -456,6 +490,8 @@ export function TgShell({
   error?: unknown;
 }) {
   const u = UI[locale];
+  const { balance: bal, topup } = useShellWallet();
+
   return (
     <div className="tg-shell">
       <TgScreenTracker />
@@ -464,13 +500,30 @@ export function TgShell({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/tg/peach-logo.png" alt="Peach Bitch" className="tg-logo" />
         </Link>
-        <Link
-          href="/tg/guide"
-          className="tg-header-guide"
-          onClick={() => trackMiniAppClient("miniapp.action", { action: "open_guide" })}
-        >
-          {u.guide}
-        </Link>
+        <div className="tg-header-actions">
+          <div className="tg-header-balance-row">
+            <span className="tg-header-balance">🍑 {bal}</span>
+            <button
+              type="button"
+              className="tg-header-topup"
+              onClick={() => {
+                trackMiniAppClient("miniapp.action", { action: "header_topup" });
+                topup();
+              }}
+            >
+              {u.topupLink}
+            </button>
+          </div>
+          <Link
+            href="/tg/guide"
+            className="tg-header-guide"
+            onClick={() =>
+              trackMiniAppClient("miniapp.action", { action: "open_guide" })
+            }
+          >
+            {u.guide}
+          </Link>
+        </div>
       </header>
       {children}
       <TgLegalFooter locale={locale} />

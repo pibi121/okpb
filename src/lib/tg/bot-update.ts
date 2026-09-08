@@ -65,6 +65,7 @@ import {
   toggleLookbookBodyPrompt,
 } from "@/lib/tg/lookbook-bot";
 import { mainMenuExtra, sendMainMenuHub } from "@/lib/tg/menu";
+import { recordInboundUserMessage } from "@/lib/ops/inbox";
 import { getTemplatePreviewUrl } from "@/lib/tg/template-preview";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
@@ -376,7 +377,7 @@ async function loadTemplateMeta(
               lang: "en",
               text: "",
               label: localeSafeSpeechLabel("her"),
-              maxChars: 40,
+              maxChars: 80,
             },
           ]
         : [],
@@ -458,7 +459,6 @@ async function promptSpeechSlot(
   const fills = pending.speechFills || [];
   const fill = fills.find((f) => f.id === slot.id);
   const text = (fill?.text ?? slot.text) || "—";
-  const lang = fill?.lang || slot.lang || "en";
   await setTgSession(platformUserId, {
     chatState: "awaiting_speech",
     pending: { ...pending, speechSlotIndex: idx },
@@ -469,7 +469,6 @@ async function promptSpeechSlot(
       n: String(idx + 1),
       total: String(slots.length),
       label: slot.label || slot.id,
-      lang,
       text,
     }),
     speechEditKeyboard(locale, slots.length > 1),
@@ -550,20 +549,28 @@ async function showTemplateConfirm(
       locale,
       character: null,
     });
+    const balance = await getBalancePeaches(userId);
     const caption = tFormat(
       requiresLora ? "gen_confirm_video_best" : "gen_confirm_video_pose",
       locale,
       {
         title,
         price: pricing.label,
+        balance: String(balance),
       },
     );
+    const rows: Array<Array<{ text: string; callback_data: string }>> = [
+      [{ text: t("gen_confirm_btn", locale), callback_data: GEN_CB.confirm }],
+    ];
+    if (balance < pricing.price) {
+      rows.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
+    }
+    rows.push([
+      { text: t("gen_other_poses_btn", locale), callback_data: GEN_CB.backTemplates },
+    ]);
     const markup = {
       reply_markup: {
-        inline_keyboard: [
-          [{ text: t("gen_confirm_btn", locale), callback_data: GEN_CB.confirm }],
-          [{ text: t("gen_other_poses_btn", locale), callback_data: GEN_CB.backTemplates }],
-        ],
+        inline_keyboard: rows,
       },
     };
     const previewUrl = await getTemplatePreviewUrl(userId, kind, templateId);
@@ -582,7 +589,7 @@ async function showTemplateConfirm(
         speechFills: slots.map((s) => ({
           id: s.id,
           text: s.text,
-          lang: s.lang,
+          lang: "ru",
         })),
         speechSlotIndex: 0,
         pricePeaches: pricing.price,
@@ -623,14 +630,19 @@ async function showTemplateConfirm(
     character?.name ||
     (locale === "en" ? "Model" : "Модель");
 
+  const balance = await getBalancePeaches(userId);
   const caption = tFormat("gen_confirm_pose", locale, {
     title,
     price: pricing.label,
     name,
+    balance: String(balance),
   });
 
   const castPage = 0;
   const { keyboard } = photoCastPickerKeyboard(casts, selectedId, castPage, locale);
+  if (balance < pricing.price) {
+    keyboard.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
+  }
   const markup = { reply_markup: { inline_keyboard: keyboard } };
 
   const previewUrl = await getTemplatePreviewUrl(userId, "photo", templateId);
@@ -699,10 +711,12 @@ async function refreshPhotoConfirmMessage(
     character?.name ||
     (locale === "en" ? "Model" : "Модель");
 
+  const balance = await getBalancePeaches(userId);
   const caption = tFormat("gen_confirm_pose", locale, {
     title: pending.title || "",
     price: pricing.label,
     name,
+    balance: String(balance),
   });
 
   const castPage = pending.castPage || 0;
@@ -712,6 +726,9 @@ async function refreshPhotoConfirmMessage(
     castPage,
     locale,
   );
+  if (balance < pricing.price) {
+    keyboard.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
+  }
   const markup = { reply_markup: { inline_keyboard: keyboard } };
   const mid = messageId ?? pending.confirmMessageId;
 
@@ -1177,7 +1194,7 @@ async function handleGenerationCallback(
               lang: "en",
               text: "",
               label: locale === "en" ? "Speech" : "Речь",
-              maxChars: 40,
+              maxChars: 80,
             },
           ];
       const speechPending: TgPending = {
@@ -1186,7 +1203,7 @@ async function handleGenerationCallback(
         speechFills:
           pending.speechFills?.length === slots.length
             ? pending.speechFills
-            : slots.map((s) => ({ id: s.id, text: s.text, lang: s.lang })),
+            : slots.map((s) => ({ id: s.id, text: s.text, lang: "ru" })),
         speechSlotIndex: 0,
       };
       await promptSpeechSlot(chatId, platformUserId, locale, speechPending);
@@ -1426,6 +1443,9 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   const platformUserId = String(chatId);
   let user = await findOrCreateTelegramUserFromBot(cq.from);
   let locale = localeFromUser(user.locale);
+  void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
+    touchTgActivity(user.id),
+  );
   const session = await getTgSession(platformUserId);
   const pending = parsePending(session?.pendingJson || "{}");
 
@@ -1566,6 +1586,9 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 
   let user = await findOrCreateTelegramUserFromBot(from);
   let locale = localeFromUser(user.locale);
+  void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
+    touchTgActivity(user.id),
+  );
 
   if (isTgDevResetMessage(text)) {
     await resetTgOnboarding(platformUserId, user.id);
@@ -1737,7 +1760,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       const fills = slots.map((s) => ({
         id: s.id,
         text: s.text,
-        lang: s.lang,
+        lang: "ru",
       }));
       await finishSpeechAndContinue(
         chatId,
@@ -1763,7 +1786,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       }
       const fills = [...(pending.speechFills || [])];
       if (!fills.find((f) => f.id === slot.id)) {
-        fills.push({ id: slot.id, text: slot.text, lang: slot.lang });
+        fills.push({ id: slot.id, text: slot.text, lang: "ru" });
       }
       const nextIdx = idx + 1;
       if (nextIdx >= slots.length) {
@@ -1788,38 +1811,20 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       return;
     }
 
-    const langMatch = text.match(/^\/lang\s+([a-z]{2})\s*$/i);
-    if (langMatch && slot) {
-      const lang = langMatch[1]!.toLowerCase();
-      const fills = [...(pending.speechFills || [])];
-      const i = fills.findIndex((f) => f.id === slot.id);
-      const nextFill = {
-        id: slot.id,
-        text: i >= 0 ? fills[i]!.text : slot.text,
-        lang,
-      };
-      if (i >= 0) fills[i] = nextFill;
-      else fills.push(nextFill);
-      await promptSpeechSlot(chatId, platformUserId, locale, {
-        ...pending,
-        speechFills: fills,
-        speechSlotIndex: idx,
-      });
-      return;
-    }
-
     if (!slot) {
       await tgSendMessage(chatId, t("speech_prompt", locale));
       return;
     }
 
-    const line = text.slice(0, slot.maxChars || 120);
+    const max = slot.maxChars || 120;
+    const { clipSpeechText } = await import("@/lib/speech-slots");
+    const clipped = clipSpeechText(text, max);
     const fills = [...(pending.speechFills || [])];
     const i = fills.findIndex((f) => f.id === slot.id);
     const nextFill = {
       id: slot.id,
-      text: line,
-      lang: fills[i]?.lang || slot.lang || "en",
+      text: clipped,
+      lang: "ru",
     };
     if (i >= 0) fills[i] = nextFill;
     else fills.push(nextFill);
@@ -1834,7 +1839,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         {
           ...pending,
           speechFills: fills,
-          speechLine: fills[0]?.text || line,
+          speechLine: fills[0]?.text || clipped,
         },
       );
       return;
@@ -1849,6 +1854,18 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 
   if (chatState === "awaiting_photos") {
     await tgSendMessage(chatId, t("upload_photos", locale));
+    return;
+  }
+
+  // Free-text outside structured flows → ops inbox (feedback / questions).
+  if (text) {
+    await recordInboundUserMessage({
+      userId: user.id,
+      platformUserId,
+      text,
+      meta: { chatState },
+    });
+    await tgSendMessage(chatId, t("inbox_ack", locale), mainMenuExtra(locale));
     return;
   }
 

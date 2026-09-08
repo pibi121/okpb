@@ -138,9 +138,11 @@
 }
 
 .tg-header-guide {
-  flex: 0 1 auto;
-  max-width: 58%;
-  text-align: right;
+  display: block;
+  width: 100%;
+  max-width: none;
+  text-align: center;
+  box-sizing: border-box;
   font-size: 0.72rem;
   font-weight: 650;
   line-height: 1.25;
@@ -156,6 +158,48 @@
 
 .tg-header-guide:active {
   background: color-mix(in srgb, var(--tg-apricot) 22%, transparent);
+}
+
+.tg-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.28rem;
+  max-width: 58%;
+  min-width: 0;
+}
+
+.tg-header-balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0 0.35rem;
+  box-sizing: border-box;
+}
+
+.tg-header-balance {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--tg-peach);
+  white-space: nowrap;
+}
+
+.tg-header-topup {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background-image: var(--tg-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  white-space: nowrap;
 }
 
 .tg-brand {
@@ -198,6 +242,72 @@
   color: var(--tg-peach);
   white-space: nowrap;
   font-weight: 600;
+}
+
+.tg-soft-cta {
+  margin: 0.65rem 0.75rem 0.85rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  border: 1px solid var(--tg-hairline-strong);
+  background: rgba(255, 202, 176, 0.07);
+}
+
+.tg-soft-cta-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--tg-peach);
+}
+
+.tg-soft-cta-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.tg-cost-bar--short {
+  border-color: color-mix(in srgb, #ff6b6b 45%, var(--tg-hairline-strong));
+  background: rgba(255, 80, 80, 0.08);
+}
+
+.tg-cost-bar-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  color: var(--tg-muted, #a1a1aa);
+}
+
+.tg-cost-bar-row + .tg-cost-bar-row {
+  margin-top: 0.35rem;
+}
+
+.tg-cost-bar-row strong {
+  color: var(--tg-peach);
+  font-weight: 700;
+}
+
+.tg-cost-bar-warn {
+  color: #ff8f8f !important;
+}
+
+.tg-speech-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--tg-hairline);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.tg-speech-toggle input {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--tg-peach);
 }
 
 .tg-lang {

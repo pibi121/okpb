@@ -24,6 +24,10 @@ const UI = {
     photo: "Фото",
     video: "Видео",
     pending: "Генерация…",
+    again: "Снять ещё",
+    againHint: "Готово! Можно сразу сделать следующую генерацию.",
+    lowBal: "Персиков мало — пополни, чтобы не останавливаться.",
+    topup: "Пополнить баланс",
   },
   en: {
     title: "🖼 Gallery",
@@ -33,6 +37,10 @@ const UI = {
     photo: "Photo",
     video: "Video",
     pending: "Generating…",
+    again: "Make another",
+    againHint: "Done! Ready for the next generation.",
+    lowBal: "Low on peaches — top up to keep going.",
+    topup: "Top up balance",
   },
 } as const;
 
@@ -101,13 +109,14 @@ function GalleryTile({
 
 export default function TgGalleryPage() {
   const router = useRouter();
-  const { status, error, profile, locale, apiFetch, refresh } = useTgMiniApp();
+  const { status, error, profile, locale, apiFetch, sendAction } = useTgMiniApp();
   const u = UI[locale];
   const banners = useHorizontalBanners(apiFetch);
 
   const [items, setItems] = useState<TgGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer] = useState<TgGalleryItem | null>(null);
+  const [justGen, setJustGen] = useState(false);
 
   const load = useCallback(async () => {
     const res = await apiFetch("/api/tg/gallery");
@@ -123,6 +132,20 @@ export default function TgGalleryPage() {
   }, [status, load]);
 
   useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("tg_just_generated");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { at?: number };
+      if (parsed.at && Date.now() - parsed.at < 10 * 60 * 1000) {
+        setJustGen(true);
+      }
+      sessionStorage.removeItem("tg_just_generated");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
     if (status !== "ready") return;
     const hasPending = items.some((i) => i.status === "pending");
     if (!hasPending) return;
@@ -132,6 +155,9 @@ export default function TgGalleryPage() {
 
   if (status === "loading") return <p className="tg-loading">…</p>;
   if (status === "error") return <p className="tg-error">{error}</p>;
+
+  const bal = profile?.balancePeaches ?? 0;
+  const lowBal = bal < 80;
 
   if (viewer) {
     const url =
@@ -169,6 +195,42 @@ export default function TgGalleryPage() {
   return (
     <TgShell locale={locale}>
       <TgBannerCarousel banners={banners} />
+      {justGen ? (
+        <div className="tg-soft-cta">
+          <p className="tg-soft-cta-title">{u.againHint}</p>
+          <div className="tg-soft-cta-row">
+            <button
+              type="button"
+              className="tg-primary-btn"
+              onClick={() => router.push("/tg/photo")}
+            >
+              📸 {u.photo}
+            </button>
+            <button
+              type="button"
+              className="tg-primary-btn"
+              onClick={() => router.push("/tg/video")}
+            >
+              🎬 {u.video}
+            </button>
+          </div>
+          {lowBal ? (
+            <>
+              <p className="tg-muted" style={{ marginTop: "0.55rem", fontSize: "0.85rem" }}>
+                {u.lowBal}
+              </p>
+              <button
+                type="button"
+                className="tg-lang"
+                style={{ marginTop: "0.35rem" }}
+                onClick={() => sendAction({ action: "topup" })}
+              >
+                {u.topup}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {loading && <p className="tg-muted">…</p>}
 
       {!loading && items.length === 0 && (

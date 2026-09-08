@@ -8,6 +8,11 @@ import {
   TgBannerCarousel,
   useHorizontalBanners,
 } from "@/lib/tg/miniapp/banners-ui";
+import { TgCostBalanceBar } from "@/lib/tg/miniapp/cost-balance-bar";
+import {
+  clipSpeechText,
+  countSpeechSignificantChars,
+} from "@/lib/speech-slots";
 
 type SpeechSlotDto = {
   id: string;
@@ -25,6 +30,7 @@ type VideoTpl = {
   pricePeaches: number;
   previewVideoUrl: string;
   previewPhotoUrl: string;
+  durationSec?: number;
   templateKind?: "quick_video" | "lora_i2v";
   requiresLora?: boolean;
   hasSpeech?: boolean;
@@ -32,8 +38,6 @@ type VideoTpl = {
 };
 
 type LoraChar = { id: string; name: string; loraStatus?: string };
-
-const LANGS = ["en", "ru", "es", "de", "fr", "pt"] as const;
 
 const UI = {
   ru: {
@@ -51,14 +55,17 @@ const UI = {
     trainCta: "Создать модель →",
     openCasts: "Актрисы студии",
     speech: "3. Речь в видео",
-    speechHint: "Можно оставить как в превью или поменять текст и язык.",
-    keepDefaults: "Как в превью",
+    speechHint: "По умолчанию — как в превью. Сними галочку, чтобы заменить фразы.",
+    keepSpeech: "Хочу речь, как в превью",
+    customSpeech: "Свои фразы (можно править)",
     generate: "Снять видео",
     choose: "Выбрать",
     back: "← К позам",
     needPhoto: "Нужно минимум 1 фото",
     starting: "Запускаю…",
     line: "Реплика",
+    topup: "Пополнить баланс",
+    needPeaches: "Недостаточно персиков",
   },
   en: {
     title: "Make video",
@@ -75,14 +82,17 @@ const UI = {
     trainCta: "Create model →",
     openCasts: "Studio actresses",
     speech: "3. Dialogue",
-    speechHint: "Keep preview lines or edit text and language.",
-    keepDefaults: "Use preview lines",
+    speechHint: "Default: same as preview. Untick to replace lines.",
+    keepSpeech: "Keep speech as in preview",
+    customSpeech: "Custom lines (edit below)",
     generate: "Shoot video",
     choose: "Choose",
     back: "← Poses",
     needPhoto: "Need at least 1 photo",
     starting: "Starting…",
     line: "Line",
+    topup: "Top up balance",
+    needPeaches: "Not enough peaches",
   },
 } as const;
 
@@ -97,7 +107,8 @@ function VideoPageInner() {
   const presetId = params.get("templateId") || "";
   const presetCharacterId = params.get("characterId") || "";
 
-  const { status, error, locale, apiFetch, refresh } = useTgMiniApp();
+  const { status, error, locale, apiFetch, refresh, profile, sendAction } =
+    useTgMiniApp();
   const u = UI[locale];
   const banners = useHorizontalBanners(apiFetch);
 
@@ -112,6 +123,7 @@ function VideoPageInner() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [usePreviewSpeech, setUsePreviewSpeech] = useState(true);
   const [speechFills, setSpeechFills] = useState<
     Record<string, { text: string; lang: string }>
   >({});
@@ -179,9 +191,10 @@ function VideoPageInner() {
     if (!tpl) return;
     const next: Record<string, { text: string; lang: string }> = {};
     for (const s of tpl.speechSlots || []) {
-      next[s.id] = { text: s.text, lang: s.lang || "en" };
+      next[s.id] = { text: s.text, lang: "ru" };
     }
     setSpeechFills(next);
+    setUsePreviewSpeech(true);
   }, [tpl?.id]);
 
   useEffect(() => {
@@ -237,7 +250,7 @@ function VideoPageInner() {
   const resetSpeechDefaults = () => {
     const next: Record<string, { text: string; lang: string }> = {};
     for (const s of speechSlots) {
-      next[s.id] = { text: s.text, lang: s.lang || "en" };
+      next[s.id] = { text: s.text, lang: "ru" };
     }
     setSpeechFills(next);
   };
@@ -253,11 +266,17 @@ function VideoPageInner() {
     }
     setBusy(true);
     setErr("");
-    const fills = speechSlots.map((s) => ({
-      id: s.id,
-      text: (speechFills[s.id]?.text ?? s.text).trim().slice(0, s.maxChars || 40),
-      lang: speechFills[s.id]?.lang || s.lang || "en",
-    }));
+    const fills = speechSlots.map((s) => {
+      const max = s.maxChars || deriveSpeechMaxChars(s.text);
+      const raw = usePreviewSpeech
+        ? s.text
+        : speechFills[s.id]?.text ?? s.text;
+      return {
+        id: s.id,
+        text: raw.trim(), // server clips by significant chars
+        lang: "ru",
+      };
+    });
     const res = await apiFetch("/api/tg/generate/video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -279,9 +298,7 @@ function VideoPageInner() {
       };
       if (j.error === "insufficient_balance") {
         setErr(
-          locale === "en"
-            ? `Not enough peaches (need ${j.need}, have ${j.balance})`
-            : `Недостаточно персиков (нужно ${j.need}, есть ${j.balance})`,
+          `${u.needPeaches} (${j.need ?? tpl?.pricePeaches} / ${j.balance ?? profile?.balancePeaches ?? 0})`,
         );
       } else if (j.error === "need_lora_ready") {
         setErr(j.message || u.needLora);
@@ -291,6 +308,14 @@ function VideoPageInner() {
       return;
     }
     void refresh();
+    try {
+      sessionStorage.setItem(
+        "tg_just_generated",
+        JSON.stringify({ at: Date.now(), kind: "video" }),
+      );
+    } catch {
+      /* ignore */
+    }
     router.push("/tg/gallery");
   };
 
@@ -355,7 +380,6 @@ function VideoPageInner() {
           </button>
           <div style={{ marginTop: "0.75rem" }}>
             <strong>{tpl.title}</strong>
-            <span className="tg-muted"> · {tpl.pricePeaches} 🍑</span>
             {tpl.previewVideoUrl && (
               <TgCatalogVideo
                 src={tpl.previewVideoUrl}
@@ -371,6 +395,13 @@ function VideoPageInner() {
               />
             )}
           </div>
+
+          <TgCostBalanceBar
+            cost={tpl.pricePeaches}
+            balance={profile?.balancePeaches ?? 0}
+            locale={locale}
+            onTopup={() => sendAction({ action: "topup" })}
+          />
 
           {isLoraI2v ? (
             <>
@@ -489,97 +520,94 @@ function VideoPageInner() {
               <p className="tg-muted" style={{ margin: "0 0 0.75rem", fontSize: "0.85rem" }}>
                 {u.speechHint}
               </p>
-              <button
-                type="button"
-                className="tg-lang"
-                style={{ marginBottom: "0.75rem" }}
-                onClick={resetSpeechDefaults}
-              >
-                {u.keepDefaults}
-              </button>
-              {speechSlots.map((s, i) => (
-                <div
-                  key={s.id}
-                  style={{
-                    marginBottom: "0.85rem",
-                    padding: "0.75rem",
-                    borderRadius: 12,
-                    background: "rgba(255,255,255,0.04)",
+              <label className="tg-speech-toggle">
+                <span>{u.keepSpeech}</span>
+                <input
+                  type="checkbox"
+                  checked={usePreviewSpeech}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setUsePreviewSpeech(on);
+                    if (on) resetSpeechDefaults();
                   }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "0.5rem",
-                      marginBottom: "0.4rem",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    <strong>
-                      {s.label || `${u.line} ${i + 1}`}
-                    </strong>
-                    <select
-                      value={speechFills[s.id]?.lang || s.lang || "en"}
-                      onChange={(e) =>
-                        setSpeechFills((prev) => ({
-                          ...prev,
-                          [s.id]: {
-                            text: prev[s.id]?.text ?? s.text,
-                            lang: e.target.value,
-                          },
-                        }))
-                      }
-                      style={{
-                        borderRadius: 8,
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        background: "transparent",
-                        color: "inherit",
-                        padding: "0.15rem 0.35rem",
-                      }}
-                    >
-                      {LANGS.map((lang) => (
-                        <option key={lang} value={lang}>
-                          {lang.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <textarea
-                    value={speechFills[s.id]?.text ?? s.text}
-                    maxLength={s.maxChars || 120}
-                    rows={2}
-                    onChange={(e) =>
-                      setSpeechFills((prev) => ({
-                        ...prev,
-                        [s.id]: {
-                          text: e.target.value,
-                          lang: prev[s.id]?.lang || s.lang || "en",
-                        },
-                      }))
-                    }
-                    style={{
-                      width: "100%",
-                      borderRadius: 10,
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      background: "rgba(0,0,0,0.2)",
-                      color: "inherit",
-                      padding: "0.55rem 0.65rem",
-                      resize: "vertical",
-                      font: "inherit",
-                    }}
-                  />
-                  <small className="tg-muted">
-                    {(speechFills[s.id]?.text ?? s.text).length}/{s.maxChars || 120}
-                  </small>
-                </div>
-              ))}
+                />
+              </label>
+              {!usePreviewSpeech && (
+                <>
+                  <p className="tg-muted" style={{ margin: "0 0 0.55rem", fontSize: "0.8rem" }}>
+                    {u.customSpeech}
+                  </p>
+                  {speechSlots.map((s, i) => {
+                    const max = s.maxChars || countSpeechSignificantChars(s.text) || 1;
+                    const value = speechFills[s.id]?.text ?? s.text;
+                    const used = countSpeechSignificantChars(value);
+                    return (
+                      <div
+                        key={s.id}
+                        style={{
+                          marginBottom: "0.85rem",
+                          padding: "0.75rem",
+                          borderRadius: 12,
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom: "0.4rem",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          <strong>{s.label || `${u.line} ${i + 1}`}</strong>
+                        </div>
+                        <textarea
+                          value={value}
+                          placeholder={s.text || undefined}
+                          rows={2}
+                          onChange={(e) =>
+                            setSpeechFills((prev) => ({
+                              ...prev,
+                              [s.id]: {
+                                text: clipSpeechText(e.target.value, max),
+                                lang: "ru",
+                              },
+                            }))
+                          }
+                          style={{
+                            width: "100%",
+                            borderRadius: 10,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "rgba(0,0,0,0.2)",
+                            color: "inherit",
+                            padding: "0.55rem 0.65rem",
+                            resize: "vertical",
+                            font: "inherit",
+                          }}
+                        />
+                        <small className="tg-muted">
+                          {used}/{max}
+                          {locale === "ru" ? " (без пробелов)" : " (no spaces)"}
+                        </small>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
 
           {err && (
             <div style={{ marginTop: "0.75rem" }}>
               <p className="tg-error">{err}</p>
+              {(err.includes(u.needPeaches) || /персик|peach/i.test(err)) && (
+                <button
+                  type="button"
+                  className="tg-primary-btn"
+                  style={{ width: "100%", marginTop: "0.4rem" }}
+                  onClick={() => sendAction({ action: "topup" })}
+                >
+                  {u.topup}
+                </button>
+              )}
               {(err === u.needLora || /lora/i.test(err)) && (
                 <button
                   type="button"

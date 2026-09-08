@@ -10,6 +10,8 @@ const MS_5M = 5 * 60 * 1000;
 const MS_10M = 10 * 60 * 1000;
 const MS_40M = 40 * 60 * 1000;
 const MS_6H = 6 * 60 * 60 * 1000;
+const MS_3D = 3 * 24 * 60 * 60 * 1000;
+const MS_7D = 7 * 24 * 60 * 60 * 1000;
 
 /** Anchor drip timers at welcome-after-rules. Keeps old welcome_free_push intact. */
 export async function scheduleFunnelDrip(userId: string): Promise<void> {
@@ -134,6 +136,100 @@ type FunnelUser = {
   tgFunnel40mSent: boolean;
   tgFunnel6hSent: boolean;
 };
+
+async function sendIdleWinback(
+  chatId: number,
+  locale: "ru" | "en",
+  kind: "3d" | "7d",
+) {
+  const body = kind === "3d" ? t("idle_3d", locale) : t("idle_7d", locale);
+  await tgSendMessage(chatId, body, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: t("idle_view_templates_btn", locale),
+            web_app: { url: tgMiniAppUrl() },
+          },
+        ],
+        [
+          {
+            text: t("idle_topup_btn", locale),
+            callback_data: "tu:open",
+          },
+        ],
+      ],
+    },
+  });
+}
+
+/** Winback for users idle in bot + Mini App for 3 / 7 days. */
+export async function maybeSendIdleWinbacks(
+  chatId: number,
+  userId: string,
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      ageConfirmed: true,
+      locale: true,
+      createdAt: true,
+      tgLastActiveAt: true,
+      tgLastMiniAppAt: true,
+      tgIdle3dSent: true,
+      tgIdle7dSent: true,
+    },
+  });
+  if (!user?.ageConfirmed) return;
+
+  const locale = user.locale === "en" ? "en" : "ru";
+  const last =
+    user.tgLastActiveAt ||
+    user.tgLastMiniAppAt ||
+    user.createdAt;
+  const idleFor = Date.now() - last.getTime();
+
+  if (!user.tgIdle7dSent && idleFor >= MS_7D) {
+    try {
+      await sendIdleWinback(chatId, locale, "7d");
+    } catch (e) {
+      console.error("[tg-idle] 7d", userId, e);
+      return;
+    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { tgIdle7dSent: true, tgIdle3dSent: true },
+    });
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId: String(chatId),
+      eventKey: "system.drip.idle_7d",
+      surface: "system",
+    });
+    return;
+  }
+
+  if (!user.tgIdle3dSent && idleFor >= MS_3D) {
+    try {
+      await sendIdleWinback(chatId, locale, "3d");
+    } catch (e) {
+      console.error("[tg-idle] 3d", userId, e);
+      return;
+    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { tgIdle3dSent: true },
+    });
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId: String(chatId),
+      eventKey: "system.drip.idle_3d",
+      surface: "system",
+    });
+  }
+}
 
 /** Send due drips for one user (also safe to call on inbound messages). */
 export async function maybeSendFunnelDrips(
@@ -324,6 +420,63 @@ export async function pollTgFunnelDrips(limit = 25): Promise<void> {
         await maybeSendFunnelDrips(chatId, u.id);
       } catch (e) {
         console.error("[tg-funnel-poll]", u.id, e);
+      }
+    }
+
+    // Idle winbacks 3d / 7d
+    const due3 = new Date(now.getTime() - MS_3D);
+    const idleUsers = await prisma.user.findMany({
+      where: {
+        ageConfirmed: true,
+        OR: [
+          {
+            tgIdle3dSent: false,
+            OR: [
+              { tgLastActiveAt: { lte: due3 } },
+              {
+                tgLastActiveAt: null,
+                tgLastMiniAppAt: { lte: due3 },
+              },
+              {
+                tgLastActiveAt: null,
+                tgLastMiniAppAt: null,
+                createdAt: { lte: due3 },
+              },
+            ],
+          },
+          {
+            tgIdle7dSent: false,
+            OR: [
+              { tgLastActiveAt: { lte: new Date(now.getTime() - MS_7D) } },
+              {
+                tgLastActiveAt: null,
+                tgLastMiniAppAt: { lte: new Date(now.getTime() - MS_7D) },
+              },
+              {
+                tgLastActiveAt: null,
+                tgLastMiniAppAt: null,
+                createdAt: { lte: new Date(now.getTime() - MS_7D) },
+              },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+      take: limit,
+      orderBy: { createdAt: "asc" },
+    });
+    for (const u of idleUsers) {
+      const acc = await prisma.platformAccount.findFirst({
+        where: { userId: u.id, platform: "telegram" },
+        select: { platformUserId: true },
+      });
+      if (!acc) continue;
+      const chatId = Number(acc.platformUserId);
+      if (!Number.isFinite(chatId)) continue;
+      try {
+        await maybeSendIdleWinbacks(chatId, u.id);
+      } catch (e) {
+        console.error("[tg-idle-poll]", u.id, e);
       }
     }
   } finally {

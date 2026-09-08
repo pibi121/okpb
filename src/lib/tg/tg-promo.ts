@@ -25,6 +25,9 @@ export async function recordMiniAppVisit(userId: string): Promise<void> {
     where: { id: userId },
     data: {
       tgLastMiniAppAt: now,
+      tgLastActiveAt: now,
+      tgIdle3dSent: false,
+      tgIdle7dSent: false,
       ...(eligible ? { tgStudioFreeReady: true } : {}),
     },
   });

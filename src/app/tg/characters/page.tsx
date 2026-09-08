@@ -62,6 +62,8 @@ const UI = {
       "Выбери сразу несколько фото из галереи. Удаляй лишние крестиком.",
     uploadedMany: "Загружено {added} · всего {count}/{max}",
     trainPrice: "Подготовка: {price}🍑",
+    trainBalance: "У вас на балансе: {balance}🍑",
+    trainShort: "Не хватает: {need}🍑",
     insufficient: "Недостаточно персиков",
     topup: "Пополнить →",
     favAdd: "В избранное",
@@ -107,6 +109,8 @@ const UI = {
       "Select several photos from the gallery. Remove extras with ✕.",
     uploadedMany: "Uploaded {added} · total {count}/{max}",
     trainPrice: "Setup: {price}🍑",
+    trainBalance: "Your balance: {balance}🍑",
+    trainShort: "Need {need}🍑 more",
     insufficient: "Not enough peaches",
     topup: "Top up →",
     favAdd: "Add to favorites",
@@ -235,7 +239,8 @@ function CharacterCard({
 function TgCharactersPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { status, error, profile, locale, apiFetch, refresh } = useTgMiniApp();
+  const { status, error, profile, locale, apiFetch, refresh, sendAction } =
+    useTgMiniApp();
   const u = UI[locale];
   const [tab, setTab] = useState<CharTab>("showcase");
   const [favBusy, setFavBusy] = useState<string | null>(null);
@@ -812,6 +817,30 @@ function TgCharactersPageInner() {
           <p className="tg-muted tg-section-hint">
             {u.trainPrice.replace("{price}", String(trainPrice))}
           </p>
+          <p className="tg-muted tg-section-hint">
+            {u.trainBalance.replace(
+              "{balance}",
+              String(profile?.balancePeaches ?? 0),
+            )}
+          </p>
+          {(profile?.balancePeaches ?? 0) < trainPrice ? (
+            <>
+              <p className="tg-error" style={{ margin: "0.25rem 0" }}>
+                {u.trainShort.replace(
+                  "{need}",
+                  String(Math.max(0, trainPrice - (profile?.balancePeaches ?? 0))),
+                )}
+              </p>
+              <button
+                type="button"
+                className="tg-primary-btn"
+                style={{ width: "100%", marginBottom: "0.55rem" }}
+                onClick={() => sendAction({ action: "topup" })}
+              >
+                {u.topup}
+              </button>
+            </>
+          ) : null}
           {msg ? <p className="tg-ok">{msg}</p> : null}
           {err ? (
             <p className="tg-error">
@@ -822,7 +851,7 @@ function TgCharactersPageInner() {
                   <button
                     type="button"
                     className="tg-lang"
-                    onClick={() => router.push("/tg/profile")}
+                    onClick={() => sendAction({ action: "topup" })}
                   >
                     {u.topup}
                   </button>

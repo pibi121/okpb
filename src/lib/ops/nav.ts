@@ -8,6 +8,7 @@ export const OPS_NAV: { href: string; section: OpsSection; label: string }[] = [
   { href: "/ops/load", section: "load", label: "Нагрузка" },
   { href: "/ops/queue", section: "queue", label: "Очередь" },
   { href: "/ops/analytics", section: "analytics", label: "Воронка" },
+  { href: "/ops/inbox", section: "inbox", label: "Входящие" },
   { href: "/ops/links", section: "links", label: "Ссылки" },
   { href: "/ops/copy", section: "copy", label: "Тексты бота" },
   { href: "/ops/notices", section: "notices", label: "Уведомления" },

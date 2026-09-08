@@ -42,6 +42,10 @@ model User {
   tgFunnel10mIdleSent Boolean @default(false)
   tgFunnel40mSent Boolean @default(false)
   tgFunnel6hSent Boolean @default(false)
+  /// Last bot or Mini App activity (for idle winback drips)
+  tgLastActiveAt DateTime?
+  tgIdle3dSent Boolean @default(false)
+  tgIdle7dSent Boolean @default(false)
   /// web | telegram
   source       String   @default("web")
   /// owner | support | content | developer | empty = not staff
@@ -85,6 +89,7 @@ model User {
   tgCastFavorites   TgCastFavorite[]
   funnelEvents      FunnelEvent[]
   promoRedemptions  PromoRedemption[]
+  tgMessages        TgUserMessage[]
 
   @@index([trafficLinkId])
   @@index([adminRole])
@@ -1333,4 +1338,26 @@ model MiniAppBanner {
   updatedAt DateTime @updatedAt
 
   @@index([kind, enabled, sortOrder])
+}
+
+/// Free-text / feedback messages from users in the bot (ops inbox).
+model TgUserMessage {
+  id             String    @id @default(cuid())
+  userId         String
+  platformUserId String
+  /// inbound | outbound
+  direction      String
+  text           String
+  /// unread inbound until staff opens / replies
+  readAt         DateTime?
+  replyToId      String?
+  metaJson       String    @default("{}")
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([direction, readAt])
+  @@index([platformUserId, createdAt])
 }

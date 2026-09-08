@@ -188,6 +188,26 @@ PeachBitch это не бот раздеватор, а полноценная И
     en: "Открыть студию",
   },
 
+  idle_3d: {
+    ru: "Вас не было 3 дня. В ленте появились новые шаблоны",
+    en: "You were away for 3 days. New templates are in the feed",
+  },
+
+  idle_7d: {
+    ru: "Вас не было 7 дней. В ленте появились новые шаблоны",
+    en: "You were away for 7 days. New templates are in the feed",
+  },
+
+  idle_view_templates_btn: {
+    ru: "Посмотреть шаблоны",
+    en: "Browse templates",
+  },
+
+  idle_topup_btn: {
+    ru: "Пополнить баланс",
+    en: "Top up balance",
+  },
+
   onboard_pick_studio_btn: {
     ru: "🎭 Выбрать актрису студии",
     en: "🎭 Pick studio actress",
@@ -378,12 +398,14 @@ Find her in "Characters" in the bottom menu — edit body settings, add more cha
     ru: `Выбранная поза: <b>{title}</b>
 
 Стоимость генерации: {price}
+У вас на балансе: <b>{balance}</b>🍑
 
 Модель: <b>{name}</b>
 Выбери актрису ниже и нажми «Сгенерировать».`,
     en: `Selected pose: <b>{title}</b>
 
 Generation cost: {price}
+Your balance: <b>{balance}</b>🍑
 
 Model: <b>{name}</b>
 Pick an actress below, then tap Generate.`,
@@ -392,12 +414,14 @@ Pick an actress below, then tap Generate.`,
   gen_confirm_video_pose: {
     ru: `Выбранная поза: <b>{title}</b>
 
-Стоимость: {price}
+Стоимость генерации: {price}
+У вас на балансе: <b>{balance}</b>🍑
 
 Дальше загрузи фото модели (или выбери сохранённую 🎬) — подготовка модели не нужна.`,
     en: `Selected pose: <b>{title}</b>
 
-Cost: {price}
+Generation cost: {price}
+Your balance: <b>{balance}</b>🍑
 
 Next upload model photos (or pick a saved 🎬) — no model setup needed.`,
   },
@@ -406,13 +430,15 @@ Next upload model photos (or pick a saved 🎬) — no model setup needed.`,
     ru: `✨ <b>Макс. качество</b>
 
 Поза: <b>{title}</b>
-Стоимость: {price}
+Стоимость генерации: {price}
+У вас на балансе: <b>{balance}</b>🍑
 
 Этот формат работает <b>только с обученной моделью</b> (твоя или актриса студии). Обычное фото «с телефона» здесь не подойдёт — лицо держится за счёт подготовки.`,
     en: `✨ <b>Max quality</b>
 
 Pose: <b>{title}</b>
-Cost: {price}
+Generation cost: {price}
+Your balance: <b>{balance}</b>🍑
 
 This format works <b>only with a trained model</b> (yours or a studio actress). A plain phone selfie isn't enough — identity comes from setup.`,
   },
@@ -735,8 +761,13 @@ Not sure how to use the bot? Tap the guide button below!`,
   },
 
   speech_slot_prompt: {
-    ru: "🗣 Реплика {n}/{total} — {label} (язык: {lang})\n\nСейчас: «{text}»\n\nНапиши новый текст или нажми «Оставить».\nЧтобы сменить язык: /lang ru или /lang en",
-    en: "🗣 Line {n}/{total} — {label} (lang: {lang})\n\nCurrent: «{text}»\n\nType a new line or tap Keep.\nChange language: /lang ru or /lang en",
+    ru: "🗣 Реплика {n}/{total} — {label}\n\nСейчас: «{text}»\n\nНапиши новый текст или нажми «Оставить».",
+    en: "🗣 Line {n}/{total} — {label}\n\nCurrent: «{text}»\n\nType a new line or tap Keep.",
+  },
+
+  inbox_ack: {
+    ru: "📩 Сообщение получили. Ответим здесь, когда сможем.\n\nЕсли хотела меню — нажми кнопку внизу.",
+    en: "📩 Got your message. We'll reply here soon.\n\nNeed the menu? Use the buttons below.",
   },
 
   speech_keep: {

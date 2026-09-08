@@ -123,6 +123,13 @@ export async function pingWorkerComfy(comfyUrl: string): Promise<{
 
 export async function heartbeatAllWorkers() {
   await ensurePlaceholderWorkers();
+  try {
+    const { sweepStaleGpuJobs } = await import("@/lib/gpu/worker-admin");
+    const n = await sweepStaleGpuJobs();
+    if (n > 0) console.warn(`[peach] swept ${n} stale gpu job(s)`);
+  } catch (e) {
+    console.error("[peach] stale gpu sweep:", e);
+  }
   const workers = await prisma.gpuWorker.findMany({
     where: { enabled: true },
   });
@@ -139,6 +146,13 @@ export async function heartbeatAllWorkers() {
       : null;
     let status = ping.ok ? (busyJob ? "busy" : "online") : "dead";
     if (ping.ok && (ping.running || 0) > 0 && !busyJob) status = "busy";
+    // Clear dangling currentJobId if ledger row already finished.
+    if (w.currentJobId && !busyJob) {
+      await prisma.gpuWorker.update({
+        where: { id: w.id },
+        data: { currentJobId: null },
+      });
+    }
     let lastError = ping.ok ? "" : ping.detail;
     if (!ping.ok && tunnel?.error && w.key === "metalnode-primary") {
       lastError = tunnel.error;

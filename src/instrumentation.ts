@@ -11,7 +11,7 @@ export async function register() {
       await heartbeatAllWorkers().catch(() => undefined);
       setInterval(() => {
         void heartbeatAllWorkers().catch(() => undefined);
-      }, 30_000);
+      }, 10_000);
     })
     .catch((e) => console.error("[peach] gpu workers boot:", e));
 
@@ -52,10 +52,13 @@ export async function register() {
       // Mark orphaned running GpuJobs after redeploy (process memory gone).
       try {
         const { prisma } = await import("@/lib/db");
-        const stuck = await prisma.gpuJob.updateMany({
+        const { sweepStaleGpuJobs } = await import("@/lib/gpu/worker-admin");
+        const stale = await sweepStaleGpuJobs();
+        // Also catch ledger rows left after redeploy with no live process.
+        const orphans = await prisma.gpuJob.updateMany({
           where: {
             status: { in: ["queued", "assigned", "running"] },
-            updatedAt: { lt: new Date(Date.now() - 45 * 60 * 1000) },
+            updatedAt: { lt: new Date(Date.now() - 12 * 60 * 1000) },
           },
           data: {
             status: "error",
@@ -64,9 +67,15 @@ export async function register() {
             finishedAt: new Date(),
           },
         });
-        if (stuck.count > 0) {
-          console.log(`[peach] gpu jobs: marked ${stuck.count} orphaned`);
+        if (stale > 0 || orphans.count > 0) {
+          console.log(
+            `[peach] gpu jobs: stale=${stale} orphaned=${orphans.count}`,
+          );
         }
+        await prisma.gpuWorker.updateMany({
+          where: { currentJobId: { not: null } },
+          data: { currentJobId: null, status: "online" },
+        });
       } catch (e) {
         console.error("[peach] gpu job orphan sweep:", e);
       }

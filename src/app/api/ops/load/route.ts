@@ -15,6 +15,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       action?: string;
       sloJson?: string;
+      [key: string]: unknown;
     };
     if (body.sloJson !== undefined) {
       try {
@@ -32,15 +33,20 @@ export async function POST(req: Request) {
       return jsonOk({ ok: true, message: "Эталоны сохранены" });
     }
     if (!body.action) return jsonErr("Нужно action");
-    const result = await applyLoadAction(body.action, actor.id);
-    await writeAudit({
-      actorId: actor.id,
-      action: `load_${body.action}`,
-      targetType: "gpu",
-      targetId: "",
-      detail: result,
-    });
-    if (!result.ok) return jsonErr(result.message);
-    return jsonOk(result);
+    try {
+      const result = await applyLoadAction(body.action, actor.id, body);
+      await writeAudit({
+        actorId: actor.id,
+        action: `load_${body.action}`,
+        targetType: "gpu",
+        targetId: typeof body.id === "string" ? body.id : "",
+        detail: { ok: result.ok, message: result.message },
+      });
+      if (!result.ok) return jsonErr(result.message);
+      return jsonOk(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonErr(msg);
+    }
   });
 }

@@ -270,7 +270,9 @@ export async function comfyWaitHistory(
   const t0 = Date.now();
   let lastErr: unknown = null;
   let idleSince: number | null = null;
-  const hardCapMs = Math.max(timeoutMs, 14_400_000);
+  // Soft timeout + short history-lag grace. Callers that need hours (stitch/i2v)
+  // pass a large timeoutMs — do NOT force a 4h floor (that made photos hang 13+ min).
+  const hardCapMs = Math.max(30_000, timeoutMs + 120_000);
   while (Date.now() - t0 < hardCapMs) {
     try {
       const res = await comfyRequest(`/history/${promptId}`, undefined, 120_000);
@@ -296,14 +298,18 @@ export async function comfyWaitHistory(
       }
       lastErr = null;
       const busy = await comfyPromptBusy(promptId);
-      if (busy) {
-        idleSince = null;
-      } else if (Date.now() - t0 >= timeoutMs) {
-        idleSince = idleSince ?? Date.now();
-        // History lag after the job leaves the queue — wait 2 more minutes.
-        if (Date.now() - idleSince > 120_000) {
-          break;
+      if (Date.now() - t0 >= timeoutMs) {
+        if (busy) {
+          // Still executing past the soft budget — hardCap will stop us shortly.
+        } else {
+          idleSince = idleSince ?? Date.now();
+          // History lag after the job leaves the queue — wait up to 2 more minutes.
+          if (Date.now() - idleSince > 120_000) {
+            break;
+          }
         }
+      } else if (busy) {
+        idleSince = null;
       }
     } catch (e) {
       if (e instanceof Error && e.message === "Comfy job error") throw e;
@@ -398,28 +404,39 @@ async function uploadImageOnce(
   return data.name || safeName;
 }
 
+/** Photo / still renders — soft budget ~4 min (RTX 5090 Krea normally ~1–2 min). */
+export const COMFY_PHOTO_TIMEOUT_MS = 240_000;
+
 export async function runComfyAndDownload(
   graph: Record<string, unknown>,
   clientId = "peachbitch",
+  timeoutMs = COMFY_PHOTO_TIMEOUT_MS,
 ): Promise<Buffer> {
   await ensureComfyReady();
   let promptId: string | null = null;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       if (!promptId) {
         promptId = await withTransientRetry("queue", () =>
           comfyQueuePrompt(graph, clientId),
         );
       }
-      const { images, files } = await comfyWaitHistory(promptId, 600_000);
+      const { images, files } = await comfyWaitHistory(promptId, timeoutMs);
       const ref = images[0] || files[0];
       return await withTransientRetry("download", () => comfyDownloadImage(ref));
     } catch (e) {
       lastErr = e;
-      if (!isTransientComfyError(e) || attempt === 5) throw e;
+      const timedOut =
+        e instanceof Error && /Comfy wait timeout/i.test(e.message);
+      if (timedOut) {
+        await comfyInterrupt().catch(() => undefined);
+        promptId = null;
+        throw e;
+      }
+      if (!isTransientComfyError(e) || attempt === 2) throw e;
       console.warn(
-        `[peach] comfy still retry ${attempt + 1}/6:`,
+        `[peach] comfy still retry ${attempt + 1}/3:`,
         e instanceof Error ? e.message.slice(0, 160) : e,
       );
       await sleep(1000 + attempt * 800);

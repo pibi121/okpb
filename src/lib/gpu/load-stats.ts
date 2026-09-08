@@ -198,20 +198,28 @@ export async function collectLoadDashboard(opts?: { ping?: boolean }) {
       };
     }),
     functions,
-    activeJobs: activeJobs.slice(0, 30).map((j) => ({
-      id: j.id,
-      kind: j.kind,
-      pool: j.pool,
-      status: j.status,
-      stage: j.stage,
-      userId: j.userId,
-      worker: j.worker?.label || null,
-      queuedAt: j.queuedAt.toISOString(),
-      startedAt: j.startedAt?.toISOString() || null,
-      waitMs: j.startedAt
+    activeJobs: activeJobs.slice(0, 30).map((j) => {
+      const queueWaitMs = j.startedAt
         ? Math.max(0, j.startedAt.getTime() - j.queuedAt.getTime())
-        : Math.max(0, Date.now() - j.queuedAt.getTime()),
-    })),
+        : Math.max(0, Date.now() - j.queuedAt.getTime());
+      const runMs = j.startedAt
+        ? Math.max(0, Date.now() - j.startedAt.getTime())
+        : 0;
+      return {
+        id: j.id,
+        kind: j.kind,
+        pool: j.pool,
+        status: j.status,
+        stage: j.stage,
+        userId: j.userId,
+        worker: j.worker?.label || null,
+        queuedAt: j.queuedAt.toISOString(),
+        startedAt: j.startedAt?.toISOString() || null,
+        waitMs: queueWaitMs,
+        /** Wall time in running state (or total age if still queued). */
+        ageMs: j.startedAt ? runMs : queueWaitMs,
+      };
+    }),
     orchestrator: orch,
     providerReady: providerReadiness(),
   };
@@ -220,7 +228,8 @@ export async function collectLoadDashboard(opts?: { ping?: boolean }) {
 export async function applyLoadAction(
   action: string,
   actorId: string,
-): Promise<{ ok: boolean; message: string }> {
+  body?: Record<string, unknown>,
+): Promise<{ ok: boolean; message: string; worker?: unknown }> {
   if (action === "request_burst_video") {
     return requestVideoBurst(actorId);
   }
@@ -236,6 +245,57 @@ export async function applyLoadAction(
   if (action === "heartbeat_now") {
     await heartbeatAllWorkers();
     return { ok: true, message: "Проверка GPU выполнена." };
+  }
+
+  if (action === "fail_stale_jobs") {
+    const { sweepStaleGpuJobs } = await import("@/lib/gpu/worker-admin");
+    const n = await sweepStaleGpuJobs();
+    await heartbeatAllWorkers();
+    return { ok: true, message: n ? `Сброшено зависших: ${n}` : "Зависших джобов нет" };
+  }
+
+  if (action === "worker_create") {
+    const { createManualWorker } = await import("@/lib/gpu/worker-admin");
+    const result = await createManualWorker({
+      key: typeof body?.key === "string" ? body.key : undefined,
+      label: String(body?.label || ""),
+      provider: typeof body?.provider === "string" ? body.provider : "manual",
+      pool: typeof body?.pool === "string" ? body.pool : "any",
+      comfyUrl: String(body?.comfyUrl || ""),
+      costRubPerHour:
+        typeof body?.costRubPerHour === "number"
+          ? body.costRubPerHour
+          : Number(body?.costRubPerHour) || 55,
+      enabled: body?.enabled !== false,
+    });
+    return { ok: true, message: result.message, worker: result.worker };
+  }
+
+  if (action === "worker_update") {
+    const id = String(body?.id || "");
+    if (!id) return { ok: false, message: "Нужен id карты" };
+    const { updateManualWorker } = await import("@/lib/gpu/worker-admin");
+    const worker = await updateManualWorker(id, {
+      label: typeof body?.label === "string" ? body.label : undefined,
+      provider: typeof body?.provider === "string" ? body.provider : undefined,
+      pool: typeof body?.pool === "string" ? body.pool : undefined,
+      comfyUrl: typeof body?.comfyUrl === "string" ? body.comfyUrl : undefined,
+      costRubPerHour:
+        typeof body?.costRubPerHour === "number"
+          ? body.costRubPerHour
+          : body?.costRubPerHour != null
+            ? Number(body.costRubPerHour)
+            : undefined,
+      enabled: typeof body?.enabled === "boolean" ? body.enabled : undefined,
+    });
+    return { ok: true, message: "Карта обновлена", worker };
+  }
+
+  if (action === "worker_delete") {
+    const id = String(body?.id || "");
+    if (!id) return { ok: false, message: "Нужен id карты" };
+    const { deleteManualWorker } = await import("@/lib/gpu/worker-admin");
+    return deleteManualWorker(id);
   }
 
   return { ok: false, message: "Неизвестное действие" };

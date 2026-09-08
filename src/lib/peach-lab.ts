@@ -532,6 +532,12 @@ export async function generatePhotoBytes(opts: {
           .join(", "),
         filenamePrefix: "peach/dual_scene_plate",
       });
+      try {
+        const { noteGpuJobStage } = await import("@/lib/gpu/orchestrator");
+        await noteGpuJobStage("comfy_scene_plate", "Krea T2I scene");
+      } catch {
+        /* ignore */
+      }
       dualScene = await runComfyAndDownload(sceneGraph, "peach-scene-plate");
     }
     const sceneUp = await comfyUploadImage(
@@ -557,6 +563,12 @@ export async function generatePhotoBytes(opts: {
       useNsfwLora: !clothed,
       extraLoras: conceptLoras,
     });
+    try {
+      const { noteGpuJobStage } = await import("@/lib/gpu/orchestrator");
+      await noteGpuJobStage("comfy_dual_edit", "Krea dual-ref");
+    } catch {
+      /* ignore */
+    }
     bytes = await runComfyAndDownload(graph, "peach-dual-edit");
     const conceptTag = conceptMatched.length
       ? `+concept(${conceptMatched.join(",")})`

@@ -183,10 +183,17 @@ export async function maybeSendIdleWinbacks(
   if (!user?.ageConfirmed) return;
 
   const locale = user.locale === "en" ? "en" : "ru";
-  const last =
-    user.tgLastActiveAt ||
-    user.tgLastMiniAppAt ||
-    user.createdAt;
+
+  // First boot / missing clock: start idle timer now, do not blast from createdAt.
+  if (!user.tgLastActiveAt) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { tgLastActiveAt: new Date() },
+    });
+    return;
+  }
+
+  const last = user.tgLastActiveAt;
   const idleFor = Date.now() - last.getTime();
 
   if (!user.tgIdle7dSent && idleFor >= MS_7D) {
@@ -194,7 +201,7 @@ export async function maybeSendIdleWinbacks(
       await sendIdleWinback(chatId, locale, "7d");
     } catch (e) {
       console.error("[tg-idle] 7d", userId, e);
-      return;
+      // Still mark sent — blocked users / hard fails must not retry forever.
     }
     await prisma.user.update({
       where: { id: userId },
@@ -215,7 +222,7 @@ export async function maybeSendIdleWinbacks(
       await sendIdleWinback(chatId, locale, "3d");
     } catch (e) {
       console.error("[tg-idle] 3d", userId, e);
-      return;
+      // Still mark sent — blocked users / hard fails must not retry forever.
     }
     await prisma.user.update({
       where: { id: userId },
@@ -423,47 +430,17 @@ export async function pollTgFunnelDrips(limit = 25): Promise<void> {
       }
     }
 
-    // Idle winbacks 3d / 7d
+    // Idle winbacks 3d / 7d — only users with an activity clock already set.
     const due3 = new Date(now.getTime() - MS_3D);
     const idleUsers = await prisma.user.findMany({
       where: {
         ageConfirmed: true,
-        OR: [
-          {
-            tgIdle3dSent: false,
-            OR: [
-              { tgLastActiveAt: { lte: due3 } },
-              {
-                tgLastActiveAt: null,
-                tgLastMiniAppAt: { lte: due3 },
-              },
-              {
-                tgLastActiveAt: null,
-                tgLastMiniAppAt: null,
-                createdAt: { lte: due3 },
-              },
-            ],
-          },
-          {
-            tgIdle7dSent: false,
-            OR: [
-              { tgLastActiveAt: { lte: new Date(now.getTime() - MS_7D) } },
-              {
-                tgLastActiveAt: null,
-                tgLastMiniAppAt: { lte: new Date(now.getTime() - MS_7D) },
-              },
-              {
-                tgLastActiveAt: null,
-                tgLastMiniAppAt: null,
-                createdAt: { lte: new Date(now.getTime() - MS_7D) },
-              },
-            ],
-          },
-        ],
+        tgLastActiveAt: { not: null, lte: due3 },
+        OR: [{ tgIdle3dSent: false }, { tgIdle7dSent: false }],
       },
       select: { id: true },
       take: limit,
-      orderBy: { createdAt: "asc" },
+      orderBy: { tgLastActiveAt: "asc" },
     });
     for (const u of idleUsers) {
       const acc = await prisma.platformAccount.findFirst({
@@ -479,6 +456,12 @@ export async function pollTgFunnelDrips(limit = 25): Promise<void> {
         console.error("[tg-idle-poll]", u.id, e);
       }
     }
+
+    // Seed activity clock for confirmed users missing it (db push doesn't run SQL UPDATE).
+    await prisma.user.updateMany({
+      where: { ageConfirmed: true, tgLastActiveAt: null },
+      data: { tgLastActiveAt: now },
+    });
   } finally {
     funnelPollBusy = false;
   }

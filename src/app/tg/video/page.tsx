@@ -267,7 +267,6 @@ function VideoPageInner() {
     setBusy(true);
     setErr("");
     const fills = speechSlots.map((s) => {
-      const max = s.maxChars || deriveSpeechMaxChars(s.text);
       const raw = usePreviewSpeech
         ? s.text
         : speechFills[s.id]?.text ?? s.text;

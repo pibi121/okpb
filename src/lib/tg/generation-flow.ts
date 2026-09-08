@@ -214,6 +214,7 @@ export function photoCastPickerKeyboard(
   selectedId: string | null | undefined,
   page: number,
   locale: TgLocale,
+  opts?: { canAfford?: boolean },
 ) {
   const totalPages = Math.max(1, Math.ceil(casts.length / CAST_PAGE_SIZE));
   const safePage = Math.min(Math.max(0, page), totalPages - 1);
@@ -259,7 +260,13 @@ export function photoCastPickerKeyboard(
     if (nav.length) rows.push(nav);
   }
 
-  rows.push([{ text: t("gen_confirm_btn", locale), callback_data: GEN_CB.confirm }]);
+  if (opts?.canAfford === false) {
+    rows.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
+  } else {
+    rows.push([
+      { text: t("gen_confirm_btn", locale), callback_data: GEN_CB.confirm },
+    ]);
+  }
   rows.push([{ text: t("gen_other_poses_btn", locale), callback_data: GEN_CB.backTemplates }]);
 
   return { keyboard: rows, page: safePage, totalPages };
@@ -355,6 +362,9 @@ export async function templatePriceLabel(opts: {
     userId?: string;
   } | null;
 }): Promise<{
+  /** Catalog / ops price before promos — always show this to the user. */
+  basePrice: number;
+  /** What we actually charge now (0 only for verified free promos). */
   price: number;
   label: string;
   discountApplied: boolean;
@@ -365,12 +375,15 @@ export async function templatePriceLabel(opts: {
   const { prisma } = await import("@/lib/db");
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
 
-  let price = await resolveTemplatePricePeaches({
+  let basePrice = await resolveTemplatePricePeaches({
     kind: opts.kind,
     templateId: opts.templateId,
     userId: opts.userId,
     characterId: opts.character?.id,
   });
+  if (!(basePrice > 0)) {
+    basePrice = 1;
+  }
 
   if (opts.kind === "photo" && opts.character && !opts.character.id) {
     const { photoActressPeaches, photoLoraPeaches } = await import(
@@ -379,17 +392,25 @@ export async function templatePriceLabel(opts: {
     const { getPhotoTemplate } = await import("@/lib/photo-template");
     const row = await getPhotoTemplate(opts.templateId);
     if (!row || !(row.pricePeaches > 0)) {
-      if (isStudioCastCharacter(opts.character)) price = photoActressPeaches();
-      else if (characterUsesLoraPhoto(opts.character)) price = photoLoraPeaches();
+      if (isStudioCastCharacter(opts.character)) {
+        basePrice = Math.max(1, photoActressPeaches());
+      } else if (characterUsesLoraPhoto(opts.character)) {
+        basePrice = Math.max(1, photoLoraPeaches());
+      }
     }
   }
+
+  const baseLabel = tFormat("gen_confirm_price", opts.locale, {
+    price: basePrice,
+  });
 
   if (opts.kind === "photo" && opts.character) {
     if (isStudioCastCharacter(opts.character)) {
       if (await canUseStudioDailyFree(opts.userId)) {
         return {
+          basePrice,
           price: 0,
-          label: t("studio_free_daily", opts.locale),
+          label: `${baseLabel}\n${t("studio_free_daily_note", opts.locale)}`,
           discountApplied: false,
           freePhoto: true,
           studioDaily: true,
@@ -403,8 +424,11 @@ export async function templatePriceLabel(opts: {
             ? `\n${tFormat("lora_welcome_photos_left", opts.locale, { n: left })}`
             : "";
         return {
+          basePrice,
           price: 0,
-          label: t("gen_confirm_free", opts.locale) + leftNote,
+          label:
+            `${baseLabel}\n${t("gen_confirm_free_note", opts.locale)}` +
+            leftNote,
           discountApplied: false,
           freePhoto: true,
           loraWelcome: true,
@@ -413,13 +437,17 @@ export async function templatePriceLabel(opts: {
     }
   }
 
-  if (opts.kind === "video" && user && !user.tgFirstVideoDiscountUsed && price > 0) {
+  if (opts.kind === "video" && user && !user.tgFirstVideoDiscountUsed && basePrice > 0) {
     const { applyFirstVideoDiscount } = await import("@/lib/tg-pricing");
-    const d = applyFirstVideoDiscount(price, false);
+    const d = applyFirstVideoDiscount(basePrice, false);
     if (d.discountApplied) {
       return {
+        basePrice,
         price: d.peaches,
-        label: tFormat("gen_confirm_discount", opts.locale, { price: d.peaches }),
+        label: tFormat("gen_confirm_discount", opts.locale, {
+          price: d.peaches,
+          base: basePrice,
+        }),
         discountApplied: true,
         freePhoto: false,
       };
@@ -427,8 +455,9 @@ export async function templatePriceLabel(opts: {
   }
 
   return {
-    price,
-    label: tFormat("gen_confirm_price", opts.locale, { price }),
+    basePrice,
+    price: basePrice,
+    label: baseLabel,
     discountApplied: false,
     freePhoto: false,
   };

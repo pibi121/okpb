@@ -103,11 +103,29 @@ export async function POST(req: Request) {
     }
   }
 
-  const price = await resolveTemplatePricePeaches({
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    return NextResponse.json({ error: "user not found" }, { status: 404 });
+  }
+
+  let price = await resolveTemplatePricePeaches({
     kind: "video",
     templateId: body.templateId,
     userId,
   });
+  const { applyFirstVideoDiscount } = await import("@/lib/tg-pricing");
+  const discounted = applyFirstVideoDiscount(
+    price,
+    user.tgFirstVideoDiscountUsed,
+  );
+  price = Math.max(0, discounted.peaches);
+  if (price <= 0) {
+    price = Math.max(1, await resolveTemplatePricePeaches({
+      kind: "video",
+      templateId: body.templateId,
+      userId,
+    }));
+  }
   if (price > 0) {
     const bal = await getBalancePeaches(userId);
     if (bal < price) {

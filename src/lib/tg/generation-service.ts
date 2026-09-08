@@ -40,6 +40,7 @@ import {
   characterUsesLoraPhoto,
 } from "@/lib/tg/studio-cast";
 import {
+  canUseStudioDailyFree,
   consumeLoraWelcomePhoto,
   consumeStudioDailyFree,
 } from "@/lib/tg/tg-promo";
@@ -105,7 +106,7 @@ export async function resolveTemplatePricePeaches(opts: {
         useLora = !isStudioCastCharacter(ch) && characterUsesLoraPhoto(ch);
       }
     }
-    return useLora ? photoLoraPeaches() : photoActressPeaches();
+    return Math.max(1, useLora ? photoLoraPeaches() : photoActressPeaches());
   }
 
   const loraI2v = await prisma.loraI2vTemplate.findFirst({
@@ -114,7 +115,7 @@ export async function resolveTemplatePricePeaches(opts: {
   });
   if (loraI2v) {
     if (loraI2v.pricePeaches > 0) return loraI2v.pricePeaches;
-    return premiumVideoPeaches(loraI2v.durationSec || 6);
+    return Math.max(1, premiumVideoPeaches(loraI2v.durationSec || 6));
   }
 
   const detail = await getQuickVideoTemplateDetail(opts.userId, opts.templateId);
@@ -130,9 +131,9 @@ export async function resolveTemplatePricePeaches(opts: {
   const storyTpl = parseStoryH3Template(detail.shotsJson);
   const durationSec =
     storyTpl?.totalDurationSec || detail.durationSec || 10;
-  if (storyTpl) return storyH3Peaches(durationSec);
+  if (storyTpl) return Math.max(1, storyH3Peaches(durationSec));
   // Non-story quick video → treat as premium tier by length
-  return premiumVideoPeaches(durationSec);
+  return Math.max(1, premiumVideoPeaches(durationSec));
 }
 
 export async function startTgLoraI2vGeneration(opts: {
@@ -758,9 +759,12 @@ export async function startTgPhotoGeneration(opts: {
       ? photoActressPeaches()
       : photoLoraPeaches();
   }
+  price = Math.max(1, price);
   let freePhoto = false;
 
   if (opts.studioDaily) {
+    const ok = await canUseStudioDailyFree(opts.userId);
+    if (!ok) throw new Error("Ежедневный бесплатный кадр уже использован");
     price = 0;
     freePhoto = true;
     await consumeStudioDailyFree(opts.userId);

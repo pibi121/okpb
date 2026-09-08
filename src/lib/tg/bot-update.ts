@@ -559,11 +559,13 @@ async function showTemplateConfirm(
         balance: String(balance),
       },
     );
-    const rows: Array<Array<{ text: string; callback_data: string }>> = [
-      [{ text: t("gen_confirm_btn", locale), callback_data: GEN_CB.confirm }],
-    ];
+    const rows: Array<Array<{ text: string; callback_data: string }>> = [];
     if (balance < pricing.price) {
       rows.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
+    } else {
+      rows.push([
+        { text: t("gen_confirm_btn", locale), callback_data: GEN_CB.confirm },
+      ]);
     }
     rows.push([
       { text: t("gen_other_poses_btn", locale), callback_data: GEN_CB.backTemplates },
@@ -639,10 +641,9 @@ async function showTemplateConfirm(
   });
 
   const castPage = 0;
-  const { keyboard } = photoCastPickerKeyboard(casts, selectedId, castPage, locale);
-  if (balance < pricing.price) {
-    keyboard.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
-  }
+  const { keyboard } = photoCastPickerKeyboard(casts, selectedId, castPage, locale, {
+    canAfford: balance >= pricing.price,
+  });
   const markup = { reply_markup: { inline_keyboard: keyboard } };
 
   const previewUrl = await getTemplatePreviewUrl(userId, "photo", templateId);
@@ -725,10 +726,8 @@ async function refreshPhotoConfirmMessage(
     selectedId,
     castPage,
     locale,
+    { canAfford: balance >= pricing.price },
   );
-  if (balance < pricing.price) {
-    keyboard.push([{ text: t("topup_btn", locale), callback_data: "tu:open" }]);
-  }
   const markup = { reply_markup: { inline_keyboard: keyboard } };
   const mid = messageId ?? pending.confirmMessageId;
 
@@ -905,36 +904,56 @@ async function beginGeneration(
       await tgSendMessage(chatId, t("need_photos", locale));
       return;
     }
-    if (isStudioCastCharacter(character)) {
-      if (!pending.studioDaily && !pending.freePhoto) {
-        await tgSendMessage(chatId, t("studio_free_not_ready", locale), {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: t("marketplace_btn", locale), web_app: { url: tgMiniAppUrl() } }],
-            ],
-          },
-        });
-        return;
-      }
-    } else if (!characterUsesLoraPhoto(character) && !pending.loraWelcome) {
+    if (
+      !isStudioCastCharacter(character) &&
+      !characterUsesLoraPhoto(character) &&
+      !pending.loraWelcome
+    ) {
       await tgSendMessage(chatId, t("photo_need_lora", locale));
       return;
     }
   }
 
-  const price = pending.pricePeaches ?? 0;
   if (!character) {
     await tgSendMessage(chatId, t("need_photos", locale));
     return;
   }
 
-  if (price > 0) {
+  // Always re-resolve charge at start — never trust a stale pending.pricePeaches=0.
+  const pricing = await templatePriceLabel({
+    userId,
+    kind: kind === "photo" ? "photo" : "video",
+    templateId,
+    locale,
+    character,
+  });
+  let charge = pricing.price;
+  const freeOk =
+    charge === 0 &&
+    Boolean(pricing.freePhoto || pricing.studioDaily || pricing.loraWelcome);
+
+  if (charge <= 0 && !freeOk) {
+    charge = Math.max(1, pricing.basePrice);
+  }
+
+  if (charge > 0) {
     const bal = await getBalancePeaches(userId);
-    if (bal < price) {
-      await sendInsufficientBalance(chatId, locale, price, bal);
+    if (bal < charge) {
+      await sendInsufficientBalance(chatId, locale, charge, bal);
       return;
     }
   }
+
+  await setTgSession(platformUserId, {
+    pending: {
+      ...pending,
+      pricePeaches: charge,
+      discountApplied: pricing.discountApplied,
+      freePhoto: pricing.freePhoto,
+      studioDaily: pricing.studioDaily,
+      loraWelcome: pricing.loraWelcome,
+    },
+  });
 
   await tgSendMessage(chatId, t("gen_starting", locale), mainMenuExtra(locale));
 
@@ -945,8 +964,8 @@ async function beginGeneration(
         platformUserId,
         templateId,
         characterId: character.id,
-        studioDaily: pending.studioDaily,
-        loraWelcome: pending.loraWelcome,
+        studioDaily: Boolean(pricing.studioDaily && freeOk),
+        loraWelcome: Boolean(pricing.loraWelcome && freeOk),
       });
     } else {
       await startTgVideoGeneration({
@@ -963,7 +982,7 @@ async function beginGeneration(
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("Недостаточно") || msg.includes("Insufficient")) {
       const bal = await getBalancePeaches(userId);
-      await sendInsufficientBalance(chatId, locale, price, bal);
+      await sendInsufficientBalance(chatId, locale, charge, bal);
     } else {
       await tgSendMessage(
         chatId,

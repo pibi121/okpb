@@ -318,6 +318,16 @@ Model «{name}» is selected. «Generation» → «Photo» → template — or t
     en: "0 🍑 (daily studio shot)",
   },
 
+  studio_free_daily_note: {
+    ru: "🎁 Сегодня этот кадр бесплатно (ежедневный бонус)",
+    en: "🎁 Free today (daily studio bonus)",
+  },
+
+  gen_confirm_free_note: {
+    ru: "🎁 Сейчас бесплатно (приветственные кадры)",
+    en: "🎁 Free now (welcome shots)",
+  },
+
   studio_free_not_ready: {
     ru: `Бесплатный кадр на актрисе студии обновляется раз в сутки.
 
@@ -555,8 +565,8 @@ When ready — tap «Done, start».`,
   },
 
   gen_confirm_discount: {
-    ru: "{price} 🍑 (применена скидка −30%)",
-    en: "{price} 🍑 (−30% discount applied)",
+    ru: "{base} 🍑 → <b>{price} 🍑</b> (−30% на первое видео)",
+    en: "{base} 🍑 → <b>{price} 🍑</b> (−30% first video)",
   },
 
   gen_confirm_price: {

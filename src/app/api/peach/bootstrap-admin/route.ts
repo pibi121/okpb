@@ -118,124 +118,85 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "disk_stats" || action === "free_disk" || action === "purge_videos") {
-    const { dataRoot, galleryRoot } = await import("@/lib/paths");
-    const { execSync } = await import("node:child_process");
+    const { freeGalleryDisk, getDiskStats } = await import("@/lib/disk-hygiene");
+    const { dataRoot } = await import("@/lib/paths");
     const root = dataRoot();
 
-    function walk(dir: string, out: { path: string; size: number }[], depth = 0) {
-      if (depth > 8 || !fs.existsSync(dir)) return;
-      let entries: fs.Dirent[] = [];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const e of entries) {
-        const full = path.join(dir, e.name);
-        try {
-          if (e.isDirectory()) walk(full, out, depth + 1);
-          else if (e.isFile()) out.push({ path: full, size: fs.statSync(full).size });
-        } catch {
-          /* skip */
-        }
-      }
+    if (action === "disk_stats") {
+      const stats = getDiskStats();
+      return NextResponse.json({
+        ok: true,
+        action,
+        root,
+        df: stats.df,
+        beforeBytes: stats.bytes,
+        afterBytes: stats.bytes,
+        deleted: 0,
+        freed: 0,
+        files: stats.files,
+        largest: stats.largest,
+      });
     }
 
-    let df = "";
+    const emergency = action === "purge_videos";
+    const result = freeGalleryDisk({
+      emergency,
+      targetFreeMb: emergency ? 120 : 80,
+    });
     try {
-      df = execSync("df -h /app/data /tmp / 2>/dev/null || df -h", {
-        encoding: "utf8",
-        timeout: 5000,
-      }).slice(0, 800);
-    } catch {
-      df = "df_unavailable";
+      await prisma.$executeRawUnsafe("VACUUM");
+    } catch (e) {
+      console.error("[bootstrap] VACUUM failed", e);
     }
-
-    const before: { path: string; size: number }[] = [];
-    walk(root, before);
-    const beforeBytes = before.reduce((s, f) => s + f.size, 0);
-    const largest = [...before].sort((a, b) => b.size - a.size).slice(0, 25);
-
-    let deleted = 0;
-    let freed = 0;
-    const kill = (p: string) => {
-      try {
-        const sz = fs.statSync(p).size;
-        fs.unlinkSync(p);
-        deleted += 1;
-        freed += sz;
-      } catch {
-        /* ignore */
-      }
-    };
-
-    if (action === "free_disk" || action === "purge_videos") {
-      for (const f of before) {
-        const base = path.basename(f.path);
-        const rel = path.relative(root, f.path).replace(/\\/g, "/");
-        if (
-          /\.bak($|-)/i.test(base) ||
-          base.endsWith(".importing") ||
-          base.endsWith(".tmp") ||
-          rel.startsWith("backups/") ||
-          /\.partial$/i.test(base)
-        ) {
-          kill(f.path);
-        }
-      }
-      // Drop huge orphan videos over 40MB under gallery
-      const gRoot = galleryRoot();
-      for (const f of before) {
-        if (!f.path.startsWith(gRoot)) continue;
-        if (f.size < 40 * 1024 * 1024) continue;
-        if (!/\.(mp4|webm|mov|mkv)$/i.test(f.path)) continue;
-        kill(f.path);
-      }
-    }
-
-    if (action === "purge_videos") {
-      // Emergency: remove all gallery videos > 800KB to reclaim volume headroom.
-      // DB rows stay; missing files show placeholders until re-synced.
-      const gRoot = galleryRoot();
-      const min = 800 * 1024;
-      for (const f of before) {
-        if (!f.path.startsWith(gRoot)) continue;
-        if (f.size < min) continue;
-        if (!/\.(mp4|webm|mov|mkv)$/i.test(f.path)) continue;
-        kill(f.path);
-      }
-      try {
-        await prisma.$executeRawUnsafe("VACUUM");
-      } catch (e) {
-        console.error("[bootstrap] VACUUM failed", e);
-      }
-    } else if (action === "free_disk") {
-      try {
-        await prisma.$executeRawUnsafe("VACUUM");
-      } catch (e) {
-        console.error("[bootstrap] VACUUM failed", e);
-      }
-    }
-
-    const after: { path: string; size: number }[] = [];
-    walk(root, after);
-    const afterBytes = after.reduce((s, f) => s + f.size, 0);
 
     return NextResponse.json({
       ok: true,
       action,
       root,
-      df,
-      beforeBytes,
-      afterBytes,
-      deleted,
-      freed,
-      files: after.length,
-      largest: largest.map((f) => ({
-        path: path.relative(root, f.path).replace(/\\/g, "/"),
-        mb: Math.round((f.size / 1024 / 1024) * 10) / 10,
-      })),
+      df: result.df,
+      beforeBytes: result.beforeBytes,
+      afterBytes: result.afterBytes,
+      deleted: result.deleted,
+      freed: result.freed,
+      files: 0,
+      largest: [],
     });
+  }
+
+  if (action === "fail_placeholder_ready") {
+    const rows = await prisma.galleryItem.findMany({
+      select: { id: true, metaJson: true, resultUrl: true },
+      take: 500,
+      orderBy: { createdAt: "desc" },
+    });
+    let fixed = 0;
+    for (const row of rows) {
+      const isPh =
+        !row.resultUrl?.trim() ||
+        row.resultUrl === "/api/peach/gallery/placeholder" ||
+        row.resultUrl.startsWith("data:image/svg");
+      if (!isPh) continue;
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(row.metaJson || "{}") as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+      if (meta.status === "error") continue;
+      await prisma.galleryItem.update({
+        where: { id: row.id },
+        data: {
+          metaJson: JSON.stringify({
+            ...meta,
+            status: "error",
+            error:
+              "Файл не сохранился — на сервере закончилось место. Запусти генерацию ещё раз.",
+          }),
+        },
+      });
+      fixed += 1;
+    }
+    return NextResponse.json({ ok: true, action: "fail_placeholder_ready", fixed });
   }
 
   if (action === "fail_pending_gens") {

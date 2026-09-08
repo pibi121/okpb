@@ -15,6 +15,28 @@ export async function register() {
     })
     .catch((e) => console.error("[peach] gpu workers boot:", e));
 
+  // Keep Railway volume from filling up (gallery videos).
+  void import("@/lib/disk-hygiene")
+    .then(({ diskAlmostFull, freeGalleryDisk }) => {
+      const tick = () => {
+        try {
+          if (diskAlmostFull()) {
+            const r = freeGalleryDisk({ emergency: false, targetFreeMb: 90 });
+            if (r.deleted) {
+              console.warn(
+                `[peach] disk hygiene: deleted ${r.deleted}, freed ${Math.round(r.freed / 1024 / 1024)}MB`,
+              );
+            }
+          }
+        } catch (e) {
+          console.error("[peach] disk hygiene:", e);
+        }
+      };
+      setTimeout(tick, 25_000);
+      setInterval(tick, 10 * 60_000);
+    })
+    .catch(() => undefined);
+
   // Always try to pull finished Comfy outputs for busy/error runs (cheap download).
   // Delay so the Railway SSH tunnel to Comfy is up before we probe/download.
   // Full GPU re-queue only when PEACH_RESUME_QV=1 (can OOM small Railway boxes).

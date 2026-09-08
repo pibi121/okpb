@@ -7,6 +7,7 @@ import {
   galleryRoot,
   resolveSqlitePath,
 } from "./paths";
+import { freeGalleryDisk } from "@/lib/disk-hygiene";
 
 export function saveGalleryBinary(
   userId: string,
@@ -19,7 +20,20 @@ export function saveGalleryBinary(
   fs.mkdirSync(dir, { recursive: true });
   const name = `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}.${ext.replace(/^\./, "")}`;
   const absPath = path.join(dir, name);
-  fs.writeFileSync(absPath, bytes);
+  try {
+    fs.writeFileSync(absPath, bytes);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/ENOSPC|no space left/i.test(msg)) {
+      const r = freeGalleryDisk({ emergency: true, targetFreeMb: 100 });
+      console.warn(
+        `[peach] ENOSPC on gallery write — freed ${Math.round(r.freed / 1024 / 1024)}MB (${r.deleted} files), retrying`,
+      );
+      fs.writeFileSync(absPath, bytes);
+    } else {
+      throw e;
+    }
+  }
   const relKey = `${userId}/${name}`;
   return { absPath, publicUrl: `/api/media/${relKey}`, relKey };
 }

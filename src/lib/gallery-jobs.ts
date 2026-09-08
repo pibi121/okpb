@@ -187,7 +187,7 @@ function isTransientJobError(err: unknown): boolean {
     err && typeof err === "object" && "code" in err
       ? String((err as { code?: unknown }).code || "")
       : "";
-  return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|socket hang up|HTTP timeout|Comfy недоступен|Ollama|туннель|tunnel|LLM/i.test(
+  return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|socket hang up|HTTP timeout|Comfy недоступен|Ollama|туннель|tunnel|LLM|ENOSPC|no space left/i.test(
     `${msg} ${code}`,
   );
 }

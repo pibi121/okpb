@@ -28,10 +28,10 @@ export function galleryStatus(metaJson: string | null | undefined): GalleryJobSt
 export function isLegacyMockResult(resultUrl: string, metaJson: string | null | undefined) {
   if (resultUrl.startsWith("data:image/svg")) return true;
   if (resultUrl === GALLERY_PLACEHOLDER_URL || !resultUrl.trim()) {
-    const m = parseGalleryMeta(metaJson);
-    return m.mock === true;
+    return true;
   }
   // Saved /api/media/ or static files with engine mock are valid (Railway mock mode).
+  void metaJson;
   return false;
 }
 
@@ -41,9 +41,16 @@ export function mapGalleryItem<T extends { metaJson: string; createdAt: Date | s
   const meta = parseGalleryMeta(item.metaJson);
   let status = galleryStatus(item.metaJson);
   let error = typeof meta.error === "string" ? meta.error : null;
-  if (status === "ready" && isLegacyMockResult(item.resultUrl, item.metaJson)) {
+  if (
+    status === "ready" &&
+    (item.resultUrl === GALLERY_PLACEHOLDER_URL ||
+      !item.resultUrl.trim() ||
+      isLegacyMockResult(item.resultUrl, item.metaJson))
+  ) {
     status = "error";
-    error = "Старая заглушка (туннель был недоступен) — удали или перегенерируй";
+    error =
+      error ||
+      "Файл не сохранился (часто диск переполнен) — запусти генерацию ещё раз";
   }
   return {
     ...item,

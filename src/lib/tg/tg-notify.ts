@@ -52,7 +52,7 @@ export async function notifyTelegramGenerationError(
   const acc = await hasTelegramAccount(userId);
   if (!acc) return;
   const ourFault =
-    /ECONN|ETIMEDOUT|8188|недоступен|timeout|туннель|GPU|Comfy|Ollama|socket hang/i.test(
+    /ECONN|ETIMEDOUT|8188|недоступен|timeout|туннель|GPU|Comfy|Ollama|socket hang|ENOSPC|no space left/i.test(
       message,
     );
   let text: string;

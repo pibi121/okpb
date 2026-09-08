@@ -48,7 +48,7 @@ model User {
   tgIdle7dSent Boolean @default(false)
   /// web | telegram
   source       String   @default("web")
-  /// owner | support | content | developer | empty = not staff
+  /// owner | support | content | developer | partner | empty = not staff
   adminRole    String   @default("")
   blocked      Boolean  @default(false)
   blockedAt    DateTime?

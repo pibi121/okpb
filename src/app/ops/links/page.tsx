@@ -33,8 +33,9 @@ export default function OpsLinksPage() {
       <div>
         <h1 className="font-display text-3xl">Свои ссылки</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Это метки для рекламы и каналов, не партнёрка 50%. Человек заходит по{" "}
-          <code className="text-zinc-300">?start=m_код</code>.
+          Метки для рекламы и каналов (как UTM): человек заходит по{" "}
+          <code className="text-zinc-300">?start=m_код</code>. По каждой ссылке
+          видны клики, заходы и оплаты.
         </p>
       </div>
       <form
@@ -59,9 +60,9 @@ export default function OpsLinksPage() {
           }
         }}
       >
-        <input name="code" placeholder="код: yt1" className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
+        <input name="code" placeholder="код / utm: yt_march" className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
         <input name="label" placeholder="Название: YouTube ролик 1" className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
-        <input name="note" placeholder="Заметка" className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
+        <input name="note" placeholder="utm_source=youtube utm_campaign=…" className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
         <button className="rounded-full btn-grad px-4 py-2 text-sm md:col-span-3">Создать ссылку</button>
       </form>
       {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}

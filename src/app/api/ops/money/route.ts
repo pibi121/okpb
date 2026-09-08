@@ -53,6 +53,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return withOps("money", async (actor) => {
+    if (actor.adminRole === "partner") {
+      return jsonErr("Партнёру доступен только просмотр", 403);
+    }
     const body = (await req.json()) as {
       title?: string;
       amountRub?: number;

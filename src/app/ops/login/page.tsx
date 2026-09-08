@@ -40,11 +40,13 @@ export default function OpsLoginPage() {
       <h1 className="font-display text-4xl text-glow">Панель</h1>
       <p className="text-sm text-zinc-500">Только для команды. Обычный кабинет — другой адрес.</p>
       <label className="flex flex-col gap-1 text-sm">
-        Почта
+        Логин или почта
         <input
           name="email"
-          type="email"
+          type="text"
+          autoComplete="username"
           required
+          placeholder="логин или email"
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
         />
       </label>

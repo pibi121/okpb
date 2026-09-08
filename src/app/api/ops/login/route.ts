@@ -6,9 +6,10 @@ import { ensureOpsOwner } from "@/lib/ops/auth";
 import { bootOps } from "@/lib/ops/seed";
 import { isOpsRole } from "@/lib/ops/roles";
 import { ownerEmails } from "@/lib/ops/auth";
+import { normalizeOpsLogin } from "@/lib/ops/staff-creds";
 
 const schema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(1),
 });
 
@@ -20,7 +21,10 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Неверные данные" }, { status: 400 });
   }
-  const email = parsed.data.email.toLowerCase();
+  const email = normalizeOpsLogin(parsed.data.email);
+  if (!email) {
+    return NextResponse.json({ error: "Неверные данные" }, { status: 400 });
+  }
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     return NextResponse.json({ error: "Нет доступа" }, { status: 401 });
@@ -42,6 +46,7 @@ export async function POST(req: Request) {
         { email: { endsWith: "@test.local" } },
         { email: { endsWith: "@example.com" } },
         { email: { endsWith: "@peachbitch.internal" } },
+        { email: { endsWith: "@ops.local" } },
       ],
     };
     const webUsers = await prisma.user.count({ where: labWebWhere });
@@ -50,7 +55,8 @@ export async function POST(req: Request) {
       !user.email.startsWith("tg_") &&
       !user.email.endsWith("@test.local") &&
       !user.email.endsWith("@example.com") &&
-      !user.email.endsWith("@peachbitch.internal");
+      !user.email.endsWith("@peachbitch.internal") &&
+      !user.email.endsWith("@ops.local");
     const onlyLabAccount = !ownerExists && isLabWeb && webUsers <= 2;
     if (configured || onlyLabAccount) {
       await prisma.user.update({

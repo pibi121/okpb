@@ -1,4 +1,10 @@
-export const OPS_ROLES = ["owner", "support", "content", "developer"] as const;
+export const OPS_ROLES = [
+  "owner",
+  "support",
+  "content",
+  "developer",
+  "partner",
+] as const;
 export type OpsRole = (typeof OPS_ROLES)[number];
 
 export const OPS_SECTIONS = [
@@ -67,6 +73,8 @@ const ROLE_SECTIONS: Record<OpsRole, OpsSection[]> = {
     "dev",
     "settings",
   ],
+  /** External partners: money/sales view, UTM links, user & per-link stats. */
+  partner: ["dashboard", "money", "links", "analytics", "users"],
 };
 
 export function isOpsRole(v: string | null | undefined): v is OpsRole {
@@ -86,6 +94,18 @@ export function sectionsFor(role: string | null | undefined): OpsSection[] {
   return ROLE_SECTIONS[role];
 }
 
+/** Partners may view money/users but not mutate expenses / staff / blocks. */
+export function canWriteOps(
+  role: string | null | undefined,
+  section: OpsSection,
+): boolean {
+  if (!isOpsRole(role)) return false;
+  if (role === "partner") {
+    return section === "links";
+  }
+  return canAccessSection(role, section);
+}
+
 export function roleLabel(role: string): string {
   switch (role) {
     case "owner":
@@ -96,6 +116,8 @@ export function roleLabel(role: string): string {
       return "Контент";
     case "developer":
       return "Разработка";
+    case "partner":
+      return "Партнёр";
     default:
       return role;
   }

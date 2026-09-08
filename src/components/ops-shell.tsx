@@ -10,6 +10,7 @@ import type { OpsSection } from "@/lib/ops/roles";
 type Me = {
   id: string;
   email: string;
+  login?: string;
   name: string | null;
   role: string;
   roleLabel: string;
@@ -76,7 +77,7 @@ export function OpsShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="border-t border-white/8 px-4 py-4 text-[11px] text-zinc-500">
-          <div className="truncate">{me.email}</div>
+          <div className="truncate">{me.login || me.email}</div>
           {me.lab ? (
             <Link href="/peach" className="mt-2 block text-peach hover:underline">
               Лаборатория →

@@ -52,6 +52,9 @@ export async function GET(_req: Request, ctx: Ctx) {
 export async function POST(req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   return withOps("users", async (actor) => {
+    if (actor.adminRole === "partner") {
+      return jsonErr("Партнёру доступен только просмотр", 403);
+    }
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return jsonErr("Человек не найден", 404);
     const body = (await req.json()) as {

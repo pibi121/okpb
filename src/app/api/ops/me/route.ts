@@ -2,6 +2,7 @@ import { jsonOk, jsonErr } from "@/lib/ops/http";
 import { requireOps } from "@/lib/ops/auth";
 import { bootOps } from "@/lib/ops/seed";
 import { sectionsFor, roleLabel, labAccess } from "@/lib/ops/roles";
+import { opsLoginFromEmail } from "@/lib/ops/staff-creds";
 
 export async function GET() {
   await bootOps();
@@ -11,6 +12,7 @@ export async function GET() {
     actor: {
       id: actor.id,
       email: actor.email,
+      login: opsLoginFromEmail(actor.email),
       name: actor.name,
       role: actor.adminRole,
       roleLabel: roleLabel(actor.adminRole),

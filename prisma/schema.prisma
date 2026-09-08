@@ -84,6 +84,7 @@ model User {
   testGalleryFolders TestGalleryFolder[]
   tgCastFavorites   TgCastFavorite[]
   funnelEvents      FunnelEvent[]
+  promoRedemptions  PromoRedemption[]
 
   @@index([trafficLinkId])
   @@index([adminRole])
@@ -1283,4 +1284,53 @@ model FunnelEvent {
   @@index([eventKey, at])
   @@index([sourceKind, sourceCode, at])
   @@index([surface, at])
+}
+
+/// Ops promo codes: credit peaches (1 redeem per user, global max uses).
+model PromoCode {
+  id              String   @id @default(cuid())
+  /// Stored uppercase, unique
+  code            String   @unique
+  amountPeaches   Int
+  /// Total number of distinct users who may redeem
+  maxRedemptions  Int
+  redeemedCount   Int      @default(0)
+  enabled         Boolean  @default(true)
+  note            String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  redemptions PromoRedemption[]
+
+  @@index([enabled, code])
+}
+
+model PromoRedemption {
+  id          String   @id @default(cuid())
+  promoCodeId String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promoCodeId, userId])
+  @@index([userId])
+}
+
+/// Mini App banners (horizontal carousel / vertical feed inserts).
+model MiniAppBanner {
+  id        String   @id @default(cuid())
+  /// horizontal | vertical
+  kind      String
+  imageUrl  String
+  /// In-app path or https URL
+  href      String   @default("")
+  label     String   @default("")
+  sortOrder Int      @default(0)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind, enabled, sortOrder])
 }

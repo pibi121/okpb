@@ -110,7 +110,7 @@ import {
   isFunnelNoteCommand,
   tryCaptureFunnelVideoNote,
 } from "@/lib/tg/funnel-note-capture";
-import { isTestPromoMessage, redeemTestPromo } from "@/lib/tg/test-promo";
+import { tryRedeemPromoMessage } from "@/lib/tg/promo-codes";
 import { goToMainMenu, routeMenuText } from "@/lib/tg/menu-routing";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import {
@@ -1591,20 +1591,22 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     }
   }
 
-  if (text && isTestPromoMessage(text)) {
-    const result = await redeemTestPromo(user.id, locale, text);
-    if (result.ok) {
-      await tgSendMessage(
-        chatId,
-        locale === "en"
-          ? `🍑 <b>+${result.amount} peaches</b> added!\nBalance: <b>${result.balance}</b> 🍑`
-          : `🍑 <b>+${result.amount} персиков</b> начислено!\nБаланс: <b>${result.balance}</b> 🍑`,
-        mainMenuExtra(locale),
-      );
-    } else {
-      await tgSendMessage(chatId, result.message, mainMenuExtra(locale));
+  if (text) {
+    const promo = await tryRedeemPromoMessage(user.id, text, locale);
+    if (promo.handled) {
+      if (promo.ok) {
+        await tgSendMessage(
+          chatId,
+          locale === "en"
+            ? `🍑 <b>+${promo.amount} peaches</b> added!\nBalance: <b>${promo.balance}</b> 🍑`
+            : `🍑 <b>+${promo.amount} персиков</b> начислено!\nБаланс: <b>${promo.balance}</b> 🍑`,
+          mainMenuExtra(locale),
+        );
+      } else {
+        await tgSendMessage(chatId, promo.message, mainMenuExtra(locale));
+      }
+      return;
     }
-    return;
   }
 
   if (text.startsWith("/start")) {

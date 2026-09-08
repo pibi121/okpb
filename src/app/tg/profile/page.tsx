@@ -2,6 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
+import {
+  TgBannerCarousel,
+  useHorizontalBanners,
+} from "@/lib/tg/miniapp/banners-ui";
 
 const UI = {
   ru: {
@@ -10,7 +14,6 @@ const UI = {
     topup: "Пополнить",
     partner: "Партнёрка",
     partnerDesc: "50% с платежей приведённых юзеров",
-    promoTest: "Тест: напиши боту «НАЧИСЛИ10000» → +10 000 🍑",
     promoDaily: "Бесплатный кадр студии: готов",
     promoDailyWait: "Зайди в ленту, чтобы активировать",
     loraLeft: "Бонусные фото своей модели:",
@@ -22,7 +25,6 @@ const UI = {
     topup: "Top up",
     partner: "Affiliate",
     partnerDesc: "50% from referred users' payments",
-    promoTest: "Test: message the bot «НАЧИСЛИ10000» → +10,000 🍑",
     promoDaily: "Studio free shot: ready",
     promoDailyWait: "Open feed to activate",
     loraLeft: "Bonus photos with your model:",
@@ -32,9 +34,10 @@ const UI = {
 
 export default function TgProfilePage() {
   const router = useRouter();
-  const { status, error, profile, locale, setLocale, sendAction, refresh } =
+  const { status, error, profile, locale, setLocale, sendAction, refresh, apiFetch } =
     useTgMiniApp();
   const u = UI[locale];
+  const banners = useHorizontalBanners(apiFetch);
 
   if (status === "loading") return <p className="tg-loading">…</p>;
   if (status === "error") return <p className="tg-error">{error}</p>;
@@ -43,6 +46,7 @@ export default function TgProfilePage() {
 
   return (
     <TgShell locale={locale}>
+      <TgBannerCarousel banners={banners} />
       <div className="tg-section">
         <div className="tg-settings">
           <h2>{u.cabinet}</h2>
@@ -51,11 +55,6 @@ export default function TgProfilePage() {
             <button type="button" onClick={() => sendAction({ action: "topup" })}>
               {u.topup}
             </button>
-          </div>
-          <div className="tg-settings-row">
-            <span style={{ fontSize: "0.78rem", color: "var(--tg-muted)" }}>
-              {u.promoTest}
-            </span>
           </div>
           {promos && (
             <>

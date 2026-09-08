@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react
 import { useRouter } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { orderFeedMixed, orderFeedNewest } from "@/lib/tg/feed-order";
+import { injectVerticalBanners, type BannerDto } from "@/lib/tg/banners";
+import { TgFeedBannerCard } from "@/lib/tg/miniapp/banners-ui";
 
 type VideoTpl = {
   id: string;
@@ -62,6 +64,16 @@ type FeedItem =
       identityKey: string;
     };
 
+type FeedRow =
+  | FeedItem
+  | {
+      kind: "banner";
+      id: string;
+      imageUrl: string;
+      href: string;
+      label: string;
+    };
+
 const UI = {
   ru: {
     title: "Лента",
@@ -103,10 +115,11 @@ export default function TgFeedPage() {
   const router = useRouter();
   const { status, error, locale, apiFetch } = useTgMiniApp();
   const [tab, setTab] = useState<"all" | "video" | "photo">("all");
-  const [items, setItems] = useState<FeedItem[]>([]);
+  const [items, setItems] = useState<FeedRow[]>([]);
   const [pool, setPool] = useState<FeedItem[]>([]);
   const [newest, setNewest] = useState(false);
   const [loadErr, setLoadErr] = useState("");
+  const [vBanners, setVBanners] = useState<BannerDto[]>([]);
   /** Prefer unmuted like Reels; may fall back if autoplay blocks. */
   const [muted, setMuted] = useState(false);
   const [soundFlash, setSoundFlash] = useState<"on" | "off" | null>(null);
@@ -198,15 +211,26 @@ export default function TgFeedPage() {
   useEffect(() => {
     if (status !== "ready") return;
     void load();
-  }, [status, load]);
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/tg/banners?kind=vertical");
+        if (!res.ok) return;
+        const data = (await res.json()) as { banners: BannerDto[] };
+        setVBanners(data.banners || []);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [status, load, apiFetch]);
 
   useEffect(() => {
     if (!pool.length) {
       setItems([]);
       return;
     }
-    setItems(newest ? orderFeedNewest(pool) : orderFeedMixed(pool));
-  }, [pool, newest]);
+    const ordered = newest ? orderFeedNewest(pool) : orderFeedMixed(pool);
+    setItems(injectVerticalBanners(ordered, vBanners));
+  }, [pool, newest, vBanners]);
 
   useEffect(() => {
     const root = reelRef.current;
@@ -286,7 +310,15 @@ export default function TgFeedPage() {
       {!loadErr && items.length === 0 && <p className="tg-muted">{u.empty}</p>}
 
       <div className="tg-reels" ref={reelRef}>
-        {items.map((item) => (
+        {items.map((item) =>
+          item.kind === "banner" ? (
+            <TgFeedBannerCard
+              key={item.id}
+              imageUrl={item.imageUrl}
+              href={item.href}
+              label={item.label}
+            />
+          ) : (
           <article key={`${item.kind}-${item.id}`} className="tg-reel">
             <div
               className="tg-reel-stage"
@@ -362,7 +394,8 @@ export default function TgFeedPage() {
               </div>
             </div>
           </article>
-        ))}
+          ),
+        )}
       </div>
     </TgShell>
   );

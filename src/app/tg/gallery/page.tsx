@@ -10,6 +10,11 @@ import {
   type TgGalleryItem,
 } from "@/lib/tg/miniapp/generation-view";
 
+import {
+  TgBannerCarousel,
+  useHorizontalBanners,
+} from "@/lib/tg/miniapp/banners-ui";
+
 const UI = {
   ru: {
     title: "🖼 Галерея",
@@ -98,6 +103,7 @@ export default function TgGalleryPage() {
   const router = useRouter();
   const { status, error, profile, locale, apiFetch, refresh } = useTgMiniApp();
   const u = UI[locale];
+  const banners = useHorizontalBanners(apiFetch);
 
   const [items, setItems] = useState<TgGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,6 +168,7 @@ export default function TgGalleryPage() {
 
   return (
     <TgShell locale={locale}>
+      <TgBannerCarousel banners={banners} />
       {loading && <p className="tg-muted">…</p>}
 
       {!loading && items.length === 0 && (

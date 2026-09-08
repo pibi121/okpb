@@ -69,16 +69,19 @@ async function syncHelpCopyFromCode() {
   }
 }
 
-/** Drop language-picker lines from start_pitch if still in DB overlay. */
+/** Drop language-picker lines from start_pitch / hub studio button if still in DB. */
 async function syncStartPitchFromCode() {
   if (startPitchSynced) return;
   startPitchSynced = true;
-  const d = M.start_pitch;
-  await prisma.botCopy.upsert({
-    where: { slot: "start_pitch" },
-    create: { slot: "start_pitch", textRu: d.ru, textEn: d.en },
-    update: { textRu: d.ru, textEn: d.en },
-  });
+  for (const slot of ["start_pitch", "hub_open_studio_btn"] as const) {
+    const d = M[slot];
+    if (!d) continue;
+    await prisma.botCopy.upsert({
+      where: { slot },
+      create: { slot, textRu: d.ru, textEn: d.en },
+      update: { textRu: d.ru, textEn: d.en },
+    });
+  }
 }
 
 export async function loadCopyOverlay() {

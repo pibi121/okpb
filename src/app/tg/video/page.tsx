@@ -4,6 +4,10 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { TgCatalogVideo } from "@/lib/tg/miniapp/catalog-video";
+import {
+  TgBannerCarousel,
+  useHorizontalBanners,
+} from "@/lib/tg/miniapp/banners-ui";
 
 type SpeechSlotDto = {
   id: string;
@@ -95,6 +99,7 @@ function VideoPageInner() {
 
   const { status, error, locale, apiFetch, refresh } = useTgMiniApp();
   const u = UI[locale];
+  const banners = useHorizontalBanners(apiFetch);
 
   const [templates, setTemplates] = useState<VideoTpl[]>([]);
   const [templateId, setTemplateId] = useState(presetId);
@@ -294,6 +299,7 @@ function VideoPageInner() {
 
   return (
     <TgShell locale={locale}>
+      <TgBannerCarousel banners={banners} />
       {!tpl ? (
         <>
           <div className="tg-section" style={{ paddingBottom: "0.35rem" }}>

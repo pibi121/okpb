@@ -4,6 +4,10 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { PHOTO_SCENE_CATEGORIES, photoMatchesSceneCategory } from "@/lib/tg/feed-order";
+import {
+  TgBannerCarousel,
+  useHorizontalBanners,
+} from "@/lib/tg/miniapp/banners-ui";
 
 type PhotoTpl = {
   id: string;
@@ -58,6 +62,7 @@ function PhotoPageInner() {
   const { status, error, profile, locale, apiFetch, refresh } =
     useTgMiniApp();
   const u = UI[locale];
+  const banners = useHorizontalBanners(apiFetch);
 
   const [templates, setTemplates] = useState<PhotoTpl[]>([]);
   const [templateId, setTemplateId] = useState(presetTpl);
@@ -138,6 +143,7 @@ function PhotoPageInner() {
 
   return (
     <TgShell locale={locale}>
+      <TgBannerCarousel banners={banners} />
       {!templateId || !selected ? (
         <>
           <div className="tg-toolbar">

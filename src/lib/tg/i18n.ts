@@ -620,8 +620,8 @@ Your balance: {balance}🍑
   },
 
   hub_open_studio_btn: {
-    ru: "Открыть студию PornBitch",
-    en: "Open PornBitch studio",
+    ru: "Открыть студию PeachBitch",
+    en: "Open PeachBitch studio",
   },
 
   hub_guide_btn: {

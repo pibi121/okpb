@@ -5,10 +5,7 @@ import {
 } from "@/lib/tg/auth";
 import { findOrCreateTelegramUser } from "@/lib/tg/user";
 import { getSessionUserId } from "@/lib/auth";
-
-function botToken() {
-  return process.env.TELEGRAM_BOT_TOKEN || "";
-}
+import { listActiveBotTokens } from "@/lib/tg/bot-registry";
 
 /** Cookie session or Telegram initData header (Mini App iframe-safe). */
 export async function resolveTgApiUserId(req: Request): Promise<string | null> {
@@ -21,10 +18,14 @@ export async function resolveTgApiUserId(req: Request): Promise<string | null> {
     "";
   if (!initData) return null;
 
-  const token = botToken();
-  if (!token) return null;
+  const tokens = await listActiveBotTokens();
+  if (!tokens.length) return null;
 
-  const fields = validateTelegramInitData(initData, token);
+  let fields: Record<string, string> | null = null;
+  for (const token of tokens) {
+    fields = validateTelegramInitData(initData, token);
+    if (fields) break;
+  }
   if (!fields) return null;
 
   const tgUser = parseTelegramUser(fields);

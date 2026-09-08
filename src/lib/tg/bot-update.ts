@@ -155,6 +155,20 @@ async function applyLocale(userId: string, locale: TgLocale) {
   await prisma.user.update({ where: { id: userId }, data: { locale } });
 }
 
+async function touchLastBotForAccount(platformUserId: string) {
+  try {
+    const { currentTgBot } = await import("@/lib/tg/bot-context");
+    const botId = currentTgBot()?.botInstanceId;
+    if (!botId || botId === "env-primary") return;
+    await prisma.platformAccount.updateMany({
+      where: { platform: "telegram", platformUserId },
+      data: { lastBotInstanceId: botId },
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 async function handleStart(chatId: number, from: TelegramBotUser, payload?: string) {
   const user = await findOrCreateTelegramUserFromBot(from, payload);
   const locale = localeFromUser(user.locale);
@@ -1465,6 +1479,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
     touchTgActivity(user.id),
   );
+  void touchLastBotForAccount(platformUserId);
   const session = await getTgSession(platformUserId);
   const pending = parsePending(session?.pendingJson || "{}");
 
@@ -1608,6 +1623,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
     touchTgActivity(user.id),
   );
+  void touchLastBotForAccount(platformUserId);
 
   if (isTgDevResetMessage(text)) {
     await resetTgOnboarding(platformUserId, user.id);
@@ -1892,6 +1908,12 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 }
 
 export async function flushTgOutbox() {
+  const { resolveBotTokenByInstanceId, listLiveBots } = await import(
+    "@/lib/tg/bot-registry"
+  );
+  const { tgSendMessage, tgSendPhoto, tgSendVideo } = await import(
+    "@/lib/tg/telegram-api"
+  );
   const rows = await listPendingTgOutbox(15);
   for (const row of rows) {
     try {
@@ -1903,21 +1925,40 @@ export async function flushTgOutbox() {
         successKind?: "photo" | "video";
         locale?: TgLocale;
         reply_markup?: unknown;
+        botInstanceId?: string;
       };
       const chatId = Number(row.platformUserId);
       const locale = payload.locale || "ru";
 
+      let token =
+        (await resolveBotTokenByInstanceId(payload.botInstanceId || null)) ||
+        "";
+      if (!token) {
+        const live = await listLiveBots();
+        token = live.find((b) => b.isPrimary)?.token || live[0]?.token || "";
+      }
+      if (!token) throw new Error("no bot token for outbox");
+
+      const sendMessage = (
+        text: string,
+        extra?: Record<string, unknown>,
+      ) => tgSendMessage(chatId, text, extra || {}, token);
+      const sendPhoto = (url: string, caption?: string) =>
+        tgSendPhoto(chatId, url, caption, {}, token);
+      const sendVideo = (url: string, caption?: string) =>
+        tgSendVideo(chatId, url, caption, {}, token);
+
       if (row.kind === "video" && payload.url) {
-        await tgSendVideo(chatId, tgAbsoluteUrl(payload.url), payload.caption);
+        await sendVideo(tgAbsoluteUrl(payload.url), payload.caption);
       } else if (row.kind === "photo" && payload.url) {
-        await tgSendPhoto(chatId, tgAbsoluteUrl(payload.url), payload.caption);
+        await sendPhoto(tgAbsoluteUrl(payload.url), payload.caption);
       } else if (row.kind === "text" && payload.text) {
         const extra = payload.reply_markup
           ? { reply_markup: payload.reply_markup as Record<string, unknown> }
           : undefined;
-        await tgSendMessage(chatId, payload.text, extra);
+        await sendMessage(payload.text, extra);
       } else if (row.kind === "error" && payload.text) {
-        await tgSendMessage(chatId, payload.text);
+        await sendMessage(payload.text);
         await markTgOutboxSent(row.id);
         continue;
       }
@@ -1927,11 +1968,9 @@ export async function flushTgOutbox() {
           payload.successKind === "photo"
             ? t("gen_success_photo", locale)
             : t("gen_success_video", locale);
-        await tgSendMessage(
-          chatId,
-          tFormat("gen_success", locale, { kind: kindLabel }),
-          { reply_markup: successInlineKeyboard(locale) },
-        );
+        await sendMessage(tFormat("gen_success", locale, { kind: kindLabel }), {
+          reply_markup: successInlineKeyboard(locale),
+        });
 
         const saveId = (payload as { offerSaveCharacterId?: string }).offerSaveCharacterId;
         if (saveId && row.kind === "video") {
@@ -1939,7 +1978,7 @@ export async function flushTgOutbox() {
             where: { id: saveId, videoRefOnly: true },
           });
           if (ch && (ch.name === "Модель" || ch.name === "Model")) {
-            await tgSendMessage(chatId, t("video_save_prompt", locale), {
+            await sendMessage(t("video_save_prompt", locale), {
               reply_markup: {
                 inline_keyboard: [
                   [

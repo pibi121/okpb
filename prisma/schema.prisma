@@ -885,6 +885,8 @@ model PlatformAccount {
   languageCode   String?
   /// Active TG character for generation
   activeCharacterId String?
+  /// Last BotInstance that handled a message (for outbox routing in dual-bot).
+  lastBotInstanceId String?
   /// idle | awaiting_lang | awaiting_rules | awaiting_photos | awaiting_speech | awaiting_character_name | awaiting_character_rename
   chatState      String   @default("idle")
   pendingJson    String   @default("{}")
@@ -898,19 +900,27 @@ model PlatformAccount {
   @@index([userId])
 }
 
-/// Active / retired bot instances (redirect peachbitch.com/bot).
+/// Active / dual / retired bot instances (redirect + multi-token polling).
 model BotInstance {
-  id          String    @id @default(cuid())
-  username    String
+  id            String    @id @default(cuid())
+  username      String
+  /// Telegram getMe.id as string
+  telegramBotId String    @default("")
+  /// AES-GCM encrypted bot token (empty = use TELEGRAM_BOT_TOKEN env for primary)
+  tokenEnc      String    @default("")
+  /// Primary = /bot redirect + default outbox fallback
+  isPrimary     Boolean   @default(false)
   /// active | retired | banned
-  status      String    @default("active")
-  activatedAt DateTime  @default(now())
-  retiredAt   DateTime?
-  notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  status        String    @default("active")
+  activatedAt   DateTime  @default(now())
+  retiredAt     DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([status])
+  @@index([isPrimary, status])
+  @@index([username])
 }
 
 /// Traffic partner (arbitrage). code used in ?start=ref_CODE.

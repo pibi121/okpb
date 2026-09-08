@@ -228,9 +228,56 @@ export async function probeBotHealth() {
     if (!json.ok) {
       return { ok: false, username: null, detail: json.description || "Telegram отказал" };
     }
-    return { ok: true, username: json.result?.username || null, detail: "Бот отвечает" };
+    return { ok: true, username: json.result?.username || null, detail: "Primary (env) отвечает" };
   } catch {
     return { ok: false, username: null, detail: "Telegram не ответил" };
+  }
+}
+
+export async function probeAllBotsHealth() {
+  try {
+    const { listLiveBots } = await import("@/lib/tg/bot-registry");
+    const bots = await listLiveBots();
+    const out: Array<{
+      id: string;
+      username: string;
+      isPrimary: boolean;
+      ok: boolean;
+      detail: string;
+    }> = [];
+    for (const b of bots) {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${b.token}/getMe`, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(4000),
+        });
+        const json = (await res.json()) as {
+          ok?: boolean;
+          description?: string;
+          result?: { username?: string };
+        };
+        out.push({
+          id: b.id,
+          username: b.username,
+          isPrimary: b.isPrimary,
+          ok: Boolean(json.ok),
+          detail: json.ok
+            ? `@${json.result?.username || b.username} OK`
+            : json.description || "отказ",
+        });
+      } catch {
+        out.push({
+          id: b.id,
+          username: b.username,
+          isPrimary: b.isPrimary,
+          ok: false,
+          detail: "нет ответа",
+        });
+      }
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 

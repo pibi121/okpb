@@ -117,12 +117,38 @@ export async function enqueueTgOutbox(opts: {
   kind: "video" | "photo" | "text" | "error";
   payload: Record<string, unknown>;
 }) {
+  let botInstanceId =
+    typeof opts.payload.botInstanceId === "string"
+      ? opts.payload.botInstanceId
+      : "";
+  if (!botInstanceId) {
+    try {
+      const { currentTgBot } = await import("@/lib/tg/bot-context");
+      botInstanceId = currentTgBot()?.botInstanceId || "";
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!botInstanceId) {
+    try {
+      const acc = await prisma.platformAccount.findFirst({
+        where: { platform: "telegram", platformUserId: opts.platformUserId },
+        select: { lastBotInstanceId: true },
+      });
+      botInstanceId = acc?.lastBotInstanceId || "";
+    } catch {
+      /* ignore */
+    }
+  }
   await prisma.tgOutbox.create({
     data: {
       platformUserId: opts.platformUserId,
       userId: opts.userId,
       kind: opts.kind,
-      payloadJson: JSON.stringify(opts.payload),
+      payloadJson: JSON.stringify({
+        ...opts.payload,
+        ...(botInstanceId ? { botInstanceId } : {}),
+      }),
     },
   });
 }

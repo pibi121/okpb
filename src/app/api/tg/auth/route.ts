@@ -7,20 +7,18 @@ import {
 import { findOrCreateTelegramUser } from "@/lib/tg/user";
 import { createSession } from "@/lib/auth";
 import { TG_PROMO } from "@/lib/tg-pricing";
+import { listActiveBotTokens } from "@/lib/tg/bot-registry";
 
-function botToken() {
-  return process.env.TELEGRAM_BOT_TOKEN || "";
-}
-
-/** Mini App / bot: exchange initData for web session cookie. */
+/** Mini App / bot: exchange initData for web session cookie (any active dual bot token). */
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     initData?: string;
     startPayload?: string;
     locale?: string;
   };
-  const token = botToken();
-  if (!token) {
+
+  const tokens = await listActiveBotTokens();
+  if (!tokens.length) {
     return NextResponse.json(
       { error: "TELEGRAM_BOT_TOKEN not configured" },
       { status: 503 },
@@ -28,17 +26,26 @@ export async function POST(req: Request) {
   }
 
   const initData = body.initData || "";
-  const checked = validateTelegramInitDataDetailed(initData, token);
-  if (!checked.ok) {
+  let checked: ReturnType<typeof validateTelegramInitDataDetailed> | null = null;
+  for (const token of tokens) {
+    const r = validateTelegramInitDataDetailed(initData, token);
+    if (r.ok) {
+      checked = r;
+      break;
+    }
+    checked = r;
+  }
+  if (!checked || !checked.ok) {
     console.warn("[tg-auth] invalid initData", {
-      reason: checked.reason,
+      reason: checked && !checked.ok ? checked.reason : "unknown",
       len: initData.length,
-      hasSig: /(?:^|&)signature=/.test(initData),
-      hasUser: /(?:^|&)user=/.test(initData),
-      hasHash: /(?:^|&)hash=/.test(initData),
+      tokensTried: tokens.length,
     });
     return NextResponse.json(
-      { error: "Invalid initData", reason: checked.reason },
+      {
+        error: "Invalid initData",
+        reason: checked && !checked.ok ? checked.reason : "bad_hash",
+      },
       { status: 401 },
     );
   }

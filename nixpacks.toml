@@ -1,15 +1,18 @@
+providers = ["node", "python"]
+
 [phases.setup]
 nixPkgs = ["nodejs_22", "npm-10_x", "openssl", "openssh", "python312", "python312Packages.pip"]
 
 [phases.install]
 cmds = [
   "npm ci --include=dev",
-  "python3 -m pip install --user paramiko opencv-python-headless numpy || python -m pip install --user paramiko opencv-python-headless numpy || true",
+  # Nixpacks Python provider uses /opt/venv; force age-gate deps into image.
+  "pip install -r requirements.txt || python -m pip install -r requirements.txt || python3 -m pip install -r requirements.txt || true",
+  "pip install -q paramiko || python -m pip install -q paramiko || true",
 ]
 
 [phases.build]
 cmds = ["npx prisma generate", "npm run build"]
 
 [start]
-# Ensure nix/python + pip --user bins are visible to Node child_process (age-gate).
-cmd = "export PATH=\"$HOME/.local/bin:$PATH\" && (command -v python3 || command -v python3.12 || true) && npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
+cmd = "export PATH=\"/opt/venv/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$HOME/.local/bin:$PATH\"; command -v python3 || command -v python || true; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"

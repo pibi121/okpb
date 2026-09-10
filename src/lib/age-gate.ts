@@ -82,6 +82,8 @@ function findPython(): string | null {
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const candidates = [
     ...fromEnv,
+    "/opt/venv/bin/python",
+    "/opt/venv/bin/python3",
     "python3",
     "python3.12",
     "python",
@@ -91,6 +93,8 @@ function findPython(): string | null {
     path.join(home, ".local", "bin", "python3"),
     path.join(home, ".nix-profile", "bin", "python3"),
     path.join(home, ".nix-profile", "bin", "python3.12"),
+    "/nix/var/nix/profiles/default/bin/python3",
+    "/nix/var/nix/profiles/default/bin/python",
   ];
 
   for (const bin of candidates) {
@@ -144,6 +148,9 @@ function runPython(
     PYTHONUNBUFFERED: "1",
     // pip --user scripts/libs
     PATH: [
+      "/opt/venv/bin",
+      "/root/.nix-profile/bin",
+      "/nix/var/nix/profiles/default/bin",
       path.join(process.env.HOME || "", ".local", "bin"),
       process.env.PATH || "",
     ]
@@ -247,12 +254,11 @@ export async function checkImageBufferAgeGate(
   ensureDataDirs();
   const ready = await ensureOpenCv();
   if (!ready) {
-    // Infra miss must NOT brick uploads — only real "probable_minor" blocks.
-    console.error("[age-gate] opencv_unavailable — allowing upload (fail-open)");
+    // Safety: if age-gate is enabled, do not silently allow uploads/gens.
+    console.error("[age-gate] opencv_unavailable — blocking (fail-closed)");
     return {
-      ok: true,
-      blocked: false,
-      skipped: true,
+      ok: false,
+      blocked: true,
       error: "opencv_unavailable",
       reason: "checker_unavailable",
     };
@@ -260,11 +266,10 @@ export async function checkImageBufferAgeGate(
 
   const script = scriptPath();
   if (!fs.existsSync(script)) {
-    console.error("[age-gate] script_missing — allowing upload (fail-open)");
+    console.error("[age-gate] script_missing — blocking (fail-closed)");
     return {
-      ok: true,
-      blocked: false,
-      skipped: true,
+      ok: false,
+      blocked: true,
       error: "script_missing",
       reason: "checker_unavailable",
     };
@@ -289,36 +294,26 @@ export async function checkImageBufferAgeGate(
     } catch {
       console.error("[age-gate] bad JSON:", line.slice(0, 200), r.stderr.slice(0, 200));
       return {
-        ok: true,
-        blocked: false,
-        skipped: true,
+        ok: false,
+        blocked: config.failClosed,
         error: "bad_checker_json",
         reason: "checker_error",
       };
     }
     if (!parsed.ok) {
-      // Checker crashed mid-run: fail-open unless ops explicitly failClosed AND we
-      // got a clear blocked=true from a healthy response (handled above when ok).
-      if (config.failClosed && parsed.blocked) {
-        return { ...parsed, blocked: true, reason: parsed.reason || "checker_error" };
-      }
-      console.error("[age-gate] checker error — allowing upload:", parsed.error || parsed.reason);
       return {
         ...parsed,
-        ok: true,
-        blocked: false,
-        skipped: true,
+        blocked: config.failClosed ? true : Boolean(parsed.blocked),
         reason: parsed.reason || "checker_error",
       };
     }
     return parsed;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[age-gate] check failed — allowing upload:", msg);
+    console.error("[age-gate] check failed:", msg);
     return {
-      ok: true,
-      blocked: false,
-      skipped: true,
+      ok: false,
+      blocked: config.failClosed,
       error: msg,
       reason: "checker_error",
     };
@@ -334,7 +329,16 @@ export async function checkImageFileAgeGate(
 }
 
 /** User-facing error code / message helpers */
-export function ageGateBlockMessage(locale: "ru" | "en" = "ru"): string {
+export function ageGateBlockMessage(
+  locale: "ru" | "en" = "ru",
+  reason?: string,
+): string {
+  if (reason === "checker_unavailable" || reason === "checker_error") {
+    if (locale === "en") {
+      return "Safety check is temporarily unavailable, so uploads/generations are blocked. Please try again in a few minutes or contact support.";
+    }
+    return "Проверка безопасности временно недоступна — загрузка и генерации заблокированы. Попробуйте через несколько минут или напишите в поддержку.";
+  }
   if (locale === "en") {
     return "This photo looks like it may show a minor. For safety we can't use it for generation. Please upload a clear photo of an adult (18+).";
   }
@@ -345,7 +349,7 @@ export class AgeGateBlockedError extends Error {
   code = "age_gate_blocked" as const;
   result: AgeGateResult;
   constructor(result: AgeGateResult, locale: "ru" | "en" = "ru") {
-    super(ageGateBlockMessage(locale));
+    super(ageGateBlockMessage(locale, result.reason));
     this.result = result;
   }
 }

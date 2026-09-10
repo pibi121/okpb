@@ -4,8 +4,8 @@ nixpacksConfigPath = "nixpacks.toml"
 buildCommand = "npx prisma generate && npm run build"
 
 [deploy]
-# Keep python/pip --user on PATH for age-gate (Node spawn does not always inherit nix bins).
-startCommand = "export PATH=\"$HOME/.local/bin:$PATH\"; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
+# Nixpacks Python provider installs to /opt/venv; keep it + nix profile on PATH for age-gate.
+startCommand = "export PATH=\"/opt/venv/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$HOME/.local/bin:$PATH\"; command -v python3 || command -v python || true; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
 healthcheckPath = "/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

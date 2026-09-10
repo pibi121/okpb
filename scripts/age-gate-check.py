@@ -153,12 +153,15 @@ def analyze(img_bytes: bytes, block_buckets: set[str], face_thresh: float) -> di
 
     d = models_dir()
     paths = ensure_models(d)
-    face_net = cv2.dnn.readNetFromCaffe(
-        str(paths["face.prototxt"]), str(paths["face.caffemodel"])
-    )
-    age_net = cv2.dnn.readNetFromCaffe(
-        str(paths["age.prototxt"]), str(paths["age.caffemodel"])
-    )
+
+    def load_caffe(prototxt: Path, caffemodel: Path):
+        if hasattr(cv2.dnn, "readNetFromCaffe"):
+            return cv2.dnn.readNetFromCaffe(str(prototxt), str(caffemodel))
+        # OpenCV 5+ / some builds: use generic readNet
+        return cv2.dnn.readNet(str(caffemodel), str(prototxt), "caffe")
+
+    face_net = load_caffe(paths["face.prototxt"], paths["face.caffemodel"])
+    age_net = load_caffe(paths["age.prototxt"], paths["age.caffemodel"])
 
     img = load_image_bytes(img_bytes)
     faces = detect_faces(face_net, img, face_thresh)

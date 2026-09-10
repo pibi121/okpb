@@ -249,7 +249,15 @@ async function ensureOpenCv(): Promise<boolean> {
       }
       try {
         const pip = await runPython(
-          ["-m", "pip", "install", "--user", "-q", "opencv-python-headless", "numpy"],
+          [
+            "-m",
+            "pip",
+            "install",
+            "--user",
+            "-q",
+            "opencv-python-headless==4.10.0.84",
+            "numpy==2.1.3",
+          ],
           { timeoutMs: 300_000 },
         );
         if (pip.code !== 0) {

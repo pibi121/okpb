@@ -62,6 +62,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, action: "upload_gallery", relKey, bytes: file.size });
     }
 
+    if (action === "lab_add_photo") {
+      const characterId = String(form.get("characterId") || "").trim();
+      const file = form.get("file");
+      if (!characterId || !(file instanceof File) || file.size < 50) {
+        return NextResponse.json({ error: "characterId+file required" }, { status: 400 });
+      }
+      if (file.size > 25 * 1024 * 1024) {
+        return NextResponse.json({ error: "file too large" }, { status: 400 });
+      }
+      const ch = await prisma.character.findUnique({ where: { id: characterId } });
+      if (!ch) return NextResponse.json({ error: "character not found" }, { status: 404 });
+      const { saveCharacterPhoto, listCharacterPhotos } = await import(
+        "@/lib/character-dataset"
+      );
+      const name = (file instanceof File ? file.name : "photo.jpg") || "photo.jpg";
+      const buf = Buffer.from(await file.arrayBuffer());
+      // Lab overnight seed — intentionally skip age-gate.
+      saveCharacterPhoto(characterId, name, buf, ch.triggerWord);
+      const photos = listCharacterPhotos(characterId);
+      await prisma.character.update({
+        where: { id: characterId },
+        data: { photoCount: photos.length },
+      });
+      return NextResponse.json({
+        ok: true,
+        action: "lab_add_photo",
+        characterId,
+        photoCount: photos.length,
+        bytes: buf.length,
+      });
+    }
+
     if (action !== "import_db") {
       return NextResponse.json({ error: "unsupported multipart action" }, { status: 400 });
     }
@@ -937,6 +969,226 @@ export async function POST(req: NextRequest) {
       email: user.email,
       galleryItems: counts?._count.galleryItems ?? 0,
       characters: counts?._count.characters ?? 0,
+    });
+  }
+
+  // ——— Lab overnight seed helpers (skip age-gate; not TG-published) ———
+  if (action === "lab_create_character") {
+    const userId = String(body.userId || "").trim();
+    const name = String(body.name || "").trim();
+    const triggerWord = String(body.triggerWord || name)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 48);
+    const gender = body.gender === "male" ? "male" : "female";
+    if (!userId || !name || !triggerWord) {
+      return NextResponse.json({ error: "userId+name required" }, { status: 400 });
+    }
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
+
+    const existing = await prisma.character.findFirst({
+      where: {
+        userId,
+        OR: [{ triggerWord }, { name }],
+        isStudioCast: false,
+        videoRefOnly: false,
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (existing) {
+      const updated = await prisma.character.update({
+        where: { id: existing.id },
+        data: {
+          name,
+          triggerWord,
+          gender,
+          consentGiven: true,
+          isStudioCast: false,
+          videoRefOnly: false,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        action: "lab_create_character",
+        reused: true,
+        character: {
+          id: updated.id,
+          name: updated.name,
+          triggerWord: updated.triggerWord,
+          loraStatus: updated.loraStatus,
+          loraPath: updated.loraPath,
+        },
+      });
+    }
+
+    const { suggestedLookbook } = await import("@/lib/lookbook");
+    const created = await prisma.character.create({
+      data: {
+        userId,
+        name,
+        gender,
+        consentGiven: true,
+        photoCount: 0,
+        status: "draft",
+        loraStatus: "none",
+        triggerWord,
+        isStudioCast: false,
+        videoRefOnly: false,
+        lookbookJson: JSON.stringify(suggestedLookbook(gender)),
+      },
+    });
+    const { ensureCharacterDirs } = await import("@/lib/character-dataset");
+    ensureCharacterDirs(created.id);
+    return NextResponse.json({
+      ok: true,
+      action: "lab_create_character",
+      reused: false,
+      character: {
+        id: created.id,
+        name: created.name,
+        triggerWord: created.triggerWord,
+        loraStatus: created.loraStatus,
+      },
+    });
+  }
+
+  if (action === "lab_set_ready_lora") {
+    const userId = String(body.userId || "").trim();
+    const name = String(body.name || "").trim();
+    const triggerWord = String(body.triggerWord || name)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 48);
+    const loraPath = String(body.loraPath || "").trim().replace(/^\/+/, "");
+    if (!userId || !name || !triggerWord || !loraPath) {
+      return NextResponse.json(
+        { error: "userId+name+triggerWord+loraPath required" },
+        { status: 400 },
+      );
+    }
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
+
+    const existing = await prisma.character.findFirst({
+      where: {
+        userId,
+        OR: [{ triggerWord }, { name }],
+        isStudioCast: false,
+        videoRefOnly: false,
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    const { suggestedLookbook } = await import("@/lib/lookbook");
+    const data = {
+      name,
+      triggerWord,
+      gender: "female" as const,
+      consentGiven: true,
+      photoCount: Math.max(existing?.photoCount || 0, 10),
+      status: "ready",
+      loraStatus: "lora_ready",
+      loraPath,
+      isStudioCast: false,
+      videoRefOnly: false,
+      lookbookJson: JSON.stringify(suggestedLookbook("female")),
+    };
+    const row = existing
+      ? await prisma.character.update({ where: { id: existing.id }, data })
+      : await prisma.character.create({ data: { userId, ...data } });
+    return NextResponse.json({
+      ok: true,
+      action: "lab_set_ready_lora",
+      character: {
+        id: row.id,
+        name: row.name,
+        triggerWord: row.triggerWord,
+        loraPath: row.loraPath,
+        loraStatus: row.loraStatus,
+      },
+    });
+  }
+
+  if (action === "lab_start_train") {
+    const characterId = String(body.characterId || "").trim();
+    const force = body.force !== false;
+    if (!characterId) {
+      return NextResponse.json({ error: "characterId required" }, { status: 400 });
+    }
+    const row = await prisma.character.findUnique({ where: { id: characterId } });
+    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const { metalnodeCheck } = await import("@/lib/metalnode-ssh");
+    const check = await metalnodeCheck();
+    if (!check.ok) {
+      return NextResponse.json(
+        { error: "metalnode_unreachable", detail: check.detail },
+        { status: 503 },
+      );
+    }
+    const { startKreaLoraTrain } = await import("@/lib/krea-lora-train");
+    const { readTrainMeta, listCharacterPhotos } = await import("@/lib/character-dataset");
+    const started = await startKreaLoraTrain({
+      userId: row.userId,
+      characterId: row.id,
+      triggerWord: row.triggerWord || undefined,
+      force,
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "lab_start_train",
+      characterId: row.id,
+      photos: listCharacterPhotos(row.id).length,
+      started,
+      trainMeta: readTrainMeta(row.id),
+    });
+  }
+
+  if (action === "lab_train_status") {
+    const characterId = String(body.characterId || "").trim();
+    if (!characterId) {
+      return NextResponse.json({ error: "characterId required" }, { status: 400 });
+    }
+    const row = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: {
+        id: true,
+        name: true,
+        triggerWord: true,
+        loraStatus: true,
+        loraPath: true,
+        photoCount: true,
+        userId: true,
+      },
+    });
+    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    try {
+      const { refreshKreaLoraTrainStatus } = await import("@/lib/krea-lora-train");
+      await refreshKreaLoraTrainStatus({ userId: row.userId, characterId: row.id });
+    } catch (e) {
+      console.error("[bootstrap] refresh train", e);
+    }
+    const fresh = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: {
+        id: true,
+        name: true,
+        triggerWord: true,
+        loraStatus: true,
+        loraPath: true,
+        photoCount: true,
+      },
+    });
+    const { readTrainMeta, listCharacterPhotos } = await import("@/lib/character-dataset");
+    return NextResponse.json({
+      ok: true,
+      action: "lab_train_status",
+      character: fresh,
+      photos: listCharacterPhotos(characterId).length,
+      trainMeta: readTrainMeta(characterId),
     });
   }
 

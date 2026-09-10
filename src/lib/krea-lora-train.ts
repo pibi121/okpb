@@ -85,6 +85,8 @@ async function probeRemoteKreaTrain(slug: string): Promise<RemoteTrainProbe> {
   const remoteImg = `/work/datasets/${slug}/images`;
   const logPath = `/work/loras_out/${slug}_train.log`;
   const outDir = `/work/loras_out/${slug}`;
+  const pidPath = `/work/loras_out/${slug}_train.pid`;
+  // Avoid `pgrep -af '…slug…'` — it matches the probe shell itself (false RUNNING).
   const out = await metalnodeSsh(
     [
       `find ${JSON.stringify(remoteImg)} -maxdepth 1 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) 2>/dev/null | wc -l`,
@@ -97,7 +99,19 @@ async function probeRemoteKreaTrain(slug: string): Promise<RemoteTrainProbe> {
       `echo '---OUTDIR---'`,
       `ls -lh ${outDir}/${slug}_krea2.safetensors 2>/dev/null || ls -1t ${outDir}/*.safetensors 2>/dev/null | head -1 || true`,
       `echo '---PID---'`,
-      `if pgrep -af 'krea2_train_network.*${slug}|peach_krea2_lora_train.*${slug}' >/dev/null 2>&1; then echo RUNNING; elif [ -f /work/loras_out/${slug}_train.pid ] && ps -p $(cat /work/loras_out/${slug}_train.pid) >/dev/null 2>&1; then echo RUNNING; else echo DEAD; fi`,
+      `PID_FILE=${JSON.stringify(pidPath)}`,
+      `if [ -f "$PID_FILE" ]; then`,
+      `  RPID=$(cat "$PID_FILE" 2>/dev/null || true)`,
+      `  if [ -n "$RPID" ] && kill -0 "$RPID" 2>/dev/null; then`,
+      `    CMD=$(tr '\\0' ' ' < /proc/$RPID/cmdline 2>/dev/null || true)`,
+      `    case "$CMD" in`,
+      `      *krea2_train_network*|*peach_krea2_lora_train*|*musubi_tuner*) echo RUNNING ;;`,
+      `      *) echo DEAD ;;`,
+      `    esac`,
+      `  else echo DEAD; fi`,
+      `else`,
+      `  if ps -eo args= 2>/dev/null | grep -F "krea2_train_network" | grep -F ${JSON.stringify(slug)} | grep -v grep >/dev/null; then echo RUNNING; else echo DEAD; fi`,
+      `fi`,
     ].join("; "),
     120_000,
   );
@@ -112,12 +126,11 @@ async function probeRemoteKreaTrain(slug: string): Promise<RemoteTrainProbe> {
   const hasLoraOutput = loraListedInSection(outSection, slug);
   const markersDone = /TRAIN_DONE|ALL_DONE/.test(markers);
   const failed = /TRAIN_FAIL|NO_LORA|TOO_FEW|Traceback/.test(`${markers}\n${logText}`) && !markersDone;
-  const running =
-    pidSection.includes("RUNNING") ||
-    (RE_STEPS_IN_LOG.test(logText) && !markersDone && !failed);
+  // Live process only — never infer RUNNING from log text (stale logs / probe self-match).
+  const running = pidSection.includes("RUNNING");
   const trainFinished =
-    markersDone || (hasLoraOutput && pidSection.includes("DEAD") && !running && !failed);
-  const done = loraInComfy && trainFinished;
+    markersDone || (hasLoraOutput && !running && !failed);
+  const done = (loraInComfy || hasLoraOutput) && trainFinished && !running;
   return {
     slug,
     imageCount: Number.isFinite(imageCount) ? imageCount : 0,
@@ -194,7 +207,7 @@ async function syncCharacterFromRemoteProbe(
     }
   }
 
-  if (probe.running || probe.done || trainLogLooksActive(probe.logText)) {
+  if (probe.running || probe.done) {
     const progress = stampProgress(
       {
         ...meta,
@@ -209,7 +222,8 @@ async function syncCharacterFromRemoteProbe(
         finishedAt: undefined,
         phase: undefined,
       },
-      `${probe.logText}\nTRAIN_START`,
+      // Only use real remote log — never inject TRAIN_START (fake 40% progress).
+      probe.logText || "training…",
     );
     writeTrainMeta(characterId, progress);
     const updated = await prisma.character.update({
@@ -217,6 +231,11 @@ async function syncCharacterFromRemoteProbe(
       data: { loraStatus: "lora_training", triggerWord: meta.trigger || slug },
     });
     return { character: updated, train: progress };
+  }
+
+  // Stale "active" log markers without a live process — do not keep training UI alive.
+  if (trainLogLooksActive(probe.logText) && !probe.failed && !probe.hasLoraOutput) {
+    return null;
   }
 
   if (probe.failed) {
@@ -282,6 +301,8 @@ export async function startKreaLoraTrain(opts: {
   characterId: string;
   triggerWord?: string;
   epochs?: number;
+  /** Skip resume heuristics — always start a fresh remote train. */
+  force?: boolean;
 }) {
   const character = await prisma.character.findFirst({
     where: { id: opts.characterId, userId: opts.userId },
@@ -299,12 +320,13 @@ export async function startKreaLoraTrain(opts: {
   const estimateTotalSec = estimateTrainTotalSec(epochs);
   const startedAt = new Date().toISOString();
 
-  if (character.loraStatus === "lora_training") {
+  if (!opts.force && character.loraStatus === "lora_training") {
     const active = readTrainMeta(character.id);
     if (active.status === "uploading" || active.status === "training") {
       try {
         const probe = await probeRemoteKreaTrain(slug);
-        if (probe.running || probe.done) {
+        // Require a live process or a completed LoRA — never resume on empty/fake logs.
+        if ((probe.running && (probe.imageCount > 0 || trainLogLooksActive(probe.logText))) || probe.done) {
           const synced = await syncCharacterFromRemoteProbe(character.id, active, probe);
           if (synced) {
             return {
@@ -323,6 +345,7 @@ export async function startKreaLoraTrain(opts: {
           "[peach] stale lora_training with dead remote — restarting",
           character.id,
           slug,
+          { running: probe.running, done: probe.done, images: probe.imageCount },
         );
       } catch (e) {
         // SSH flapping — block double-start while we cannot probe
@@ -333,8 +356,17 @@ export async function startKreaLoraTrain(opts: {
     }
   }
 
+  if (opts.force) {
+    writeTrainMeta(character.id, {
+      status: "idle",
+      trigger,
+      slug,
+      error: undefined,
+    });
+  }
+
   const prevMeta = readTrainMeta(character.id);
-  if (prevMeta.status === "error" || character.loraStatus === "lookbook_ready") {
+  if (!opts.force && (prevMeta.status === "error" || character.loraStatus === "lookbook_ready")) {
     try {
       const probe = await probeRemoteKreaTrain(slug);
       if (probe.running || probe.done) {

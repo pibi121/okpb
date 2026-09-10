@@ -220,6 +220,7 @@ export async function POST(req: NextRequest) {
         userId: row.userId,
         characterId: row.id,
         triggerWord: row.triggerWord || row.name,
+        force: true,
       });
       // Wait until upload/SSH reaches training or error (bg job).
       let trainMeta = readTrainMeta(row.id);

@@ -581,6 +581,10 @@ When ready — tap «Done, start».`,
     ru: "Начинаю генерацию! Пока можешь расслабиться и насладиться генерациями, которые делает наша команда",
     en: "Starting generation! Sit back and enjoy what our team creates",
   },
+  gen_view_feed_btn: {
+    ru: "Посмотреть генерации",
+    en: "Browse generations",
+  },
 
   gen_success: {
     ru: "<b>😍 {kind} готово!</b>\n\nХочешь попробовать сгенерировать ещё что-то?",

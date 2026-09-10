@@ -64,7 +64,7 @@ import {
   startLookbookCustom,
   toggleLookbookBodyPrompt,
 } from "@/lib/tg/lookbook-bot";
-import { mainMenuExtra, sendMainMenuHub } from "@/lib/tg/menu";
+import { mainMenuExtra, sendMainMenuHub, genStartingExtra } from "@/lib/tg/menu";
 import { recordInboundUserMessage } from "@/lib/ops/inbox";
 import { getTemplatePreviewUrl } from "@/lib/tg/template-preview";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
@@ -969,7 +969,7 @@ async function beginGeneration(
     },
   });
 
-  await tgSendMessage(chatId, t("gen_starting", locale), mainMenuExtra(locale));
+  await tgSendMessage(chatId, t("gen_starting", locale), genStartingExtra(locale));
 
   try {
     if (kind === "photo") {

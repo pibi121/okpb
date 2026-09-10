@@ -9,7 +9,7 @@ import {
 import { listTgPublishedLoraI2vTemplates } from "@/lib/lora-i2v-template";
 import { normalizeLocale, type TgLocale } from "@/lib/tg/i18n";
 import { seedPreviewForPhoto, seedPreviewForVideo } from "@/lib/tg/tg-catalog-seed";
-import { isSafeVideoTemplateThumb } from "@/lib/quick-video-preview-safe";
+import { pickCatalogPosterUrl } from "@/lib/quick-video-preview-safe";
 import {
   resolveVideoTemplateSpeech,
   speechSlotsPublicDto,
@@ -63,13 +63,11 @@ export async function GET(req: Request) {
           seedPrev?.previewVideoUrl ||
           "",
       );
-      const rawPhoto = t.previewPhotoUrl?.trim() || "";
       const previewPhoto = resolveTgCatalogAssetUrl(
-        isSafeVideoTemplateThumb(rawPhoto)
-          ? rawPhoto
-          : isSafeVideoTemplateThumb(seedPrev?.previewPhotoUrl)
-            ? seedPrev!.previewPhotoUrl
-            : "",
+        pickCatalogPosterUrl(
+          t.previewPhotoUrl,
+          seedPrev?.previewPhotoUrl,
+        ),
       );
       const speech = await resolveVideoTemplateSpeech(t.id);
       const slots = speechSlotsPublicDto(speech.slots, locale);

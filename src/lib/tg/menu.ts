@@ -56,6 +56,22 @@ export function hubInlineKeyboard(locale: TgLocale) {
   };
 }
 
+/** After generation starts — open Mini App feed. */
+export function genStartingExtra(locale: TgLocale) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: t("gen_view_feed_btn", locale),
+            web_app: { url: tgMiniAppUrl() },
+          },
+        ],
+      ],
+    },
+  };
+}
+
 export async function sendMainMenuHub(
   chatId: number,
   userId: string,

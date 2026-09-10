@@ -16,7 +16,7 @@ import {
 } from "@/lib/quick-video-template";
 import { storyH3Peaches } from "@/lib/tg-pricing";
 import { tgTemplateDisplayTitle } from "@/lib/tg/tg-publish";
-import { isSafeVideoTemplateThumb } from "@/lib/quick-video-preview-safe";
+import { pickCatalogPosterUrl } from "@/lib/quick-video-preview-safe";
 import {
   TG_FEATURED_PHOTO_TITLES,
   TG_FEATURED_VIDEO_TITLES,
@@ -153,9 +153,7 @@ async function listTgPublishedVideoRows(userId: string): Promise<PublicQuickVide
       identityPersonCount: r.identityPersonCount,
       hasLocationSlot: r.hasLocationSlot,
       previewVideoUrl: r.previewVideoUrl,
-      previewPhotoUrl: isSafeVideoTemplateThumb(r.previewPhotoUrl)
-        ? r.previewPhotoUrl
-        : "",
+      previewPhotoUrl: pickCatalogPosterUrl(r.previewPhotoUrl),
       orientation: r.orientation,
       durationSec: r.durationSec,
       createdAt: r.createdAt.toISOString(),

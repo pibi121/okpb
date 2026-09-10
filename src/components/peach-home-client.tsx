@@ -104,7 +104,8 @@ function AdminDashboard({ stats }: { stats: AdminStats }) {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <Quick title="Фото" body="Генератор still." href="/peach/photo" pulse />
+        <Quick title="TG каталог" body="Все шаблоны: скрыть / переименовать." href="/peach/tg-catalog" pulse />
+        <Quick title="Фото" body="Генератор still." href="/peach/photo" />
         <Quick title="Видео (hub)" body="User-facing video hub." href="/peach/video" />
         <Quick title="Pose eval" body="Ref2V оценка кирпичей." href="/peach/pose-eval" />
         <Quick title="Eros eval" body="Classroom + Park." href="/peach/eros-eval" />

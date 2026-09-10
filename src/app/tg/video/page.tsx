@@ -345,8 +345,15 @@ function VideoPageInner() {
                       className="tg-video-preview"
                       onClick={togglePreview}
                     />
+                  ) : t.previewPhotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={t.previewPhotoUrl}
+                      alt=""
+                      className="tg-video-preview"
+                    />
                   ) : (
-                    <div className="tg-portrait-placeholder" />
+                    <div className="tg-portrait-placeholder tg-catalog-video-skeleton" />
                   )}
                 </div>
                 <div className="tg-portrait-meta">

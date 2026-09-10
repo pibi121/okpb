@@ -10,6 +10,7 @@ import {
   filterVerticalBannersDue,
   markVerticalBannersShown,
 } from "@/lib/tg/miniapp/banners-ui";
+import { TgCatalogVideo } from "@/lib/tg/miniapp/catalog-video";
 
 type VideoTpl = {
   id: string;
@@ -249,42 +250,6 @@ export default function TgFeedPage() {
   }, [newest, items]);
 
   useEffect(() => {
-    const root = reelRef.current;
-    if (!root) return;
-    const videos = root.querySelectorAll("video");
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const v = e.target as HTMLVideoElement;
-          v.muted = mutedRef.current;
-          if (e.isIntersecting) {
-            const p = v.play();
-            if (p) {
-              void p.catch(() => {
-                // Autoplay with sound blocked — fall back to muted once.
-                if (!mutedRef.current) {
-                  v.muted = true;
-                  setMuted(true);
-                  mutedRef.current = true;
-                  void v.play().catch(() => undefined);
-                }
-              });
-            }
-          } else {
-            v.pause();
-          }
-        }
-      },
-      { threshold: 0.6 },
-    );
-    videos.forEach((v) => {
-      (v as HTMLVideoElement).muted = mutedRef.current;
-      io.observe(v);
-    });
-    return () => io.disconnect();
-  }, [items]);
-
-  useEffect(() => {
     return () => {
       if (flashTimer.current) clearTimeout(flashTimer.current);
     };
@@ -347,18 +312,31 @@ export default function TgFeedPage() {
               }
             >
               {item.isVideo ? (
-                <video
-                  src={item.preview}
-                  poster={item.poster || undefined}
-                  className="tg-reel-media"
-                  loop
-                  muted={muted}
-                  playsInline
-                  preload="metadata"
-                />
-              ) : (
+                item.preview ? (
+                  <TgCatalogVideo
+                    src={item.preview}
+                    poster={item.poster || ""}
+                    className="tg-reel-media"
+                    muted={muted}
+                    threshold={0.55}
+                  />
+                ) : item.poster ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.poster} alt="" className="tg-reel-media" />
+                ) : (
+                  <div
+                    className="tg-catalog-video-skeleton"
+                    style={{ position: "absolute", inset: 0 }}
+                  />
+                )
+              ) : item.preview ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.preview} alt="" className="tg-reel-media" />
+              ) : (
+                <div
+                  className="tg-catalog-video-skeleton"
+                  style={{ position: "absolute", inset: 0 }}
+                />
               )}
               {item.isVideo && soundFlash ? (
                 <span

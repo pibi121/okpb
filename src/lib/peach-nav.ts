@@ -15,6 +15,7 @@ export const USER_NAV: NavLink[] = [
 
 /** Dev / lab — только в режиме «Как вижу Я» */
 export const ADMIN_NAV: NavLink[] = [
+  { href: "/peach/tg-catalog", label: "TG каталог" },
   { href: "/peach/tg-photo", label: "TG фото (тест)" },
   { href: "/peach/lora-i2v", label: "LoRA → I2V" },
   { href: "/peach/story-video", label: "Story H3 видео" },

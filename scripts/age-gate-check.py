@@ -44,7 +44,18 @@ MODEL_URLS = {
 
 
 def models_dir() -> Path:
-    root = os.environ.get("AGE_GATE_MODELS") or os.environ.get("DATA_ROOT")
+    # AGE_GATE_MODELS may be the final models dir OR the data root.
+    explicit = os.environ.get("AGE_GATE_MODELS")
+    if explicit:
+        p = Path(explicit)
+        # If caller already pointed at .../age-gate, don't nest again.
+        if p.name == "age-gate":
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = p / "age-gate"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    root = os.environ.get("DATA_ROOT")
     if root:
         p = Path(root) / "age-gate"
     else:
@@ -57,9 +68,12 @@ def download(name: str, dest: Path) -> None:
     if dest.exists() and dest.stat().st_size > 1000:
         return
     url = MODEL_URLS[name]
+    dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     try:
-        urllib.request.urlretrieve(url, tmp)
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+        urllib.request.urlretrieve(url, str(tmp))
         if tmp.stat().st_size < 1000:
             raise RuntimeError(f"download too small: {name}")
         tmp.replace(dest)
@@ -70,7 +84,7 @@ def download(name: str, dest: Path) -> None:
         if name == "age.caffemodel":
             urllib.request.urlretrieve(
                 "https://github.com/spmallick/learnopencv/raw/master/AgeGender/age_net.caffemodel",
-                tmp,
+                str(tmp),
             )
             tmp.replace(dest)
             return

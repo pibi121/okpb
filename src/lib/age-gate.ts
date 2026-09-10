@@ -69,9 +69,30 @@ function pythonWorks(bin: string): boolean {
   }
 }
 
-/** Resolve python binary on Railway/Nix (often python3.12, not always on PATH as python3). */
+function pythonHasOpenCv(bin: string): boolean {
+  try {
+    const r = spawnSync(bin, ["-c", "import cv2,numpy; print('OK')"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        PATH: [
+          "/mise/shims",
+          path.join(process.env.HOME || "", ".local", "share", "mise", "shims"),
+          process.env.PATH || "",
+        ].join(path.delimiter),
+      },
+    });
+    return !r.error && r.status === 0 && (r.stdout || "").includes("OK");
+  } catch {
+    return false;
+  }
+}
+
+/** Resolve python binary on Railway/Mise (prefer one that already has OpenCV). */
 function findPython(): string | null {
-  if (cachedPython && pythonWorks(cachedPython)) return cachedPython;
+  if (cachedPython && pythonHasOpenCv(cachedPython)) return cachedPython;
 
   const fromEnv = [
     process.env.AGE_GATE_PYTHON,
@@ -101,15 +122,26 @@ function findPython(): string | null {
     "/nix/var/nix/profiles/default/bin/python",
   ];
 
+  // Prefer binaries that can import cv2 (mise shims on Railway).
   for (const bin of candidates) {
-    if (pythonWorks(bin)) {
+    if (!pythonWorks(bin)) continue;
+    if (pythonHasOpenCv(bin)) {
       cachedPython = bin;
-      console.log("[age-gate] python:", bin);
+      console.log("[age-gate] python+opencv:", bin);
       return bin;
     }
   }
 
-  // Last resort: login shell PATH (Nixpacks sometimes hides bins from Node spawn)
+  // Fallback: any python (ensureOpenCv will pip install)
+  for (const bin of candidates) {
+    if (pythonWorks(bin)) {
+      cachedPython = bin;
+      console.log("[age-gate] python (no cv2 yet):", bin);
+      return bin;
+    }
+  }
+
+  // Last resort: login shell PATH
   for (const shellCmd of [
     "command -v python3.12 || command -v python3 || command -v python",
     "which python3.12 || which python3 || which python",

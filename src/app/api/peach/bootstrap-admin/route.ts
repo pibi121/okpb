@@ -6,6 +6,8 @@ import { hashPassword } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** restart_lora waits for upload/SSH start */
+export const maxDuration = 900;
 
 function authorized(req: NextRequest) {
   if (process.env.BOOTSTRAP_ADMIN_ENABLED !== "1") return false;

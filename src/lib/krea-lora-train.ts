@@ -452,10 +452,12 @@ async function runKreaLoraTrainBackground(opts: {
   })();
 
   try {
+    const { ensureMetalnodeKeyFile } = await import("@/lib/metalnode-ssh");
+    ensureMetalnodeKeyFile();
     const check = await metalnodeCheck();
     if (!check.ok) {
       throw new Error(
-        `Metalnode SSH недоступен: ${check.detail}. Повтори через минуту или проверь ключ/порт в infra/metalnode.local.json.`,
+        `Metalnode SSH недоступен: ${check.detail}. Повтори через минуту или проверь METALNODE_SSH_KEY / порт.`,
       );
     }
     await runTrainPipeline({

@@ -117,6 +117,149 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, users });
   }
 
+  if (action === "find_character") {
+    const q = String((body as { q?: string }).q || body.name || "").trim();
+    if (!q) return NextResponse.json({ error: "q required" }, { status: 400 });
+    const rows = await prisma.character.findMany({
+      where: {
+        OR: [
+          { name: { contains: q } },
+          { triggerWord: { contains: q } },
+          { id: { contains: q } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        triggerWord: true,
+        loraStatus: true,
+        loraPath: true,
+        userId: true,
+        updatedAt: true,
+        createdAt: true,
+        isStudioCast: true,
+        videoRefOnly: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+    });
+    const userIds = [...new Set(rows.map((r) => r.userId))];
+    const users = userIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, email: true, name: true },
+        })
+      : [];
+    const byUser = new Map(users.map((u) => [u.id, u]));
+    const {
+      characterImagesDir,
+      characterTrainMetaPath,
+      listCharacterPhotos,
+      readTrainMeta,
+    } = await import("@/lib/character-dataset");
+    const enriched = rows.map((r) => {
+      let photoCount = 0;
+      try {
+        photoCount = listCharacterPhotos(r.id).length;
+      } catch {
+        try {
+          const dir = characterImagesDir(r.id);
+          if (fs.existsSync(dir)) {
+            photoCount = fs
+              .readdirSync(dir)
+              .filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).length;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return {
+        ...r,
+        updatedAt: r.updatedAt.toISOString(),
+        createdAt: r.createdAt.toISOString(),
+        user: byUser.get(r.userId) || null,
+        photoCount,
+        trainMetaPath: characterTrainMetaPath(r.id),
+        trainMeta: readTrainMeta(r.id),
+      };
+    });
+    return NextResponse.json({ ok: true, action: "find_character", q, rows: enriched });
+  }
+
+  if (action === "restart_lora") {
+    const q = String((body as { q?: string }).q || body.name || "").trim();
+    if (!q) return NextResponse.json({ error: "q required" }, { status: 400 });
+    const row = await prisma.character.findFirst({
+      where: {
+        OR: [
+          { name: { equals: q } },
+          { name: { contains: q } },
+          { triggerWord: { contains: q } },
+          { id: { equals: q } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!row) return NextResponse.json({ error: "character not found", q }, { status: 404 });
+
+    const { metalnodeCheck } = await import("@/lib/metalnode-ssh");
+    const check = await metalnodeCheck();
+    if (!check.ok) {
+      return NextResponse.json(
+        { error: "metalnode_unreachable", detail: check.detail, characterId: row.id },
+        { status: 503 },
+      );
+    }
+
+    const { startKreaLoraTrain } = await import("@/lib/krea-lora-train");
+    const { readTrainMeta } = await import("@/lib/character-dataset");
+    try {
+      const started = await startKreaLoraTrain({
+        userId: row.userId,
+        characterId: row.id,
+        triggerWord: row.triggerWord || row.name,
+      });
+      // Wait until upload/SSH reaches training or error (bg job).
+      let trainMeta = readTrainMeta(row.id);
+      for (let i = 0; i < 90; i++) {
+        if (
+          trainMeta.status === "training" ||
+          trainMeta.status === "error" ||
+          trainMeta.status === "ready"
+        ) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+        trainMeta = readTrainMeta(row.id);
+      }
+      const ok = trainMeta.status === "training" || trainMeta.status === "ready";
+      return NextResponse.json({
+        ok,
+        action: "restart_lora",
+        character: {
+          id: row.id,
+          name: row.name,
+          triggerWord: row.triggerWord,
+          loraStatus: ok ? "lora_training" : row.loraStatus,
+        },
+        started,
+        trainMeta,
+        ssh: check.detail,
+        error: ok ? undefined : trainMeta.error || "train did not reach running state",
+      }, { status: ok ? 200 : 500 });
+    } catch (e) {
+      return NextResponse.json(
+        {
+          error: e instanceof Error ? e.message : String(e),
+          characterId: row.id,
+          trainMeta: readTrainMeta(row.id),
+          ssh: check.detail,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   if (action === "disk_stats" || action === "free_disk" || action === "purge_videos") {
     const { freeGalleryDisk, getDiskStats } = await import("@/lib/disk-hygiene");
     const { dataRoot } = await import("@/lib/paths");

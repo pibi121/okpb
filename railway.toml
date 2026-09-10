@@ -1,11 +1,9 @@
 [build]
-builder = "NIXPACKS"
-nixpacksConfigPath = "nixpacks.toml"
-buildCommand = "npx prisma generate && npm run build"
+buildCommand = "python -m pip install -r requirements-age-gate.txt && npx prisma generate && npm run build"
 
 [deploy]
-# Nixpacks Python provider installs to /opt/venv; keep it + nix profile on PATH for age-gate.
-startCommand = "export PATH=\"/opt/venv/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$HOME/.local/bin:$PATH\"; command -v python3 || command -v python || true; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
+# Mise shims (python from mise.toml) must be on PATH for age-gate.
+startCommand = "export PATH=\"/mise/shims:$HOME/.local/share/mise/shims:/opt/venv/bin:$HOME/.local/bin:$PATH\"; command -v python3 || command -v python || true; python -c \"import cv2,numpy; print('age-gate-ok', cv2.__version__)\" || true; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
 healthcheckPath = "/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

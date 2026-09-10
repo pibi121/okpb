@@ -11,6 +11,8 @@ console.log("[railway] data dirs OK:", process.env.DATABASE_URL || "(default)");
 
 const pyCandidates = [
   process.env.AGE_GATE_PYTHON,
+  "/mise/shims/python",
+  "/mise/shims/python3",
   "/opt/venv/bin/python",
   "/opt/venv/bin/python3",
   "python3",

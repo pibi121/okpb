@@ -82,6 +82,10 @@ function findPython(): string | null {
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const candidates = [
     ...fromEnv,
+    "/mise/shims/python",
+    "/mise/shims/python3",
+    path.join(home, ".local", "share", "mise", "shims", "python"),
+    path.join(home, ".local", "share", "mise", "shims", "python3"),
     "/opt/venv/bin/python",
     "/opt/venv/bin/python3",
     "python3",
@@ -148,6 +152,8 @@ function runPython(
     PYTHONUNBUFFERED: "1",
     // pip --user scripts/libs
     PATH: [
+      "/mise/shims",
+      path.join(process.env.HOME || "", ".local", "share", "mise", "shims"),
       "/opt/venv/bin",
       "/root/.nix-profile/bin",
       "/nix/var/nix/profiles/default/bin",

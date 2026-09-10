@@ -35,13 +35,18 @@ def load_cfg() -> dict:
     host = (os.environ.get("METALNODE_HOST") or "").strip()
     key_path = (os.environ.get("METALNODE_SSH_KEY_PATH") or "").strip()
     if host and key_path:
-        return {
+        cfg = {
             "host": host,
             "sshPort": int(os.environ.get("METALNODE_SSH_PORT") or "22034"),
             "sshUser": (os.environ.get("METALNODE_SSH_USER") or "root").strip(),
             "sshKeyPath": key_path,
         }
-    return json.loads(CFG_PATH.read_text(encoding="utf-8"))
+    else:
+        cfg = json.loads(CFG_PATH.read_text(encoding="utf-8"))
+    kp = Path(str(cfg.get("sshKeyPath") or ""))
+    if kp.as_posix() and not kp.is_absolute():
+        cfg["sshKeyPath"] = str((ROOT / kp).resolve())
+    return cfg
 
 
 def connect(cfg: dict) -> paramiko.SSHClient:

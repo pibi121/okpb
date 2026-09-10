@@ -304,6 +304,8 @@ export async function startKreaLoraTrain(opts: {
   epochs?: number;
   /** Skip resume heuristics — always start a fresh remote train. */
   force?: boolean;
+  /** Lab/bootstrap overnight seed — skip face age-gate on dataset. */
+  skipAgeGate?: boolean;
 }) {
   const character = await prisma.character.findFirst({
     where: { id: opts.characterId, userId: opts.userId },
@@ -401,7 +403,7 @@ export async function startKreaLoraTrain(opts: {
 
   rewriteCaptions(character.id, trigger);
 
-  {
+  if (!opts.skipAgeGate) {
     const { assertCharacterPhotosAllowed } = await import("@/lib/age-gate");
     await assertCharacterPhotosAllowed(character.id, "ru");
   }

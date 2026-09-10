@@ -1121,30 +1121,41 @@ export async function POST(req: NextRequest) {
     }
     const row = await prisma.character.findUnique({ where: { id: characterId } });
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
-    const { metalnodeCheck } = await import("@/lib/metalnode-ssh");
-    const check = await metalnodeCheck();
-    if (!check.ok) {
+    try {
+      const { metalnodeCheck } = await import("@/lib/metalnode-ssh");
+      const check = await metalnodeCheck();
+      if (!check.ok) {
+        return NextResponse.json(
+          { error: "metalnode_unreachable", detail: check.detail },
+          { status: 503 },
+        );
+      }
+      const { startKreaLoraTrain } = await import("@/lib/krea-lora-train");
+      const { readTrainMeta, listCharacterPhotos } = await import("@/lib/character-dataset");
+      const started = await startKreaLoraTrain({
+        userId: row.userId,
+        characterId: row.id,
+        triggerWord: row.triggerWord || undefined,
+        force,
+        skipAgeGate: true,
+      });
+      return NextResponse.json({
+        ok: true,
+        action: "lab_start_train",
+        characterId: row.id,
+        photos: listCharacterPhotos(row.id).length,
+        started,
+        trainMeta: readTrainMeta(row.id),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const code = (e as { code?: string })?.code;
+      console.error("[bootstrap] lab_start_train", msg);
       return NextResponse.json(
-        { error: "metalnode_unreachable", detail: check.detail },
-        { status: 503 },
+        { error: "lab_start_train_failed", detail: msg, code: code || null },
+        { status: 500 },
       );
     }
-    const { startKreaLoraTrain } = await import("@/lib/krea-lora-train");
-    const { readTrainMeta, listCharacterPhotos } = await import("@/lib/character-dataset");
-    const started = await startKreaLoraTrain({
-      userId: row.userId,
-      characterId: row.id,
-      triggerWord: row.triggerWord || undefined,
-      force,
-    });
-    return NextResponse.json({
-      ok: true,
-      action: "lab_start_train",
-      characterId: row.id,
-      photos: listCharacterPhotos(row.id).length,
-      started,
-      trainMeta: readTrainMeta(row.id),
-    });
   }
 
   if (action === "lab_train_status") {

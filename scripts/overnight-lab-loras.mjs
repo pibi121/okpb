@@ -309,6 +309,7 @@ async function seedAndTrain(state) {
           action: "lab_start_train",
           characterId,
           force: attempt > 1 || st.trainMeta?.status === "error",
+          skipAgeGate: true,
         });
         state.train[key].status = "training";
         saveState(state);

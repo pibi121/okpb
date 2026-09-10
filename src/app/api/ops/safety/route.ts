@@ -14,7 +14,7 @@ export async function GET() {
       minScore: cfg.minScore,
       failClosed: cfg.failClosed,
       note:
-        "Проверка возраста на Railway (CPU). По умолчанию блокирует только явные детские бакеты (0-12). Metalnode не трогает.",
+        "Проверка возраста на Railway (CPU). Блокирует детские бакеты и (15-20) при высокой уверенности. Без лица — отказ. Metalnode не трогает.",
     });
   });
 }

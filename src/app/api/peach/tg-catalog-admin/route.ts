@@ -3,9 +3,16 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { labAccess } from "@/lib/ops/roles";
 import { resolveTgCatalogAssetUrl } from "@/lib/tg/catalog-asset-url";
-import { pickCatalogPosterUrl } from "@/lib/quick-video-preview-safe";
 
 export const runtime = "nodejs";
+
+function firstUrl(...candidates: Array<string | null | undefined>): string {
+  for (const c of candidates) {
+    const u = (c || "").trim();
+    if (u) return u;
+  }
+  return "";
+}
 
 /** Lab: all TG template formats (photo / video / video-from-photo). */
 export async function GET() {
@@ -82,7 +89,7 @@ export async function GET() {
         sortOrder: r.sortOrder,
         durationSec: 0,
         previewUrl: resolveTgCatalogAssetUrl(
-          pickCatalogPosterUrl(r.previewImageUrl, r.sceneImageUrl),
+          firstUrl(r.previewImageUrl, r.sceneImageUrl),
         ),
         previewVideoUrl: "",
         updatedAt: r.updatedAt.toISOString(),
@@ -97,7 +104,7 @@ export async function GET() {
         pricePeaches: r.pricePeaches,
         sortOrder: r.tgSortOrder,
         durationSec: r.durationSec,
-        previewUrl: resolveTgCatalogAssetUrl(pickCatalogPosterUrl(r.previewPhotoUrl)),
+        previewUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewPhotoUrl)),
         previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl),
         updatedAt: r.updatedAt.toISOString(),
       })),
@@ -112,7 +119,7 @@ export async function GET() {
         sortOrder: r.tgSortOrder,
         durationSec: r.durationSec,
         previewUrl: resolveTgCatalogAssetUrl(
-          pickCatalogPosterUrl(r.previewImageUrl),
+          firstUrl(r.previewImageUrl),
         ),
         previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl),
         updatedAt: r.updatedAt.toISOString(),

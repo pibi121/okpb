@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
     await saveOpsSettings({
       ageGateEnabled: true,
       ageGateJson: JSON.stringify({
-        blockBuckets: "(0-2),(4-6),(8-12)",
+        blockBuckets: "(0-2),(4-6),(8-12),(15-20)",
         faceThresh: 0.6,
         minScore: 0.55,
         failClosed: true,

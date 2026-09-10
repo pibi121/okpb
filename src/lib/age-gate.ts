@@ -23,16 +23,16 @@ export type AgeGateResult = {
 
 export type AgeGateConfig = {
   enabled: boolean;
-  /** Comma buckets e.g. (0-2),(4-6),(8-12) */
+  /** Comma buckets e.g. (0-2),(4-6),(8-12),(15-20) */
   blockBuckets: string;
   faceThresh: number;
-  /** Min softmax score required to block */
+  /** Min softmax score required to block child buckets */
   minScore: number;
   /** If checker crashes while enabled — block (true) or allow (false) */
   failClosed: boolean;
 };
 
-const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12)";
+const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12),(15-20)";
 
 export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFlag: boolean): AgeGateConfig {
   let parsed: Partial<AgeGateConfig> & { minScore?: number } = {};
@@ -41,13 +41,9 @@ export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFl
   } catch {
     parsed = {};
   }
-  // Migrate old overly-aggressive default that included (15-20)
-  let buckets = String(parsed.blockBuckets || DEFAULT_BUCKETS);
-  if (!parsed.blockBuckets && buckets.includes("(15-20)")) {
-    buckets = DEFAULT_BUCKETS;
-  }
-  // If ops still has the old default string, soften it
-  if (buckets.replace(/\s/g, "") === "(0-2),(4-6),(8-12),(15-20)") {
+  let buckets = String(parsed.blockBuckets || DEFAULT_BUCKETS).trim() || DEFAULT_BUCKETS;
+  // Migrate softened default that dropped teen coverage after false adult blocks
+  if (buckets.replace(/\s/g, "") === "(0-2),(4-6),(8-12)") {
     buckets = DEFAULT_BUCKETS;
   }
   return {
@@ -417,6 +413,12 @@ export function ageGateBlockMessage(
   locale: "ru" | "en" = "ru",
   reason?: string,
 ): string {
+  if (reason === "no_face") {
+    if (locale === "en") {
+      return "We couldn't find a clear face in this photo. Please upload a clear front-facing photo of an adult (18+).";
+    }
+    return "Не удалось найти чёткое лицо на фото. Загрузите чёткий портрет взрослого человека (18+), лицом в кадр.";
+  }
   if (reason === "checker_unavailable" || reason === "checker_error") {
     if (locale === "en") {
       return "Safety check is temporarily unavailable, so uploads/generations are blocked. Please try again in a few minutes or contact support.";

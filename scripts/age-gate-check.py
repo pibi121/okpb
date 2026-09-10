@@ -26,8 +26,8 @@ AGE_BUCKETS = [
     "(60-100)",
 ]
 
-# Clear child buckets only. (15-20) is too noisy on adults — do not block by default.
-DEFAULT_BLOCK = {"(0-2)", "(4-6)", "(8-12)"}
+# Clear child buckets + teen (13–20ish). Teen needs higher confidence in should_block.
+DEFAULT_BLOCK = {"(0-2)", "(4-6)", "(8-12)", "(15-20)"}
 CHILD_BUCKETS = {"(0-2)", "(4-6)", "(8-12)"}
 TEEN_BUCKET = "(15-20)"
 
@@ -190,12 +190,12 @@ def should_block(
     # Clear children: block when confident enough
     if label in CHILD_BUCKETS:
         return score >= min_score
-    # Teen bucket is noisy — only if very confident AND 2nd isn't clearly adult
+    # Teen bucket (~13–20): only if confident AND 2nd isn't clearly adult
     if label == TEEN_BUCKET:
         adultish = second_label in {"(25-32)", "(38-43)", "(48-53)", "(60-100)"}
-        if adultish and second_score >= 0.15:
+        if adultish and second_score >= 0.18:
             return False
-        return score >= max(0.85, min_score)
+        return score >= max(0.75, min_score)
     return score >= min_score
 
 
@@ -221,9 +221,10 @@ def analyze(
     img = load_image_bytes(img_bytes)
     faces = detect_faces(face_net, img, face_thresh)
     if not faces:
+        # No detectable face — block uploads for 18+ refs (minors can slip through otherwise)
         return {
             "ok": True,
-            "blocked": False,
+            "blocked": True,
             "faces": 0,
             "reason": "no_face",
             "ageLabel": None,

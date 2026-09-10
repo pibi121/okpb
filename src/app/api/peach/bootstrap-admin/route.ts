@@ -121,6 +121,19 @@ export async function POST(req: NextRequest) {
 
   if (action === "probe_age_gate") {
     const { spawnSync } = await import("node:child_process");
+    const { saveOpsSettings, invalidateOpsSettings } = await import("@/lib/ops/settings");
+    // Soften stored config if it still has the noisy teen bucket.
+    await saveOpsSettings({
+      ageGateEnabled: true,
+      ageGateJson: JSON.stringify({
+        blockBuckets: "(0-2),(4-6),(8-12)",
+        faceThresh: 0.6,
+        minScore: 0.55,
+        failClosed: true,
+      }),
+    });
+    invalidateOpsSettings();
+
     const bins = ["python3", "python", "/mise/shims/python3", "/mise/shims/python"];
     const found: Array<{ bin: string; version?: string; cv2?: string; error?: string }> = [];
     for (const bin of bins) {

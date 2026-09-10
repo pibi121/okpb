@@ -23,27 +23,39 @@ export type AgeGateResult = {
 
 export type AgeGateConfig = {
   enabled: boolean;
-  /** Comma buckets e.g. (0-2),(4-6),(8-12),(15-20) */
+  /** Comma buckets e.g. (0-2),(4-6),(8-12) */
   blockBuckets: string;
   faceThresh: number;
+  /** Min softmax score required to block */
+  minScore: number;
   /** If checker crashes while enabled — block (true) or allow (false) */
   failClosed: boolean;
 };
 
-const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12),(15-20)";
+const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12)";
 
 export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFlag: boolean): AgeGateConfig {
-  let parsed: Partial<AgeGateConfig> = {};
+  let parsed: Partial<AgeGateConfig> & { minScore?: number } = {};
   try {
-    parsed = JSON.parse(rawJson || "{}") as Partial<AgeGateConfig>;
+    parsed = JSON.parse(rawJson || "{}") as Partial<AgeGateConfig> & { minScore?: number };
   } catch {
     parsed = {};
   }
+  // Migrate old overly-aggressive default that included (15-20)
+  let buckets = String(parsed.blockBuckets || DEFAULT_BUCKETS);
+  if (!parsed.blockBuckets && buckets.includes("(15-20)")) {
+    buckets = DEFAULT_BUCKETS;
+  }
+  // If ops still has the old default string, soften it
+  if (buckets.replace(/\s/g, "") === "(0-2),(4-6),(8-12),(15-20)") {
+    buckets = DEFAULT_BUCKETS;
+  }
   return {
     enabled: enabledFlag,
-    blockBuckets: String(parsed.blockBuckets || DEFAULT_BUCKETS),
-    faceThresh: Number(parsed.faceThresh) > 0 ? Number(parsed.faceThresh) : 0.55,
+    blockBuckets: buckets,
+    faceThresh: Number(parsed.faceThresh) > 0 ? Number(parsed.faceThresh) : 0.6,
     failClosed: parsed.failClosed !== false,
+    minScore: Number(parsed.minScore) > 0 ? Number(parsed.minScore) : 0.55,
   };
 }
 
@@ -330,6 +342,8 @@ export async function checkImageBufferAgeGate(
         config.blockBuckets,
         "--face-thresh",
         String(config.faceThresh),
+        "--min-score",
+        String(config.minScore),
       ],
       { input: buf, timeoutMs: 120_000 },
     );
@@ -346,6 +360,17 @@ export async function checkImageBufferAgeGate(
         reason: "checker_error",
       };
     }
+    console.log(
+      "[age-gate] result",
+      JSON.stringify({
+        blocked: parsed.blocked,
+        reason: parsed.reason,
+        ageLabel: parsed.ageLabel,
+        score: parsed.score,
+        faces: parsed.faces,
+        error: parsed.error,
+      }),
+    );
     if (!parsed.ok) {
       return {
         ...parsed,

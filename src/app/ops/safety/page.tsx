@@ -7,6 +7,7 @@ type Payload = {
   ageGateEnabled: boolean;
   blockBuckets: string;
   faceThresh: number;
+  minScore: number;
   failClosed: boolean;
   note: string;
 };
@@ -36,6 +37,7 @@ export default function OpsSafetyPage() {
           ageGateEnabled: next.ageGateEnabled,
           blockBuckets: next.blockBuckets,
           faceThresh: next.faceThresh,
+          minScore: next.minScore,
           failClosed: next.failClosed,
         }),
       });
@@ -89,7 +91,7 @@ export default function OpsSafetyPage() {
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 font-mono text-xs"
         />
         <span className="text-xs text-zinc-500">
-          По умолчанию: (0-2),(4-6),(8-12),(15-20)
+          По умолчанию: (0-2),(4-6),(8-12) — без (15-20), он часто ловит взрослых
         </span>
       </label>
 
@@ -102,6 +104,19 @@ export default function OpsSafetyPage() {
           step={0.05}
           value={d.faceThresh}
           onChange={(e) => setD({ ...d, faceThresh: Number(e.target.value) })}
+          className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-3 text-sm">
+        Мин. уверенность для блока
+        <input
+          type="number"
+          min={0.1}
+          max={0.99}
+          step={0.05}
+          value={d.minScore ?? 0.55}
+          onChange={(e) => setD({ ...d, minScore: Number(e.target.value) })}
           className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
         />
       </label>

@@ -11,9 +11,10 @@ export async function GET() {
       ageGateEnabled: cfg.enabled,
       blockBuckets: cfg.blockBuckets,
       faceThresh: cfg.faceThresh,
+      minScore: cfg.minScore,
       failClosed: cfg.failClosed,
       note:
-        "Проверка возраста работает на Railway (CPU). Metalnode / GPU не трогает — безопасно при тренировке LoRA.",
+        "Проверка возраста на Railway (CPU). По умолчанию блокирует только явные детские бакеты (0-12). Metalnode не трогает.",
     });
   });
 }
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
       ageGateEnabled?: boolean;
       blockBuckets?: string;
       faceThresh?: number;
+      minScore?: number;
       failClosed?: boolean;
     };
     const s = await getOpsSettings();
@@ -39,6 +41,10 @@ export async function POST(req: Request) {
         typeof body.faceThresh === "number" && body.faceThresh > 0
           ? body.faceThresh
           : prev.faceThresh,
+      minScore:
+        typeof body.minScore === "number" && body.minScore > 0
+          ? body.minScore
+          : prev.minScore,
       failClosed:
         typeof body.failClosed === "boolean" ? body.failClosed : prev.failClosed,
     };

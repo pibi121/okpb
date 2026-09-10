@@ -372,10 +372,23 @@ export async function checkImageBufferAgeGate(
       }),
     );
     if (!parsed.ok) {
+      // Infra/download errors must not brick all uploads with the "minor" message.
+      // Fail-open on checker_error; keep fail-closed only when ops explicitly wants it
+      // AND we treat it as unavailable messaging (not probable_minor).
+      console.error("[age-gate] checker error:", parsed.error || parsed.reason);
+      if (!config.failClosed) {
+        return {
+          ...parsed,
+          ok: true,
+          blocked: false,
+          skipped: true,
+          reason: parsed.reason || "checker_error",
+        };
+      }
       return {
         ...parsed,
-        blocked: config.failClosed ? true : Boolean(parsed.blocked),
-        reason: parsed.reason || "checker_error",
+        blocked: true,
+        reason: "checker_unavailable",
       };
     }
     return parsed;

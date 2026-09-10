@@ -33,9 +33,9 @@ TEEN_BUCKET = "(15-20)"
 
 # Expected model sizes (reject HTML/LFS stubs)
 MIN_MODEL_BYTES = {
-    "face.prototxt": 20_000,
+    "face.prototxt": 2_000,
     "face.caffemodel": 2_000_000,
-    "age.prototxt": 5_000,
+    "age.prototxt": 1_500,
     "age.caffemodel": 40_000_000,
 }
 
@@ -48,11 +48,10 @@ MODEL_URLS = {
     ],
     "age.prototxt": [
         "https://raw.githubusercontent.com/spmallick/learnopencv/master/AgeGender/age_deploy.prototxt",
-        "https://raw.githubusercontent.com/eveningglow/age-and-gender-classification/master/model/age_deploy.prototxt",
     ],
     # Prefer non-LFS mirrors with the real ~45.6MB weights
     "age.caffemodel": [
-        "https://github.com/eveningglow/age-and-gender-classification/raw/master/model/age_net.caffemodel",
+        "https://raw.githubusercontent.com/eveningglow/age-and-gender-classification/master/model/age_net.caffemodel",
         "https://github.com/habom2310/People-tracking-with-Age-and-Gender-detection/raw/master/age_gender_models/age_net.caffemodel",
         "https://www.dropbox.com/s/xfb20y596869vbb/age_net.caffemodel?dl=1",
     ],

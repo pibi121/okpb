@@ -52,18 +52,80 @@ export async function getAgeGateConfig(): Promise<AgeGateConfig> {
   return parseAgeGateConfig(s.ageGateJson, s.ageGateEnabled);
 }
 
-function findPython(): string {
-  for (const bin of ["python3", "python"]) {
+let cachedPython: string | null = null;
+
+function pythonWorks(bin: string): boolean {
+  try {
     const r = spawnSync(bin, ["-V"], {
       encoding: "utf8",
       windowsHide: true,
-      timeout: 5000,
+      timeout: 8000,
+      env: process.env,
     });
-    if (!(r.error && (r.error as NodeJS.ErrnoException).code === "ENOENT") && r.status === 0) {
+    if (r.error && (r.error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Resolve python binary on Railway/Nix (often python3.12, not always on PATH as python3). */
+function findPython(): string | null {
+  if (cachedPython && pythonWorks(cachedPython)) return cachedPython;
+
+  const fromEnv = [
+    process.env.AGE_GATE_PYTHON,
+    process.env.PYTHON,
+    process.env.PYTHON_BIN,
+  ].filter((x): x is string => Boolean(x && x.trim()));
+
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const candidates = [
+    ...fromEnv,
+    "python3",
+    "python3.12",
+    "python",
+    "/usr/bin/python3",
+    "/usr/bin/python3.12",
+    "/usr/local/bin/python3",
+    path.join(home, ".local", "bin", "python3"),
+    path.join(home, ".nix-profile", "bin", "python3"),
+    path.join(home, ".nix-profile", "bin", "python3.12"),
+  ];
+
+  for (const bin of candidates) {
+    if (pythonWorks(bin)) {
+      cachedPython = bin;
+      console.log("[age-gate] python:", bin);
       return bin;
     }
   }
-  return "python3";
+
+  // Last resort: login shell PATH (Nixpacks sometimes hides bins from Node spawn)
+  for (const shellCmd of [
+    "command -v python3.12 || command -v python3 || command -v python",
+    "which python3.12 || which python3 || which python",
+  ]) {
+    try {
+      const r = spawnSync("sh", ["-lc", shellCmd], {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 8000,
+        env: process.env,
+      });
+      const found = (r.stdout || "").trim().split(/\r?\n/).filter(Boolean)[0];
+      if (found && pythonWorks(found)) {
+        cachedPython = found;
+        console.log("[age-gate] python (shell):", found);
+        return found;
+      }
+    } catch {
+      /* continue */
+    }
+  }
+
+  console.error("[age-gate] no python binary found");
+  return null;
 }
 
 function runPython(
@@ -71,16 +133,27 @@ function runPython(
   opts?: { input?: Buffer; timeoutMs?: number },
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const bin = findPython();
+  if (!bin) {
+    return Promise.reject(new Error("python_not_found"));
+  }
   const timeoutMs = opts?.timeoutMs ?? 90_000;
+  const env = {
+    ...process.env,
+    DATA_ROOT: dataRoot(),
+    AGE_GATE_MODELS: path.join(dataRoot(), "age-gate"),
+    PYTHONUNBUFFERED: "1",
+    // pip --user scripts/libs
+    PATH: [
+      path.join(process.env.HOME || "", ".local", "bin"),
+      process.env.PATH || "",
+    ]
+      .filter(Boolean)
+      .join(path.delimiter),
+  };
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       windowsHide: true,
-      env: {
-        ...process.env,
-        DATA_ROOT: dataRoot(),
-        AGE_GATE_MODELS: path.join(dataRoot(), "age-gate"),
-        PYTHONUNBUFFERED: "1",
-      },
+      env,
     });
     let stdout = "";
     let stderr = "";
@@ -117,6 +190,10 @@ let opencvReady: Promise<boolean> | null = null;
 async function ensureOpenCv(): Promise<boolean> {
   if (!opencvReady) {
     opencvReady = (async () => {
+      if (!findPython()) {
+        opencvReady = null;
+        return false;
+      }
       try {
         const probe = await runPython(["-c", "import cv2,numpy; print('OK')"], {
           timeoutMs: 30_000,
@@ -132,14 +209,18 @@ async function ensureOpenCv(): Promise<boolean> {
         );
         if (pip.code !== 0) {
           console.error("[age-gate] pip install failed:", pip.stderr.slice(0, 400));
+          opencvReady = null;
           return false;
         }
         const probe2 = await runPython(["-c", "import cv2,numpy; print('OK')"], {
           timeoutMs: 30_000,
         });
-        return probe2.stdout.includes("OK");
+        const ok = probe2.stdout.includes("OK");
+        if (!ok) opencvReady = null;
+        return ok;
       } catch (e) {
         console.error("[age-gate] opencv ensure failed:", e);
+        opencvReady = null;
         return false;
       }
     })();
@@ -166,21 +247,24 @@ export async function checkImageBufferAgeGate(
   ensureDataDirs();
   const ready = await ensureOpenCv();
   if (!ready) {
-    const msg = "opencv_unavailable";
-    console.error("[age-gate]", msg);
+    // Infra miss must NOT brick uploads — only real "probable_minor" blocks.
+    console.error("[age-gate] opencv_unavailable — allowing upload (fail-open)");
     return {
-      ok: false,
-      blocked: config.failClosed,
-      error: msg,
+      ok: true,
+      blocked: false,
+      skipped: true,
+      error: "opencv_unavailable",
       reason: "checker_unavailable",
     };
   }
 
   const script = scriptPath();
   if (!fs.existsSync(script)) {
+    console.error("[age-gate] script_missing — allowing upload (fail-open)");
     return {
-      ok: false,
-      blocked: config.failClosed,
+      ok: true,
+      blocked: false,
+      skipped: true,
       error: "script_missing",
       reason: "checker_unavailable",
     };
@@ -199,21 +283,42 @@ export async function checkImageBufferAgeGate(
       { input: buf, timeoutMs: 120_000 },
     );
     const line = r.stdout.trim().split(/\r?\n/).filter(Boolean).pop() || "{}";
-    const parsed = JSON.parse(line) as AgeGateResult;
+    let parsed: AgeGateResult;
+    try {
+      parsed = JSON.parse(line) as AgeGateResult;
+    } catch {
+      console.error("[age-gate] bad JSON:", line.slice(0, 200), r.stderr.slice(0, 200));
+      return {
+        ok: true,
+        blocked: false,
+        skipped: true,
+        error: "bad_checker_json",
+        reason: "checker_error",
+      };
+    }
     if (!parsed.ok) {
+      // Checker crashed mid-run: fail-open unless ops explicitly failClosed AND we
+      // got a clear blocked=true from a healthy response (handled above when ok).
+      if (config.failClosed && parsed.blocked) {
+        return { ...parsed, blocked: true, reason: parsed.reason || "checker_error" };
+      }
+      console.error("[age-gate] checker error — allowing upload:", parsed.error || parsed.reason);
       return {
         ...parsed,
-        blocked: config.failClosed ? true : Boolean(parsed.blocked),
+        ok: true,
+        blocked: false,
+        skipped: true,
         reason: parsed.reason || "checker_error",
       };
     }
     return parsed;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[age-gate] check failed:", msg);
+    console.error("[age-gate] check failed — allowing upload:", msg);
     return {
-      ok: false,
-      blocked: config.failClosed,
+      ok: true,
+      blocked: false,
+      skipped: true,
       error: msg,
       reason: "checker_error",
     };

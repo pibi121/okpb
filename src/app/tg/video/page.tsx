@@ -238,7 +238,8 @@ function VideoPageInner() {
       fd.set("file", files[i]!);
       const res = await apiFetch("/api/tg/video-refs", { method: "PUT", body: fd });
       if (!res.ok) {
-        setErr("upload failed");
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setErr(j.error || (locale === "en" ? "Upload failed" : "Не удалось загрузить фото"));
         return;
       }
       const j = (await res.json()) as { photoCount: number; ready: boolean };

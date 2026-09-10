@@ -11,4 +11,5 @@ cmds = [
 cmds = ["npx prisma generate", "npm run build"]
 
 [start]
-cmd = "npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
+# Ensure nix/python + pip --user bins are visible to Node child_process (age-gate).
+cmd = "export PATH=\"$HOME/.local/bin:$PATH\" && (command -v python3 || command -v python3.12 || true) && npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"

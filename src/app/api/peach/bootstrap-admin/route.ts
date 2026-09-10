@@ -119,6 +119,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, users });
   }
 
+  if (action === "probe_age_gate") {
+    const { spawnSync } = await import("node:child_process");
+    const bins = ["python3", "python", "/mise/shims/python3", "/mise/shims/python"];
+    const found: Array<{ bin: string; version?: string; cv2?: string; error?: string }> = [];
+    for (const bin of bins) {
+      const v = spawnSync(bin, ["-V"], { encoding: "utf8", timeout: 8000 });
+      if (v.error || v.status !== 0) continue;
+      const cv = spawnSync(
+        bin,
+        ["-c", "import cv2,numpy; print(cv2.__version__)"],
+        { encoding: "utf8", timeout: 60_000 },
+      );
+      found.push({
+        bin,
+        version: (v.stdout || v.stderr || "").trim(),
+        cv2: (cv.stdout || "").trim() || undefined,
+        error: cv.status === 0 ? undefined : (cv.stderr || "").slice(0, 240),
+      });
+    }
+
+    // 1x1 jpeg is too small; use a tiny valid JPEG with no face → should not block.
+    const tinyJpeg = Buffer.from(
+      "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGcP//Z",
+      "base64",
+    );
+    const { checkImageBufferAgeGate, getAgeGateConfig } = await import("@/lib/age-gate");
+    const cfg = await getAgeGateConfig();
+    const sample = await checkImageBufferAgeGate(tinyJpeg, cfg);
+    return NextResponse.json({
+      ok: true,
+      action: "probe_age_gate",
+      python: found,
+      config: cfg,
+      sample,
+      scriptExists: fs.existsSync(path.join(process.cwd(), "scripts", "age-gate-check.py")),
+    });
+  }
+
   if (action === "find_character") {
     const q = String((body as { q?: string }).q || body.name || "").trim();
     if (!q) return NextResponse.json({ error: "q required" }, { status: 400 });

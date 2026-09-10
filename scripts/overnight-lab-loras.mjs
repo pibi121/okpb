@@ -53,24 +53,61 @@ function saveState(state) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-async function apiJson(body) {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: {
-      "x-bootstrap-secret": SECRET,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`bad json ${res.status}: ${text.slice(0, 300)}`);
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isTransientHttp(status, text) {
+  if ([502, 503, 504, 429].includes(status)) return true;
+  const s = String(text || "");
+  return /EAGAIN|timeout|upstream|metalnode_unreachable|Application failed to respond|uv_thread_create/i.test(
+    s,
+  );
+}
+
+async function apiJson(body, { retries = 8 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= retries; i++) {
+    try {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: {
+          "x-bootstrap-secret": SECRET,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        if (isTransientHttp(res.status, text) && i < retries) {
+          await sleep(Math.min(120_000, 8_000 * i));
+          continue;
+        }
+        throw new Error(`bad json ${res.status}: ${text.slice(0, 300)}`);
+      }
+      if (!res.ok) {
+        const msg = JSON.stringify(json).slice(0, 500);
+        if (isTransientHttp(res.status, msg) && i < retries) {
+          await sleep(Math.min(120_000, 8_000 * i));
+          continue;
+        }
+        throw new Error(msg);
+      }
+      return json;
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isTransientHttp(0, msg) && i < retries) {
+        await sleep(Math.min(120_000, 8_000 * i));
+        continue;
+      }
+      throw e;
+    }
   }
-  if (!res.ok) throw new Error(JSON.stringify(json).slice(0, 500));
-  return json;
+  throw lastErr || new Error("apiJson failed");
 }
 
 async function apiPhoto(characterId, filePath) {
@@ -235,6 +272,37 @@ async function importReadyLoras(state) {
   }
 }
 
+async function promoteIfRemoteReady(characterId, trigger, name, state, key) {
+  const remote = `/work/ComfyUI/models/loras/krea2/${trigger}_krea2.safetensors`;
+  try {
+    const out = await sshExec(
+      `if [ -f ${JSON.stringify(remote)} ]; then ls -lh ${JSON.stringify(remote)}; echo HAS_LORA; else echo MISSING; fi`,
+      90_000,
+    );
+    if (!out.includes("HAS_LORA")) return false;
+    const row = await apiJson({
+      action: "lab_set_ready_lora",
+      userId: OWNER,
+      name,
+      triggerWord: trigger,
+      loraPath: `krea2/${trigger}_krea2.safetensors`,
+    });
+    state.train[key] = {
+      ...state.train[key],
+      characterId: row.character?.id || characterId,
+      status: "ready",
+      loraPath: `krea2/${trigger}_krea2.safetensors`,
+      at: new Date().toISOString(),
+    };
+    saveState(state);
+    log(`remote promote READY ${name}`);
+    return true;
+  } catch (e) {
+    log(`promote check fail ${trigger}:`, e);
+    return false;
+  }
+}
+
 async function seedAndTrain(state) {
   for (const spec of TRAIN_FOLDERS) {
     const key = spec.trigger;
@@ -269,6 +337,10 @@ async function seedAndTrain(state) {
       saveState(state);
     }
 
+    if (await promoteIfRemoteReady(characterId, spec.trigger, spec.name, state, key)) {
+      continue;
+    }
+
     // Upload photos (idempotent enough — may duplicate if re-run; check count first)
     const status0 = await apiJson({ action: "lab_train_status", characterId });
     let have = status0.photos || 0;
@@ -289,7 +361,7 @@ async function seedAndTrain(state) {
     }
 
     // Start / resume train
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (let attempt = 1; attempt <= 6; attempt++) {
       try {
         const st = await apiJson({ action: "lab_train_status", characterId });
         if (st.character?.loraStatus === "lora_ready" && st.character?.loraPath) {
@@ -304,22 +376,40 @@ async function seedAndTrain(state) {
           break;
         }
 
-        log(`start train ${spec.name} attempt ${attempt}`);
+        const alreadyTraining =
+          st.character?.loraStatus === "lora_training" ||
+          st.trainMeta?.status === "training" ||
+          st.trainMeta?.status === "uploading";
+        const force =
+          !alreadyTraining &&
+          (attempt > 1 || st.trainMeta?.status === "error");
+
+        log(`start train ${spec.name} attempt ${attempt} force=${force}`);
         await apiJson({
           action: "lab_start_train",
           characterId,
-          force: attempt > 1 || st.trainMeta?.status === "error",
+          force,
           skipAgeGate: true,
         });
         state.train[key].status = "training";
         saveState(state);
 
-        // Poll up to ~3.5h
+        // Poll up to ~3.5h — tolerate transient API/SSH flaps
         const deadline = Date.now() + 3.5 * 60 * 60 * 1000;
         let ready = false;
+        let consecutiveErrors = 0;
         while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 90_000));
-          const cur = await apiJson({ action: "lab_train_status", characterId });
+          await sleep(90_000);
+          let cur;
+          try {
+            cur = await apiJson({ action: "lab_train_status", characterId }, { retries: 6 });
+            consecutiveErrors = 0;
+          } catch (e) {
+            consecutiveErrors += 1;
+            log(`poll soft-fail ${spec.name} (${consecutiveErrors}):`, e);
+            if (consecutiveErrors >= 12) throw e;
+            continue;
+          }
           const meta = cur.trainMeta || {};
           log(
             `poll ${spec.name}: lora=${cur.character?.loraStatus} meta=${meta.status} ${meta.percent || 0}% ${meta.phase || meta.lastLine || ""}`,
@@ -350,9 +440,12 @@ async function seedAndTrain(state) {
         log(`train attempt fail ${spec.name}:`, e);
         state.train[key].error = e instanceof Error ? e.message : String(e);
         saveState(state);
-        await new Promise((r) => setTimeout(r, 30_000));
+        await sleep(60_000 * Math.min(attempt, 5));
       }
     }
+
+    // Cool down Metalnode/Railway between characters (SSH worker thread storms)
+    await sleep(90_000);
   }
 }
 

@@ -1103,6 +1103,10 @@ model OpsSetting {
   tgFunnelNoteRuFileId   String   @default("")
   tgFunnelNoteEnFileId   String   @default("")
   tgFunnelNoteCapture    String   @default("")
+  /// Block uploads/gens that look like minors (local OpenCV age DNN on Railway)
+  ageGateEnabled         Boolean  @default(true)
+  /// JSON: blockBuckets, faceThresh, failClosed
+  ageGateJson            String   @default("{}")
   updatedAt              DateTime @updatedAt
 }
 

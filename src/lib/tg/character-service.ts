@@ -129,7 +129,7 @@ export async function addCharacterPhotoFromBuffer(
   characterId: string,
   buf: Buffer,
   fileName: string,
-  opts?: { maxPhotos?: number },
+  opts?: { maxPhotos?: number; locale?: "ru" | "en"; skipAgeGate?: boolean },
 ) {
   const ch = await prisma.character.findFirst({
     where: { id: characterId, userId },
@@ -140,6 +140,11 @@ export async function addCharacterPhotoFromBuffer(
   const existing = listCharacterPhotos(characterId);
   if (existing.length >= maxPhotos) {
     throw new Error("max photos");
+  }
+
+  if (!opts?.skipAgeGate) {
+    const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
+    await assertImageAllowedForGeneration(buf, opts?.locale || "ru");
   }
 
   saveCharacterPhoto(characterId, fileName, buf, ch.triggerWord);

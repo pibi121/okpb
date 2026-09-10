@@ -4,7 +4,7 @@ nixPkgs = ["nodejs_22", "npm-10_x", "openssl", "openssh", "python312", "python31
 [phases.install]
 cmds = [
   "npm ci --include=dev",
-  "python3 -m pip install --user paramiko || python -m pip install --user paramiko || true",
+  "python3 -m pip install --user paramiko opencv-python-headless numpy || python -m pip install --user paramiko opencv-python-headless numpy || true",
 ]
 
 [phases.build]

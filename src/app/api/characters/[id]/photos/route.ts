@@ -48,6 +48,19 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     if (buf.length > 25 * 1024 * 1024) {
       return NextResponse.json({ error: `${file.name}: слишком большой файл` }, { status: 400 });
     }
+    try {
+      const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
+      await assertImageAllowedForGeneration(buf, "ru");
+    } catch (e) {
+      const { AgeGateBlockedError } = await import("@/lib/age-gate");
+      if (e instanceof AgeGateBlockedError) {
+        return NextResponse.json(
+          { error: e.message, code: e.code, ageGate: e.result },
+          { status: 400 },
+        );
+      }
+      throw e;
+    }
     saved.push(saveCharacterPhoto(id, file.name || "photo.png", buf, ch.triggerWord));
   }
 

@@ -168,6 +168,10 @@ export async function startTgLoraI2vGeneration(opts: {
     },
   });
   if (!character) throw new Error("Персонаж не найден");
+  if (!isStudioCastCharacter(character)) {
+    const { assertCharacterPhotosAllowed } = await import("@/lib/age-gate");
+    await assertCharacterPhotosAllowed(character.id, "ru");
+  }
   if (character.loraStatus !== "lora_ready" || !character.triggerWord?.trim()) {
     throw new Error("Для этого шаблона нужна обученная модель");
   }
@@ -548,6 +552,14 @@ export async function startTgVideoGeneration(opts: {
     throw new Error("Нужно минимум 1 фото модели");
   }
 
+  {
+    const ch = await prisma.character.findFirst({ where: { id: opts.characterId } });
+    if (ch && !isStudioCastCharacter(ch)) {
+      const { assertCharacterPhotosAllowed } = await import("@/lib/age-gate");
+      await assertCharacterPhotosAllowed(opts.characterId, "ru");
+    }
+  }
+
   let price = await resolveTemplatePricePeaches({
     kind: "video",
     templateId: opts.templateId,
@@ -748,6 +760,9 @@ export async function startTgPhotoGeneration(opts: {
     // studio cast — no lora required
   } else if (character.loraStatus !== "lora_ready") {
     throw new Error("Для фото со своей моделью нужно завершить обучение");
+  } else {
+    const { assertCharacterPhotosAllowed } = await import("@/lib/age-gate");
+    await assertCharacterPhotosAllowed(character.id, "ru");
   }
 
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });

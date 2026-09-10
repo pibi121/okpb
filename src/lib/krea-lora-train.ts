@@ -401,6 +401,11 @@ export async function startKreaLoraTrain(opts: {
 
   rewriteCaptions(character.id, trigger);
 
+  {
+    const { assertCharacterPhotosAllowed } = await import("@/lib/age-gate");
+    await assertCharacterPhotosAllowed(character.id, "ru");
+  }
+
   writeTrainMeta(
     character.id,
     stampProgress(

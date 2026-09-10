@@ -69,7 +69,18 @@ export async function PUT(req: Request) {
 
   const buf = Buffer.from(await file.arrayBuffer());
   const name = file instanceof File ? file.name : "upload.jpg";
-  await addCharacterPhotoFromBuffer(userId, characterId, buf, name);
+  try {
+    await addCharacterPhotoFromBuffer(userId, characterId, buf, name);
+  } catch (e) {
+    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    if (e instanceof AgeGateBlockedError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, ageGate: e.result },
+        { status: 400 },
+      );
+    }
+    throw e;
+  }
 
   const count = characterPhotoCount(characterId);
   return NextResponse.json({

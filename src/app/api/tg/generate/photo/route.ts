@@ -106,6 +106,13 @@ export async function POST(req: Request) {
       basePrice: pricing.basePrice,
     });
   } catch (e) {
+    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    if (e instanceof AgeGateBlockedError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, ageGate: e.result },
+        { status: 400 },
+      );
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

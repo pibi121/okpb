@@ -19,6 +19,7 @@ export const OPS_NAV: { href: string; section: OpsSection; label: string }[] = [
   { href: "/ops/partners", section: "partners", label: "Партнёры" },
   { href: "/ops/money", section: "money", label: "Деньги" },
   { href: "/ops/bot", section: "bot", label: "Бот" },
+  { href: "/ops/safety", section: "settings", label: "Безопасность" },
   { href: "/ops/team", section: "team", label: "Команда" },
   { href: "/ops/dev", section: "dev", label: "Разработка" },
 ];

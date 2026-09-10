@@ -275,13 +275,22 @@ async function handlePhoto(
   }
 
   const buf = await tgDownloadFile(fileId);
-  await addCharacterPhotoFromBuffer(
-    userId,
-    character.id,
-    buf,
-    `tg_${Date.now()}.jpg`,
-    { maxPhotos },
-  );
+  try {
+    await addCharacterPhotoFromBuffer(
+      userId,
+      character.id,
+      buf,
+      `tg_${Date.now()}.jpg`,
+      { maxPhotos, locale },
+    );
+  } catch (e) {
+    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    if (e instanceof AgeGateBlockedError) {
+      await tgSendMessage(chatId, e.message);
+      return;
+    }
+    throw e;
+  }
 
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
@@ -993,6 +1002,12 @@ async function beginGeneration(
     }
     await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
   } catch (e) {
+    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    if (e instanceof AgeGateBlockedError) {
+      await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
+      await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("Недостаточно") || msg.includes("Insufficient")) {
       const bal = await getBalancePeaches(userId);

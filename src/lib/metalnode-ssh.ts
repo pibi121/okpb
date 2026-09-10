@@ -177,11 +177,33 @@ async function ssh2Worker(
   if (!fs.existsSync(WORKER)) {
     throw new Error(`ssh2 worker missing: ${WORKER}`);
   }
+  // Multiline / special-char remote scripts: pass via base64 file to avoid argv/-c breakage.
+  if (mode === "exec") {
+    const b64 = Buffer.from(a, "utf8").toString("base64");
+    const tmp = path.join(
+      process.env.TEMP || process.env.TMPDIR || "/tmp",
+      `peach-ssh2-cmd-${Date.now()}-${Math.random().toString(36).slice(2)}.b64`,
+    );
+    fs.writeFileSync(tmp, b64, "utf8");
+    try {
+      const r = await run(
+        process.execPath,
+        [WORKER, "exec-b64file", String(timeoutMs), tmp],
+        timeoutMs + 30_000,
+        { env: workerEnv() },
+      );
+      return r;
+    } finally {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
   const args = [WORKER, mode, String(timeoutMs), a];
   if (b !== undefined) args.push(b);
-  // Worker needs its own wall-clock buffer beyond the inner timeout.
-  const r = await run(process.execPath, args, timeoutMs + 30_000, { env: workerEnv() });
-  return r;
+  return run(process.execPath, args, timeoutMs + 30_000, { env: workerEnv() });
 }
 
 async function openSshExec(

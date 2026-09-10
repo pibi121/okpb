@@ -86,35 +86,36 @@ async function probeRemoteKreaTrain(slug: string): Promise<RemoteTrainProbe> {
   const logPath = `/work/loras_out/${slug}_train.log`;
   const outDir = `/work/loras_out/${slug}`;
   const pidPath = `/work/loras_out/${slug}_train.pid`;
-  // Avoid `pgrep -af '…slug…'` — it matches the probe shell itself (false RUNNING).
-  const out = await metalnodeSsh(
-    [
-      `find ${JSON.stringify(remoteImg)} -maxdepth 1 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) 2>/dev/null | wc -l`,
-      `echo '---LOG---'`,
-      `tail -c 16000 ${logPath} 2>/dev/null | tr '\\r' '\\n' | tail -80`,
-      `echo '---MARKERS---'`,
-      `grep -E 'TRAIN_DONE|ALL_DONE|TRAIN_FAIL|NO_LORA|TOO_FEW|TRAIN_START|IMAGES|PROMOTED' ${logPath} 2>/dev/null | tail -20`,
-      `echo '---LORA---'`,
-      `ls -lh /work/ComfyUI/models/loras/krea2/${slug}_krea2.safetensors 2>/dev/null || true`,
-      `echo '---OUTDIR---'`,
-      `ls -lh ${outDir}/${slug}_krea2.safetensors 2>/dev/null || ls -1t ${outDir}/*.safetensors 2>/dev/null | head -1 || true`,
-      `echo '---PID---'`,
-      `PID_FILE=${JSON.stringify(pidPath)}`,
-      `if [ -f "$PID_FILE" ]; then`,
-      `  RPID=$(cat "$PID_FILE" 2>/dev/null || true)`,
-      `  if [ -n "$RPID" ] && kill -0 "$RPID" 2>/dev/null; then`,
-      `    CMD=$(tr '\\0' ' ' < /proc/$RPID/cmdline 2>/dev/null || true)`,
-      `    case "$CMD" in`,
-      `      *krea2_train_network*|*peach_krea2_lora_train*|*musubi_tuner*) echo RUNNING ;;`,
-      `      *) echo DEAD ;;`,
-      `    esac`,
-      `  else echo DEAD; fi`,
-      `else`,
-      `  if ps -eo args= 2>/dev/null | grep -F "krea2_train_network" | grep -F ${JSON.stringify(slug)} | grep -v grep >/dev/null; then echo RUNNING; else echo DEAD; fi`,
-      `fi`,
-    ].join("; "),
-    120_000,
-  );
+  // One bash script (newlines). Do NOT join if/then blocks with ";".
+  // Avoid `pgrep -af '…slug…'` — it matches the probe shell itself.
+  const script = [
+    "set +e",
+    `echo "$(find ${JSON.stringify(remoteImg)} -maxdepth 1 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) 2>/dev/null | wc -l)"`,
+    "echo '---LOG---'",
+    `tail -c 16000 ${JSON.stringify(logPath)} 2>/dev/null | tr '\\r' '\\n' | tail -80`,
+    "echo '---MARKERS---'",
+    `grep -E 'TRAIN_DONE|ALL_DONE|TRAIN_FAIL|NO_LORA|TOO_FEW|TRAIN_START|IMAGES|PROMOTED' ${JSON.stringify(logPath)} 2>/dev/null | tail -20`,
+    "echo '---LORA---'",
+    `ls -lh /work/ComfyUI/models/loras/krea2/${slug}_krea2.safetensors 2>/dev/null || true`,
+    "echo '---OUTDIR---'",
+    `ls -lh ${JSON.stringify(`${outDir}/${slug}_krea2.safetensors`)} 2>/dev/null || ls -1t ${JSON.stringify(outDir)}/*.safetensors 2>/dev/null | head -1 || true`,
+    "echo '---PID---'",
+    `PID_FILE=${JSON.stringify(pidPath)}`,
+    'if [ -f "$PID_FILE" ]; then',
+    '  RPID=$(cat "$PID_FILE" 2>/dev/null || true)',
+    '  if [ -n "$RPID" ] && kill -0 "$RPID" 2>/dev/null; then',
+    '    CMD=$(tr "\\0" " " < /proc/$RPID/cmdline 2>/dev/null || true)',
+    '    case "$CMD" in',
+    "      *krea2_train_network*|*peach_krea2_lora_train*|*musubi_tuner*) echo RUNNING ;;",
+    "      *) echo DEAD ;;",
+    "    esac",
+    "  else echo DEAD",
+    "  fi",
+    "else",
+    `  if ps -eo args= 2>/dev/null | grep -F "krea2_train_network" | grep -F ${JSON.stringify(slug)} | grep -v grep >/dev/null; then echo RUNNING; else echo DEAD; fi`,
+    "fi",
+  ].join("\n");
+  const out = await metalnodeSsh(script, 120_000);
   const imageCount = Number((out.split("---LOG---")[0] || "").trim().split(/\s+/).pop() || "0");
   const logText = out.includes("---LOG---") ? out.split("---LOG---")[1]?.split("---MARKERS---")[0] || "" : "";
   const markers = out.includes("---MARKERS---") ? out.split("---MARKERS---")[1]?.split("---LORA---")[0] || "" : "";

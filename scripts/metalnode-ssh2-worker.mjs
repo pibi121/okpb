@@ -112,7 +112,10 @@ function exec(client, cmd, timeoutMs, input) {
 async function cmdExec(timeoutMs, remoteCmd) {
   const client = await connect(Math.min(timeoutMs, 90_000));
   try {
-    const r = await exec(client, remoteCmd, timeoutMs);
+    // Base64 avoids shell -c / quoting breakage for multiline scripts.
+    const b64 = Buffer.from(String(remoteCmd), "utf8").toString("base64");
+    const wrapped = `echo ${JSON.stringify(b64)} | base64 -d | bash`;
+    const r = await exec(client, wrapped, timeoutMs);
     process.stdout.write(r.stdout);
     if (r.stderr) process.stderr.write(r.stderr);
     process.exitCode = r.code;
@@ -225,6 +228,13 @@ async function main() {
   if (mode === "exec") {
     if (!a) throw new Error("remote cmd required");
     await cmdExec(timeoutMs, a);
+    return;
+  }
+  if (mode === "exec-b64file") {
+    if (!a) throw new Error("b64 file required");
+    const b64 = fs.readFileSync(a, "utf8").trim();
+    const remoteCmd = Buffer.from(b64, "base64").toString("utf8");
+    await cmdExec(timeoutMs, remoteCmd);
     return;
   }
   if (mode === "upload") {

@@ -739,6 +739,42 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "unpublish_broken_tg_video_previews") {
+    const { resolveVideoLocalPath } = await import(
+      "@/lib/quick-video-template-preview"
+    );
+    const quick = await prisma.quickVideoTemplate.findMany({
+      where: { tgPublished: true },
+      select: { id: true, title: true, tgDisplayTitle: true, previewVideoUrl: true },
+    });
+    const lora = await prisma.loraI2vTemplate.findMany({
+      where: { tgPublished: true },
+      select: { id: true, title: true, tgDisplayTitle: true, previewVideoUrl: true },
+    });
+    const unpublished: string[] = [];
+    for (const row of quick) {
+      if (resolveVideoLocalPath(row.previewVideoUrl || "")) continue;
+      await prisma.quickVideoTemplate.update({
+        where: { id: row.id },
+        data: { tgPublished: false },
+      });
+      unpublished.push(row.tgDisplayTitle.trim() || row.title);
+    }
+    for (const row of lora) {
+      if (resolveVideoLocalPath(row.previewVideoUrl || "")) continue;
+      await prisma.loraI2vTemplate.update({
+        where: { id: row.id },
+        data: { tgPublished: false },
+      });
+      unpublished.push(row.tgDisplayTitle.trim() || row.title);
+    }
+    return NextResponse.json({
+      ok: true,
+      action: "unpublish_broken_tg_video_previews",
+      unpublished,
+    });
+  }
+
   if (action === "inspect_video_template") {
     const id = String(body.id || body.templateId || "").trim();
     const q = String(body.q || "").trim();

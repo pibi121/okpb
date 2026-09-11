@@ -43,19 +43,32 @@ function volumeCatalogPath(name: string): string {
   return path.join(galleryRoot(), "tg-catalog", name);
 }
 
-/** Prefer static public when present; else volume media API. */
+/** Prefer static public for seed art; runtime cast covers always use media API.
+ * Next.js does not serve files written into `public/` after the image is built,
+ * so published `cast-{cuid}.*` covers on the volume must use `/api/media/…`.
+ */
 export function resolveCatalogImageUrl(name: string): string {
-  if (fs.existsSync(publicCatalogPath(name))) {
+  if (SEED_IMAGE_RE.test(name)) {
+    if (fs.existsSync(publicCatalogPath(name))) {
+      return `/tg/catalog/${name}`;
+    }
+    if (fs.existsSync(volumeCatalogPath(name))) {
+      return `/api/media/tg-catalog/${name}`;
+    }
     return `/tg/catalog/${name}`;
   }
+
+  // Published cast / photo stills (and any non-seed catalog image).
+  if (/^cast-/i.test(name) || /^photo-/i.test(name) || VOLUME_ASSET_RE.test(name)) {
+    return `/api/media/tg-catalog/${name}`;
+  }
+
   if (fs.existsSync(volumeCatalogPath(name))) {
     return `/api/media/tg-catalog/${name}`;
   }
-  // Seed art ships in the image — static path even before first request warms disk.
-  if (SEED_IMAGE_RE.test(name)) {
+  if (fs.existsSync(publicCatalogPath(name))) {
     return `/tg/catalog/${name}`;
   }
-  // Published cast-* covers usually live on the volume after redeploy.
   return `/api/media/tg-catalog/${name}`;
 }
 

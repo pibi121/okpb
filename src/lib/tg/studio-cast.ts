@@ -15,15 +15,14 @@ import { galleryRoot } from "@/lib/paths";
 
 export { castsMiniAppUrl, tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 
-/** Cover copied at publish time: cast-{id10}.ext on volume or public. */
+/** Cover copied at publish time: cast-{id10}.ext on volume (media API). */
 function castCoverFromDisk(characterId: string): string | null {
   const slug = `cast-${characterId.slice(0, 10)}`;
   for (const ext of [".png", ".jpg", ".jpeg", ".webp"]) {
     const name = `${slug}${ext}`;
-    const pub = path.join(process.cwd(), "public", "tg", "catalog", name);
-    if (fs.existsSync(pub)) return `/tg/catalog/${name}`;
     const vol = path.join(galleryRoot(), "tg-catalog", name);
     if (fs.existsSync(vol)) return `/api/media/tg-catalog/${name}`;
+    // Do not return /tg/catalog for runtime casts — Next won't serve post-build public writes.
   }
   return null;
 }
@@ -57,7 +56,15 @@ export function resolveStudioCastCoverUrl(ch: {
       resolved.startsWith("/tg/previews/") ||
       resolved.startsWith("/api/media/")
     ) {
-      // Trust only when the file is actually on disk (public or volume).
+      // Seeds / previews / volume media. For cast-* always prefer media API path
+      // even if a stale public/ copy exists (Next won't serve runtime public writes).
+      const name =
+        resolved.match(
+          /\/(?:tg\/catalog|api\/media\/tg-catalog)\/([^/?#]+)/i,
+        )?.[1] || "";
+      if (/^cast-/i.test(name) && catalogAssetExists(resolved)) {
+        return `/api/media/tg-catalog/${name}`;
+      }
       if (
         resolved.startsWith("/tg/previews/") ||
         catalogAssetExists(resolved)

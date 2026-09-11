@@ -153,19 +153,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "probe_age_gate") {
     const { spawnSync } = await import("node:child_process");
-    const { saveOpsSettings, invalidateOpsSettings } = await import("@/lib/ops/settings");
-    // Soften stored config if it still has the noisy teen bucket.
-    await saveOpsSettings({
-      ageGateEnabled: true,
-      ageGateJson: JSON.stringify({
-        blockBuckets: "(0-2),(4-6),(8-12),(15-20)",
-        faceThresh: 0.6,
-        minScore: 0.55,
-        failClosed: true,
-      }),
-    });
-    invalidateOpsSettings();
-
+    // Do NOT re-enable age-gate here — probe is read-only diagnostics.
     const bins = ["python3", "python", "/mise/shims/python3", "/mise/shims/python"];
     const found: Array<{ bin: string; version?: string; cv2?: string; error?: string }> = [];
     for (const bin of bins) {
@@ -199,6 +187,123 @@ export async function POST(req: NextRequest) {
       config: cfg,
       sample,
       scriptExists: fs.existsSync(path.join(process.cwd(), "scripts", "age-gate-check.py")),
+    });
+  }
+
+  if (action === "set_age_gate") {
+    const { saveOpsSettings, invalidateOpsSettings } = await import("@/lib/ops/settings");
+    const enabled = body.enabled === true;
+    const failClosed = body.failClosed === true;
+    const blockBuckets =
+      typeof body.blockBuckets === "string" && body.blockBuckets.trim()
+        ? body.blockBuckets.trim()
+        : "(0-2),(4-6),(8-12),(15-20)";
+    await saveOpsSettings({
+      ageGateEnabled: enabled,
+      ageGateJson: JSON.stringify({
+        blockBuckets,
+        faceThresh: typeof body.faceThresh === "number" ? body.faceThresh : 0.6,
+        minScore: typeof body.minScore === "number" ? body.minScore : 0.55,
+        failClosed,
+      }),
+    });
+    invalidateOpsSettings();
+    const { getAgeGateConfig } = await import("@/lib/age-gate");
+    return NextResponse.json({
+      ok: true,
+      action: "set_age_gate",
+      config: await getAgeGateConfig(),
+    });
+  }
+
+  if (action === "user_recent_all_gallery") {
+    const userId = String(body.userId || "").trim();
+    if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
+    const take = Math.min(40, Math.max(5, Number(body.take) || 25));
+    const items = await prisma.galleryItem.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        kind: true,
+        title: true,
+        resultUrl: true,
+        createdAt: true,
+        metaJson: true,
+        characterId: true,
+      },
+    });
+    const jobs = await prisma.gpuJob.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        status: true,
+        action: true,
+        error: true,
+        createdAt: true,
+        finishedAt: true,
+        galleryItemId: true,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "user_recent_all_gallery",
+      items: items.map((it) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = JSON.parse(it.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          meta = {};
+        }
+        return {
+          id: it.id,
+          kind: it.kind,
+          title: it.title,
+          resultUrl: it.resultUrl,
+          characterId: it.characterId,
+          createdAt: it.createdAt,
+          status: meta.status,
+          error: meta.error,
+          jobAction: meta.jobAction,
+        };
+      }),
+      jobs,
+    });
+  }
+
+  if (action === "retry_gallery_item") {
+    const galleryItemId = String(body.galleryItemId || "").trim();
+    if (!galleryItemId) {
+      return NextResponse.json({ error: "galleryItemId required" }, { status: 400 });
+    }
+    const item = await prisma.galleryItem.findUnique({ where: { id: galleryItemId } });
+    if (!item) return NextResponse.json({ error: "not found" }, { status: 404 });
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = JSON.parse(item.metaJson || "{}") as Record<string, unknown>;
+    } catch {
+      meta = {};
+    }
+    await prisma.galleryItem.update({
+      where: { id: item.id },
+      data: {
+        metaJson: JSON.stringify({
+          ...meta,
+          status: "pending",
+          error: undefined,
+          retriedAt: new Date().toISOString(),
+          retryNote: "bootstrap retry_gallery_item",
+        }),
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "retry_gallery_item",
+      galleryItemId: item.id,
+      note: "marked pending — re-run generate in UI (in-memory queue does not survive restart)",
     });
   }
 

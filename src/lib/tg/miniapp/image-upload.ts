@@ -120,15 +120,7 @@ export async function fileToJpegDataUrl(
   const maxEdge = opts?.maxEdge ?? 1280;
   const quality = opts?.quality ?? 0.82;
 
-  if (
-    (file.type === "image/jpeg" || /\.jpe?g$/i.test(file.name)) &&
-    file.size < 1_800_000
-  ) {
-    const raw = await readAsDataUrl(file);
-    if (/^data:image\/jpeg/i.test(raw)) return raw;
-  }
-
-  // HTMLImage first — most reliable for iOS HEIC in Telegram WebView.
+  // HTMLImage first — canvas JPEG has no EXIF/GPS. Raw JPEG is last-resort only.
   try {
     return await decodeViaHtmlImage(file, maxEdge, quality);
   } catch {
@@ -141,7 +133,6 @@ export async function fileToJpegDataUrl(
     /* fall through */
   }
 
-  // Already PNG/WebP — re-encode via Image if possible, else pass through if JPEG-compatible.
   if (file.type === "image/png" || file.type === "image/webp") {
     try {
       return await decodeViaHtmlImage(file, maxEdge, quality);
@@ -149,6 +140,14 @@ export async function fileToJpegDataUrl(
       const raw = await readAsDataUrl(file);
       if (/^data:image\/(png|webp|jpeg)/i.test(raw)) return raw;
     }
+  }
+
+  if (
+    (file.type === "image/jpeg" || /\.jpe?g$/i.test(file.name)) &&
+    file.size < 1_800_000
+  ) {
+    const raw = await readAsDataUrl(file);
+    if (/^data:image\/jpeg/i.test(raw)) return raw;
   }
 
   throw new Error("decode failed");

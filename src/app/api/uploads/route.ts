@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { requireUser } from "@/lib/auth";
+import { stripMediaMetadata } from "@/lib/strip-media-metadata";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
   await mkdir(dir, { recursive: true });
 
   const name = `${kind}-${Date.now()}.${ext}`;
-  const buf = Buffer.from(await file.arrayBuffer());
+  const buf = stripMediaMetadata(Buffer.from(await file.arrayBuffer()), ext);
   await writeFile(path.join(dir, name), buf);
 
   const url = `/uploads/${user.id}/${name}`;

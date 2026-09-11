@@ -55,8 +55,6 @@ type Payload = {
     reason: string;
     error: string;
     updatedAt: string | null;
-    host: string | null;
-    sshPort: string | number | null;
   } | null;
   workers: WorkerRow[];
   functions: Array<{
@@ -183,16 +181,13 @@ export default function OpsLoadPage() {
           <p className="mt-1 text-coral/90">
             {data.summary.tunnelError || data.tunnel?.error}
           </p>
-          {data.tunnel?.host ? (
-            <p className="mt-1 text-xs text-zinc-400">
-              {data.tunnel.host}:{String(data.tunnel.sshPort || "")} ·{" "}
-              {data.tunnel.reason || "—"}
-            </p>
+          {data.tunnel?.reason ? (
+            <p className="mt-1 text-xs text-zinc-400">{data.tunnel.reason}</p>
           ) : null}
         </div>
       ) : data.tunnel?.ok ? (
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
-          Туннель OK · {data.tunnel.host}:{String(data.tunnel.sshPort || "")} ·{" "}
+          Туннель OK · {data.tunnel.reason || "up"} ·{" "}
           {data.tunnel.updatedAt ? fmtTime(data.tunnel.updatedAt) : "—"}
         </div>
       ) : null}

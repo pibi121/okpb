@@ -8,6 +8,7 @@ import {
   resolveSqlitePath,
 } from "./paths";
 import { freeGalleryDisk } from "@/lib/disk-hygiene";
+import { stripMediaMetadata } from "@/lib/strip-media-metadata";
 
 export function saveGalleryBinary(
   userId: string,
@@ -18,10 +19,12 @@ export function saveGalleryBinary(
   ensureDataDirs();
   const dir = path.join(galleryRoot(), userId);
   fs.mkdirSync(dir, { recursive: true });
-  const name = `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}.${ext.replace(/^\./, "")}`;
+  const cleanExt = ext.replace(/^\./, "");
+  const name = `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}.${cleanExt}`;
   const absPath = path.join(dir, name);
+  const payload = stripMediaMetadata(bytes, cleanExt);
   try {
-    fs.writeFileSync(absPath, bytes);
+    fs.writeFileSync(absPath, payload);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/ENOSPC|no space left/i.test(msg)) {
@@ -29,7 +32,7 @@ export function saveGalleryBinary(
       console.warn(
         `[peach] ENOSPC on gallery write — freed ${Math.round(r.freed / 1024 / 1024)}MB (${r.deleted} files), retrying`,
       );
-      fs.writeFileSync(absPath, bytes);
+      fs.writeFileSync(absPath, payload);
     } else {
       throw e;
     }

@@ -12,6 +12,20 @@ import { gpuRuntimeSnapshot } from "@/lib/ops/queue";
 import { getOpsSettings } from "@/lib/ops/settings";
 import { BUILD_VERSION } from "@/lib/gpu/types";
 
+function redactPublicInfra(text: string): string {
+  return String(text || "").replace(
+    /\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b/g,
+    "[gpu]",
+  );
+}
+
+function publicWorkerMeta(meta: Record<string, unknown>) {
+  const rest = { ...meta };
+  delete rest.host;
+  delete rest.sshPort;
+  return rest;
+}
+
 function avg(nums: number[]) {
   if (!nums.length) return 0;
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
@@ -151,16 +165,14 @@ export async function collectLoadDashboard(opts?: { ping?: boolean }) {
       avgProcessJobMs24h: mem.avgJobMs24h,
       maintenance: settings.maintenance,
       loadMode: settings.loadMode,
-      tunnelError: tunnelDown ? String(tunnel?.error || "") : "",
+      tunnelError: tunnelDown ? redactPublicInfra(String(tunnel?.error || "")) : "",
     },
     tunnel: tunnel
       ? {
           ok: Boolean(tunnel.ok),
           reason: tunnel.reason || "",
-          error: tunnel.error || "",
+          error: redactPublicInfra(tunnel.error || ""),
           updatedAt: tunnel.updatedAt || null,
-          host: tunnel.host || null,
-          sshPort: tunnel.sshPort ?? null,
         }
       : null,
     workers: workers.map((w) => {
@@ -171,6 +183,7 @@ export async function collectLoadDashboard(opts?: { ping?: boolean }) {
         meta = {};
       }
       const current = activeJobs.find((j) => j.id === w.currentJobId);
+      const comfyUrl = w.comfyUrl ? w.comfyUrl.replace(/\/\/.*@/, "//***@") : "";
       return {
         id: w.id,
         key: w.key,
@@ -179,9 +192,9 @@ export async function collectLoadDashboard(opts?: { ping?: boolean }) {
         pool: w.pool,
         enabled: w.enabled,
         status: w.status,
-        comfyUrl: w.comfyUrl ? w.comfyUrl.replace(/\/\/.*@/, "//***@") : "",
+        comfyUrl: redactPublicInfra(comfyUrl),
         lastHeartbeatAt: w.lastHeartbeatAt?.toISOString() || null,
-        lastError: w.lastError,
+        lastError: w.lastError ? redactPublicInfra(w.lastError) : w.lastError,
         costRubPerHour: w.costRubPerHour,
         currentJob: current
           ? {
@@ -194,7 +207,7 @@ export async function collectLoadDashboard(opts?: { ping?: boolean }) {
             }
           : null,
         needsProvider: w.status === "pending_provider" || !w.enabled,
-        meta,
+        meta: publicWorkerMeta(meta),
       };
     }),
     functions,

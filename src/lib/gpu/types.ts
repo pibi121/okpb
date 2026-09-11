@@ -37,4 +37,4 @@ export type GpuEnqueueOpts = {
   meta?: Record<string, unknown>;
 };
 
-export const BUILD_VERSION = "tg-ready-v48-burst-providers";
+export const BUILD_VERSION = "tg-ready-v49-meta-strip";

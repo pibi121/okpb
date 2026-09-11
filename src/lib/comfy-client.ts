@@ -5,6 +5,7 @@ import http from "node:http";
 import https from "node:https";
 import { URL } from "node:url";
 import { comfyBaseUrl } from "./metalnode-config";
+import { stripImageMetadata } from "@/lib/strip-media-metadata";
 
 export type ComfyImageRef = {
   filename: string;
@@ -358,6 +359,7 @@ async function uploadImageOnce(
   subfolder = "",
 ): Promise<string> {
   const safeName = filename.replace(/[^\w.\-]+/g, "_") || "peach_upload.png";
+  const uploadBytes = mime.startsWith("image/") ? stripImageMetadata(bytes) : bytes;
   const boundary = `----PeachBoundary${Date.now().toString(36)}`;
   const parts: Buffer[] = [
     Buffer.from(
@@ -366,7 +368,7 @@ async function uploadImageOnce(
         `Content-Type: ${mime}\r\n\r\n`,
       "utf8",
     ),
-    bytes,
+    uploadBytes,
     Buffer.from(
       `\r\n--${boundary}\r\n` +
         `Content-Disposition: form-data; name="overwrite"\r\n\r\n` +

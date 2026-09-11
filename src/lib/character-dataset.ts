@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { dataRoot } from "@/lib/paths";
+import { stripMediaMetadata } from "@/lib/strip-media-metadata";
 
 const IMG_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
@@ -178,7 +179,7 @@ export function saveCharacterPhoto(
   const base = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const name = `${base}${ext}`;
   const abs = path.join(characterImagesDir(characterId), name);
-  fs.writeFileSync(abs, bytes);
+  fs.writeFileSync(abs, stripMediaMetadata(bytes, ext));
   const caption = (triggerWord || "person").trim() || "person";
   fs.writeFileSync(path.join(characterImagesDir(characterId), `${base}.txt`), `${caption}\n`, "utf8");
   return name;

@@ -241,11 +241,13 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         status: true,
-        action: true,
+        kind: true,
         error: true,
         createdAt: true,
         finishedAt: true,
-        galleryItemId: true,
+        stage: true,
+        refType: true,
+        refId: true,
       },
     });
     return NextResponse.json({

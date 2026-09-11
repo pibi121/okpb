@@ -20,10 +20,13 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
 
   const ch = await prisma.character.findFirst({
-    where: { id, isStudioCast: true },
+    where: {
+      id,
+      OR: [{ userId: user.id }, { isStudioCast: true }],
+    },
   });
   if (!ch) {
-    return NextResponse.json({ error: "Актриса студии не найдена" }, { status: 404 });
+    return NextResponse.json({ error: "Персонаж не найден" }, { status: 404 });
   }
 
   const contentType = req.headers.get("content-type") || "";

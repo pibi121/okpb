@@ -181,7 +181,7 @@ export function CharacterLab({
   }
 
   async function saveStudioTgCard() {
-    if (!selected?.isStudioCast) return;
+    if (!selected) return;
     setBusy(true);
     setError("");
     setMsg("");
@@ -196,7 +196,7 @@ export function CharacterLab({
       const data = await res.json();
       if (!res.ok) throw new Error(String(data.error || "error"));
       setMsg(
-        `Карточка в Telegram обновлена: «${data.character?.tgDisplayName || tgDisplayName}»`,
+        `Карточка сохранена: «${data.character?.tgDisplayName || tgDisplayName}»`,
       );
       setTgCoverFile(null);
       if (data.character?.tgCoverUrl) {
@@ -205,6 +205,55 @@ export function CharacterLab({
       if (data.character?.tgDisplayName) {
         setTgDisplayName(data.character.tgDisplayName);
       }
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publishToTg() {
+    if (!selected) return;
+    setBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      const form = new FormData();
+      form.set("displayName", tgDisplayName.trim() || selected.name);
+      if (tgCoverFile) form.set("coverPhoto", tgCoverFile);
+      const res = await fetch(`/api/peach/characters/${selected.id}/tg`, {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(String(data.error || "error"));
+      setMsg(
+        `Перенесено в TG: «${data.character?.tgDisplayName || selected.name}»`,
+      );
+      setTgCoverFile(null);
+      if (data.character?.tgCoverUrl) setTgCoverPreview(data.character.tgCoverUrl);
+      if (data.character?.tgDisplayName) setTgDisplayName(data.character.tgDisplayName);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unpublishFromTg() {
+    if (!selected) return;
+    setBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/peach/characters/${selected.id}/tg`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(String(data.error || "error"));
+      setMsg("Убрано из витрины Telegram");
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "error");
@@ -495,7 +544,8 @@ export function CharacterLab({
         <div className="rounded-lg border border-peach/40 bg-peach/5 p-4">
           <h2 className="font-medium text-peach">Актрисы TG (витрина)</h2>
           <p className="mt-1 text-sm text-zinc-600">
-            Карточки для мини-аппа. Выбери актрису — справа блок «Карточка в Telegram».
+            Карточки для мини-аппа. Выбери актрису с готовой LoRA — справа блок
+            «Telegram · витрина» (обложка + перенос в TG).
           </p>
           <ul className="mt-3 divide-y rounded-lg border border-peach/20 bg-white">
             {studioCasts.map((c) => (
@@ -818,22 +868,30 @@ export function CharacterLab({
           )}
         </div>
 
-        {selected?.isStudioCast ? (
+        {selected &&
+        (selected.loraStatus === "lora_ready" || selected.isStudioCast) ? (
           <div className="rounded-lg border border-peach/30 bg-peach/5 p-4">
-            <h2 className="font-medium text-peach">Карточка в Telegram</h2>
+            <h2 className="font-medium text-peach">Telegram · витрина актрис</h2>
             <p className="mt-1 text-sm text-zinc-600">
-              Имя и обложка актрисы в боте и мини-аппе (вкладка «Витрина»).
+              Обложка (3:4) и имя в боте / мини-аппе. После «Перенести в TG» модель
+              появится в выборе актрис у пользователей.
             </p>
+            {selected.loraStatus !== "lora_ready" ? (
+              <p className="mt-2 text-sm text-amber-700">
+                Сначала дождись готовой LoRA (`lora_ready`).
+              </p>
+            ) : null}
             <label className="mt-3 block text-sm">
-              <span className="text-zinc-500">Отображаемое имя</span>
+              <span className="text-zinc-500">Отображаемое имя в TG</span>
               <input
                 className="mt-1 w-full rounded-md border px-3 py-2"
                 value={tgDisplayName}
                 onChange={(e) => setTgDisplayName(e.target.value)}
+                placeholder={selected.name}
               />
             </label>
-            <div className="mt-3 flex items-start gap-3">
-              <label className="flex h-28 w-21 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-white">
+            <div className="mt-3 flex flex-wrap items-start gap-3">
+              <label className="flex h-36 w-28 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-white">
                 {tgCoverPreview ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -842,7 +900,11 @@ export function CharacterLab({
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className="text-xs text-zinc-400">3:4 фото</span>
+                  <span className="px-2 text-center text-xs text-zinc-400">
+                    Обложка 3:4
+                    <br />
+                    нажми чтобы загрузить
+                  </span>
                 )}
                 <input
                   type="file"
@@ -855,14 +917,46 @@ export function CharacterLab({
                   }}
                 />
               </label>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void saveStudioTgCard()}
-                className="rounded-md bg-peach px-3 py-2 text-sm font-medium text-black disabled:opacity-50"
-              >
-                {busy ? "Сохраняю…" : "Обновить в TG"}
-              </button>
+              <div className="flex min-w-[12rem] flex-1 flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void saveStudioTgCard()}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {busy ? "…" : "Сохранить обложку / имя"}
+                </button>
+                {selected.isStudioCast ? (
+                  <>
+                    <div className="rounded-md bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">
+                      Сейчас в витрине TG
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void unpublishFromTg()}
+                      className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium disabled:opacity-50"
+                    >
+                      Убрать из TG
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy || selected.loraStatus !== "lora_ready"}
+                    onClick={() => void publishToTg()}
+                    className="rounded-md bg-peach px-3 py-2 text-sm font-medium text-black disabled:opacity-50"
+                  >
+                    {busy ? "…" : "Перенести в TG"}
+                  </button>
+                )}
+                {!tgCoverPreview && !tgCoverFile ? (
+                  <p className="text-xs text-zinc-500">
+                    Без обложки в мини-аппе может быть пустая карточка — лучше
+                    загрузить фото до переноса.
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
         ) : null}

@@ -251,20 +251,22 @@ export async function updateStudioCastTgCard(
   patch: { displayName?: string; coverUrl?: string },
 ) {
   let ch = await prisma.character.findFirst({
-    where: { id: characterId, isStudioCast: true },
+    where: { id: characterId },
   });
-  if (!ch) {
-    ch = await prisma.character.findFirst({
-      where: { id: characterId, triggerWord: { in: TG_STUDIO_CAST_TRIGGERS } },
+  if (!ch) throw new Error("Персонаж не найден");
+
+  // Allow editing card for any ready model; house triggers auto-flag studio.
+  if (
+    !ch.isStudioCast &&
+    ch.triggerWord &&
+    TG_STUDIO_CAST_TRIGGERS.includes(ch.triggerWord)
+  ) {
+    await prisma.character.update({
+      where: { id: ch.id },
+      data: { isStudioCast: true },
     });
-    if (ch) {
-      await prisma.character.update({
-        where: { id: ch.id },
-        data: { isStudioCast: true },
-      });
-    }
+    ch = { ...ch, isStudioCast: true };
   }
-  if (!ch) throw new Error("Актриса студии не найдена");
 
   const data: { tgDisplayName?: string; tgCoverUrl?: string } = {};
   if (patch.displayName !== undefined) {
@@ -283,4 +285,52 @@ export async function updateStudioCastTgCard(
   }
 
   return prisma.character.update({ where: { id: characterId }, data });
+}
+
+/** Move a lab LoRA character into the TG Mini App cast vitrine. */
+export async function publishCharacterToTg(
+  characterId: string,
+  opts?: { displayName?: string; coverUrl?: string },
+) {
+  const { hasRealCharacterLora } = await import("@/lib/tg/studio-cast");
+  const ch = await prisma.character.findUnique({ where: { id: characterId } });
+  if (!ch) throw new Error("Персонаж не найден");
+  if (ch.loraStatus !== "lora_ready" || !hasRealCharacterLora(ch)) {
+    throw new Error("Нужна готовая LoRA (lora_ready) перед переносом в TG");
+  }
+  if (ch.videoRefOnly) {
+    throw new Error("Video-ref персонаж нельзя публиковать как актрису витрины");
+  }
+
+  let coverUrl = opts?.coverUrl?.trim() || ch.tgCoverUrl?.trim() || "";
+  if (opts?.coverUrl !== undefined && opts.coverUrl.trim()) {
+    const slug = `cast-${characterId.slice(0, 10)}`;
+    const copied = copyAssetToTgCatalog(opts.coverUrl.trim(), slug, ".jpg");
+    coverUrl = copied
+      ? `${copied}${copied.includes("?") ? "&" : "?"}v=${Date.now()}`
+      : coverUrl;
+  }
+
+  const displayName =
+    (opts?.displayName ?? ch.tgDisplayName ?? ch.name).trim() || ch.name;
+
+  return prisma.character.update({
+    where: { id: characterId },
+    data: {
+      isStudioCast: true,
+      consentGiven: true,
+      tgDisplayName: displayName,
+      ...(coverUrl ? { tgCoverUrl: coverUrl } : {}),
+    },
+  });
+}
+
+/** Remove character from TG cast vitrine (keeps cover/name for later). */
+export async function unpublishCharacterFromTg(characterId: string) {
+  const ch = await prisma.character.findUnique({ where: { id: characterId } });
+  if (!ch) throw new Error("Персонаж не найден");
+  return prisma.character.update({
+    where: { id: characterId },
+    data: { isStudioCast: false },
+  });
 }

@@ -24,7 +24,13 @@ const OWNER = process.env.LAB_OWNER_USER_ID || "cmsa0ko34000bv9cgjm27ydny";
 const LORAS_ROOT =
   process.env.LORAS_ROOT ||
   path.join("C:\\Users\\Олег\\Desktop\\Проект Х\\Лоры");
-const KEY = path.join(ROOT, "infra", "metalnode-comfy-22026.key");
+const KEY =
+  process.env.METALNODE_SSH_KEY_PATH ||
+  path.join(
+    process.env.USERPROFILE || process.env.HOME || "",
+    ".ssh",
+    "metalnode_id_ed25519_22034",
+  );
 const STATE_PATH = path.join(ROOT, "data", "overnight-lab-loras-state.json");
 const IMG_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
@@ -173,7 +179,7 @@ function sshUpload(localPath, remotePath) {
     const env = {
       ...process.env,
       METALNODE_HOST: process.env.METALNODE_HOST || "77.94.203.13",
-      METALNODE_SSH_PORT: process.env.METALNODE_SSH_PORT || "22026",
+      METALNODE_SSH_PORT: process.env.METALNODE_SSH_PORT || "22034",
       METALNODE_SSH_USER: process.env.METALNODE_SSH_USER || "root",
       METALNODE_SSH_KEY_PATH: KEY,
     };
@@ -198,7 +204,7 @@ function sshExec(cmd, timeoutMs = 120_000) {
     const env = {
       ...process.env,
       METALNODE_HOST: process.env.METALNODE_HOST || "77.94.203.13",
-      METALNODE_SSH_PORT: process.env.METALNODE_SSH_PORT || "22026",
+      METALNODE_SSH_PORT: process.env.METALNODE_SSH_PORT || "22034",
       METALNODE_SSH_USER: process.env.METALNODE_SSH_USER || "root",
       METALNODE_SSH_KEY_PATH: KEY,
     };

@@ -17,7 +17,7 @@ import path from "node:path";
 import { Client } from "ssh2";
 
 const HOST = (process.env.METALNODE_HOST || "").trim();
-const PORT = Number(process.env.METALNODE_SSH_PORT || "22026");
+const PORT = Number(process.env.METALNODE_SSH_PORT || "22034");
 const USER = (process.env.METALNODE_SSH_USER || "root").trim();
 const KEY_PATH =
   process.env.METALNODE_SSH_KEY_PATH?.trim() || "/tmp/metalnode_ssh_key";

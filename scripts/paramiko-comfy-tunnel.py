@@ -167,13 +167,22 @@ def main() -> int:
     if not Path(cfg["sshKeyPath"]).exists():
         log(f"missing key {cfg['sshKeyPath']}")
         return 1
+    backoff = 4.0
     while True:
         try:
             serve_once(cfg)
+            backoff = 4.0
         except Exception as e:
+            msg = str(e)
             log(f"ERR {e}")
             traceback.print_exc()
-        time.sleep(4)
+            # Thread exhaustion on Railway — back off hard so we don't spin-spawn.
+            if "can't start new thread" in msg or "Resource temporarily unavailable" in msg:
+                backoff = min(120.0, max(backoff, 30.0) * 1.5)
+                log(f"thread exhaustion — sleeping {backoff:.0f}s before reconnect")
+            else:
+                backoff = min(60.0, backoff * 1.4)
+        time.sleep(backoff)
         log("reconnect")
 
 

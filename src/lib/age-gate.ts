@@ -1,6 +1,10 @@
 /**
  * Age / minor safety gate — local OpenCV DNN on Railway (CPU).
  * Does NOT use Metalnode GPU (safe while LoRA train is running).
+ *
+ * Scope:
+ * - Telegram onboarding / TG gens: enforced (character-service + generation-service).
+ * - Peach lab web (/api/characters photos+train, /api/peach/*): intentionally NOT gated.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "fs";

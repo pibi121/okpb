@@ -14,7 +14,7 @@ export async function GET() {
       minScore: cfg.minScore,
       failClosed: cfg.failClosed,
       note:
-        "Проверка возраста на Railway (CPU). Блокирует детские бакеты и (15-20) при высокой уверенности. Без лица — отказ. Metalnode не трогает.",
+        "Age-gate только для Telegram (онбординг/гены). Лаборатория Peach (/api/characters, /api/peach) не проверяется. Metalnode не трогает.",
     });
   });
 }

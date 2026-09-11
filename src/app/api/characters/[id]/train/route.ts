@@ -46,6 +46,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       characterId: id,
       triggerWord: body.triggerWord,
       epochs: body.epochs,
+      // Lab web train — skip age-gate (TG onboarding keeps it via character-service).
+      skipAgeGate: true,
     });
     return NextResponse.json({
       ok: true,

@@ -312,6 +312,17 @@ async function trainOne(spec, state) {
       await markReady(spec, state);
       return;
     }
+    // Train finished saving but promote step may have died — pick up from loras_out.
+    if (/saving checkpoint:|model saved|100%\|██████████\|/.test(probe) && /DEAD|NOPID/.test(probe)) {
+      await sshExec(
+        [
+          `mkdir -p /work/ComfyUI/models/loras/krea2`,
+          `LATEST=$(ls -1t /work/loras_out/${key}/*.safetensors 2>/dev/null | head -1 || true)`,
+          `if [ -n "$LATEST" ]; then cp -f "$LATEST" /work/ComfyUI/models/loras/krea2/${key}_krea2.safetensors; fi`,
+        ].join("; "),
+        120_000,
+      );
+    }
     if (await remoteHasLora(key)) {
       await markReady(spec, state);
       return;

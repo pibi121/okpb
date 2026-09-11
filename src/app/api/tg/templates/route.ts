@@ -135,6 +135,16 @@ export async function GET(req: Request) {
     }),
   );
 
+  const { resolveVideoLocalPath } = await import(
+    "@/lib/quick-video-template-preview"
+  );
+  const videoWithPreview = video.filter(
+    (t) => t.previewVideoUrl && resolveVideoLocalPath(t.previewVideoUrl),
+  );
+  const loraWithPreview = loraI2v.filter(
+    (t) => t.previewVideoUrl && resolveVideoLocalPath(t.previewVideoUrl),
+  );
+
   const photoMapped = photo.map((p) => ({
     ...p,
     previewImageUrl: resolveTgCatalogAssetUrl(
@@ -153,7 +163,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     // Mix max-quality (lora_i2v) with regular quick videos — no priority order.
-    video: shuffleInPlace([...loraI2v, ...video]),
+    video: shuffleInPlace([...loraWithPreview, ...videoWithPreview]),
     photo: shuffleInPlace([...photoMapped]),
     locale,
   });

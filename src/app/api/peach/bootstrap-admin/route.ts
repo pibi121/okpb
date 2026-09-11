@@ -739,6 +739,93 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "inspect_video_template") {
+    const id = String(body.id || body.templateId || "").trim();
+    const q = String(body.q || "").trim();
+    const { resolveVideoLocalPath } = await import(
+      "@/lib/quick-video-template-preview"
+    );
+    const rows = id
+      ? await prisma.quickVideoTemplate.findMany({ where: { id }, take: 1 })
+      : await prisma.quickVideoTemplate.findMany({
+          where: {
+            OR: [
+              { title: { contains: q || "спор" } },
+              { tgDisplayTitle: { contains: q || "спор" } },
+            ],
+          },
+          take: 5,
+        });
+    const out = [];
+    for (const row of rows) {
+      const run = row.sourceRunId
+        ? await prisma.quickVideoRun.findUnique({
+            where: { id: row.sourceRunId },
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              resultVideoUrl: true,
+              refVideoUrl: true,
+              galleryItemId: true,
+            },
+          })
+        : null;
+      const gal = run?.galleryItemId
+        ? await prisma.galleryItem.findUnique({
+            where: { id: run.galleryItemId },
+            select: { id: true, resultUrl: true, title: true },
+          })
+        : null;
+      const urls = [
+        row.previewVideoUrl,
+        row.refVideoUrl,
+        run?.resultVideoUrl,
+        run?.refVideoUrl,
+        gal?.resultUrl,
+      ].filter(Boolean) as string[];
+      out.push({
+        id: row.id,
+        title: row.title,
+        tgDisplayTitle: row.tgDisplayTitle,
+        tgPublished: row.tgPublished,
+        sourceRunId: row.sourceRunId,
+        previewVideoUrl: row.previewVideoUrl,
+        refVideoUrl: row.refVideoUrl,
+        run,
+        gal,
+        local: urls.map((url) => ({
+          url,
+          exists: Boolean(resolveVideoLocalPath(url)),
+        })),
+      });
+    }
+    const lora = q
+      ? await prisma.loraI2vTemplate.findMany({
+          where: {
+            OR: [
+              { title: { contains: q } },
+              { tgDisplayTitle: { contains: q } },
+            ],
+          },
+          take: 5,
+        })
+      : [];
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_video_template",
+      quick: out,
+      lora: lora.map((r) => ({
+        id: r.id,
+        title: r.title,
+        tgDisplayTitle: r.tgDisplayTitle,
+        previewVideoUrl: r.previewVideoUrl,
+        sourceVideoId: r.sourceVideoId,
+        exists: Boolean(resolveVideoLocalPath(r.previewVideoUrl)),
+      })),
+    });
+  }
+
   if (action === "list_video_templates") {
     const q = typeof body.q === "string" ? body.q.trim() : "";
     const rows = await prisma.quickVideoTemplate.findMany({

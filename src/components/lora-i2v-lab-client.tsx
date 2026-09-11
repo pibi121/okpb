@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { TodayGenerationsStrip } from "@/components/today-generations-strip";
 import { TgPublishControls } from "@/components/tg-publish-controls";
 import { OrientationSelect } from "@/components/orientation-select";
@@ -49,6 +50,10 @@ async function readJson(res: Response) {
 }
 
 export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
+  const searchParams = useSearchParams();
+  const presetTemplateId =
+    searchParams.get("templateId") || searchParams.get("id") || "";
+
   const loraChars = useMemo(
     () => characters.filter((c) => c.loraStatus === "lora_ready"),
     [characters],
@@ -95,6 +100,13 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!presetTemplateId || !templates.length || editingId) return;
+    const hit = templates.find((t) => t.id === presetTemplateId);
+    if (hit) loadIntoForm(hit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetTemplateId, templates]);
 
   useEffect(() => {
     if (!characterId && loraChars[0]) setCharacterId(loraChars[0].id);

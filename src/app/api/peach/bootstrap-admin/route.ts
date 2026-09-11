@@ -739,6 +739,95 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "set_tg_video_preview") {
+    const kind = String(body.kind || "video").trim(); // video | lora_i2v
+    const id = String(body.id || body.templateId || "").trim();
+    const videoUrl = String(body.videoUrl || body.url || "").trim();
+    if (!id || !videoUrl) {
+      return NextResponse.json(
+        { error: "id + videoUrl required" },
+        { status: 400 },
+      );
+    }
+    const { resolveVideoLocalPath } = await import(
+      "@/lib/quick-video-template-preview"
+    );
+    const { copyAssetToTgCatalog } = await import("@/lib/tg/tg-publish");
+    if (!resolveVideoLocalPath(videoUrl)) {
+      return NextResponse.json(
+        { error: "videoUrl file not found on disk", videoUrl },
+        { status: 404 },
+      );
+    }
+    if (kind === "lora_i2v") {
+      const slug = `li2v-${id.slice(0, 10)}`;
+      const previewVideoUrl = copyAssetToTgCatalog(
+        videoUrl,
+        `${slug}-preview`,
+        ".mp4",
+      );
+      const updated = await prisma.loraI2vTemplate.update({
+        where: { id },
+        data: {
+          previewVideoUrl: previewVideoUrl || videoUrl,
+          tgPublished: true,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        action,
+        kind,
+        id,
+        previewVideoUrl: updated.previewVideoUrl,
+      });
+    }
+    const slug = `qv-${id.slice(0, 10)}`;
+    const previewVideoUrl = copyAssetToTgCatalog(
+      videoUrl,
+      `${slug}-preview`,
+      ".mp4",
+    );
+    const { ensureTemplatePreviewPhoto } = await import(
+      "@/lib/quick-video-template-preview"
+    );
+    const row = await prisma.quickVideoTemplate.findUnique({ where: { id } });
+    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    await prisma.quickVideoTemplate.update({
+      where: { id },
+      data: {
+        previewVideoUrl: previewVideoUrl || videoUrl,
+        refVideoUrl: row.refVideoUrl || videoUrl,
+      },
+    });
+    const thumb = await ensureTemplatePreviewPhoto(
+      {
+        id,
+        userId: row.userId,
+        previewVideoUrl: previewVideoUrl || videoUrl,
+        previewPhotoUrl: "",
+      },
+      { force: true, atSec: 1 },
+    );
+    const previewPhotoUrl = thumb
+      ? copyAssetToTgCatalog(thumb, `${slug}-frame-thumb`, ".png")
+      : "";
+    const updated = await prisma.quickVideoTemplate.update({
+      where: { id },
+      data: {
+        previewPhotoUrl: previewPhotoUrl || thumb || "",
+        tgPublished: true,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      action,
+      kind: "video",
+      id,
+      previewVideoUrl: updated.previewVideoUrl,
+      previewPhotoUrl: updated.previewPhotoUrl,
+    });
+  }
+
   if (action === "unpublish_broken_tg_video_previews") {
     const { resolveVideoLocalPath } = await import(
       "@/lib/quick-video-template-preview"

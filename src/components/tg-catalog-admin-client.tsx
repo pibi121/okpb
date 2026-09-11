@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type Kind = "photo" | "video" | "lora_i2v";
 
@@ -16,6 +17,8 @@ type Item = {
   durationSec: number;
   previewUrl: string;
   previewVideoUrl: string;
+  previewMissing?: boolean;
+  labHref?: string;
   updatedAt: string;
 };
 
@@ -25,11 +28,22 @@ const KIND_LABEL: Record<Kind, string> = {
   lora_i2v: "Видео по фото",
 };
 
+const NEED_PREVIEW_IDS = new Set([
+  "cmtmqh6480005o42ajx53bbij",
+  "cmtmrlfy6000fo42aqyjvkw8s",
+  "cmtmtdzo8000bqd2ade2cbkhj",
+  "cmtmuhkbq000oqd2ap8zaac0z",
+  "cmtotna5v0005s82al14y39ge",
+  "cmtmzc9e20009lp2avdg94bto",
+  "cmtoci66p0009qi2awxvlklsv",
+  "cmton1zwj0007nw2akdexombu",
+]);
+
 export function TgCatalogAdminClient() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [filter, setFilter] = useState<"all" | Kind>("all");
+  const [filter, setFilter] = useState<"all" | Kind | "broken">("broken");
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState("");
 
@@ -60,12 +74,23 @@ export function TgCatalogAdminClient() {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return items.filter((it) => {
-      if (filter !== "all" && it.kind !== filter) return false;
+      if (filter === "broken") {
+        if (!(it.previewMissing || NEED_PREVIEW_IDS.has(it.id))) return false;
+      } else if (filter !== "all" && it.kind !== filter) {
+        return false;
+      }
       if (!needle) return true;
       const hay = `${it.title} ${it.displayTitle} ${it.id}`.toLowerCase();
       return hay.includes(needle);
     });
   }, [items, filter, q]);
+
+  const brokenCount = useMemo(
+    () =>
+      items.filter((it) => it.previewMissing || NEED_PREVIEW_IDS.has(it.id))
+        .length,
+    [items],
+  );
 
   const patch = async (
     item: Item,
@@ -83,8 +108,8 @@ export function TgCatalogAdminClient() {
         },
       );
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setErr(data.error || "Ошибка сохранения");
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setErr(j.error || "Не удалось сохранить");
         return;
       }
       await load();
@@ -96,9 +121,30 @@ export function TgCatalogAdminClient() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
+      <div>
+        <h1 className="text-xl font-semibold text-zinc-100">TG каталог</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Скрыть / переименовать шаблоны. Для битых превью: сгенерируй ролик в
+          лабе → «Перенести в TG» или пришли ссылку на mp4.
+        </p>
+        {brokenCount > 0 ? (
+          <p className="mt-2 text-sm text-amber-300/90">
+            Нужно превью: {brokenCount} шт. (фильтр уже открыт)
+          </p>
+        ) : null}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        {(["all", "photo", "video", "lora_i2v"] as const).map((k) => (
+        {(
+          [
+            ["broken", `Нет превью${brokenCount ? ` (${brokenCount})` : ""}`],
+            ["all", "Все"],
+            ["photo", KIND_LABEL.photo],
+            ["video", KIND_LABEL.video],
+            ["lora_i2v", KIND_LABEL.lora_i2v],
+          ] as const
+        ).map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -109,7 +155,7 @@ export function TgCatalogAdminClient() {
             }`}
             onClick={() => setFilter(k)}
           >
-            {k === "all" ? "Все" : KIND_LABEL[k]}
+            {label}
           </button>
         ))}
         <input
@@ -178,11 +224,25 @@ function CatalogRow({
 
   const dirty =
     title.trim() !== item.title || displayTitle.trim() !== item.displayTitle;
+  const missing = Boolean(item.previewMissing || NEED_PREVIEW_IDS.has(item.id));
+  const labHref =
+    item.labHref ||
+    (item.kind === "video"
+      ? `/peach/video?tab=create&qvTemplate=${item.id}`
+      : item.kind === "lora_i2v"
+        ? `/peach/lora-i2v?templateId=${item.id}`
+        : "/peach/photo");
 
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 sm:flex-row">
+    <article
+      className={`flex flex-col gap-3 rounded-xl border p-3 sm:flex-row ${
+        missing
+          ? "border-amber-700/50 bg-amber-950/20"
+          : "border-zinc-800 bg-zinc-950/60"
+      }`}
+    >
       <div className="h-28 w-20 shrink-0 overflow-hidden rounded-lg bg-zinc-900 sm:h-32 sm:w-24">
-        {item.previewUrl ? (
+        {item.previewUrl && !missing ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={item.previewUrl}
@@ -190,8 +250,8 @@ function CatalogRow({
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-[10px] text-zinc-600">
-            нет превью
+          <div className="flex h-full items-center justify-center px-1 text-center text-[10px] text-amber-400/90">
+            нет файла превью
           </div>
         )}
       </div>
@@ -209,6 +269,11 @@ function CatalogRow({
           >
             {item.tgPublished ? "В TG" : "Скрыт в TG"}
           </span>
+          {missing ? (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">
+              Нужно превью
+            </span>
+          ) : null}
           <span className="text-zinc-500">{item.pricePeaches} 🍑</span>
           {item.durationSec > 0 ? (
             <span className="text-zinc-500">~{item.durationSec}с</span>
@@ -235,11 +300,20 @@ function CatalogRow({
             />
           </label>
         </div>
+        <p className="truncate font-mono text-[10px] text-zinc-600">{item.id}</p>
         <div className="flex flex-wrap gap-2">
+          {item.kind !== "photo" ? (
+            <Link
+              href={labHref}
+              className="rounded-lg bg-peach/90 px-3 py-1.5 text-xs font-medium text-zinc-950"
+            >
+              Сделать видео →
+            </Link>
+          ) : null}
           <button
             type="button"
             disabled={busy || !dirty || !title.trim()}
-            className="rounded-lg bg-peach/90 px-3 py-1.5 text-xs font-medium text-zinc-950 disabled:opacity-40"
+            className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300 disabled:opacity-40"
             onClick={() => onRename(title.trim(), displayTitle.trim())}
           >
             Сохранить имя
@@ -256,7 +330,12 @@ function CatalogRow({
           ) : (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || missing}
+              title={
+                missing
+                  ? "Сначала сгенерируй превью и перенеси в TG из лабы"
+                  : undefined
+              }
               className="rounded-lg border border-emerald-700/60 px-3 py-1.5 text-xs text-emerald-300 disabled:opacity-40"
               onClick={onShow}
             >

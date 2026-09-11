@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { LoraI2vLabClient } from "@/components/lora-i2v-lab-client";
@@ -32,7 +33,9 @@ export default async function LoraI2vLabPage() {
           перенести в Telegram. Режим админа: «Как вижу Я».
         </p>
       </div>
-      <LoraI2vLabClient characters={characters} />
+      <Suspense fallback={<p className="text-sm text-zinc-500">…</p>}>
+        <LoraI2vLabClient characters={characters} />
+      </Suspense>
     </div>
   );
 }

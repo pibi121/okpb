@@ -1440,6 +1440,25 @@
   background: #000;
 }
 
+/* Video template detail: full frame visible (no top/bottom crop). */
+.tg-video-detail-preview {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  max-height: min(52vh, 360px);
+  margin: 0.55rem auto 0;
+  border-radius: 14px;
+  background: #000;
+  object-fit: contain;
+  object-position: center center;
+}
+
+.tg-portrait-card.is-selected {
+  outline: 2px solid var(--tg-apricot);
+  outline-offset: 2px;
+  border-radius: 16px;
+}
+
 /* —— Mini App banners —— */
 .tg-banner-carousel {
   margin: 0 0.75rem 0.65rem;

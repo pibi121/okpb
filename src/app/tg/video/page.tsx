@@ -38,7 +38,12 @@ type VideoTpl = {
   speechSlots?: SpeechSlotDto[];
 };
 
-type LoraChar = { id: string; name: string; loraStatus?: string };
+type LoraChar = {
+  id: string;
+  name: string;
+  loraStatus?: string;
+  coverUrl?: string | null;
+};
 
 const UI = {
   ru: {
@@ -48,11 +53,10 @@ const UI = {
     useSaved: "Или выбери сохранённую модель",
     pickLora: "2. Выбери готовую модель",
     needLora: "Нужна обученная модель",
-    bestQuality: "Макс. качество",
     bestHint:
       "Этот формат работает только с обученной моделью — твоя или актриса студии. Обычное фото «с телефона» не подойдёт.",
     trainPitch:
-      "Хочешь своё лицо в макс. качестве? Создай модель за ~1–2 часа (от 5 фото) — и этот уровень откроется навсегда.",
+      "Хочешь своё лицо в этом формате? Создай модель за ~1–2 часа (от 5 фото) — и формат откроется навсегда.",
     trainCta: "Создать модель →",
     openCasts: "Актрисы студии",
     speech: "3. Речь в видео",
@@ -75,11 +79,10 @@ const UI = {
     useSaved: "Or pick a saved model",
     pickLora: "2. Pick a ready model",
     needLora: "Need a trained model",
-    bestQuality: "Max quality",
     bestHint:
       "This format only works with a trained model — yours or a studio actress. A plain phone selfie won't work.",
     trainPitch:
-      "Want your face in max quality? Create a model in ~1–2 hours (from 5 photos) — unlock this level forever.",
+      "Want your face in this format? Create a model in ~1–2 hours (5+ photos) — then this format unlocks forever.",
     trainCta: "Create model →",
     openCasts: "Studio actresses",
     speech: "3. Dialogue",
@@ -158,23 +161,33 @@ function VideoPageInner() {
     if (meRes.ok) {
       const data = (await meRes.json()) as {
         characters?: LoraChar[];
-        casts?: Array<{ id: string; name: string }>;
+        casts?: Array<{ id: string; name: string; coverUrl?: string | null }>;
       };
       const pool: LoraChar[] = [
-        ...(data.characters || []).filter((c) => c.loraStatus === "lora_ready"),
+        ...(data.characters || [])
+          .filter((c) => c.loraStatus === "lora_ready")
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            loraStatus: c.loraStatus,
+            coverUrl: c.coverUrl || null,
+          })),
         ...(data.casts || []).map((c) => ({
           id: c.id,
           name: c.name,
           loraStatus: "lora_ready",
+          coverUrl: c.coverUrl || null,
         })),
       ];
       const seen = new Set<string>();
       setLoraChars(
-        pool.filter((c) => {
-          if (seen.has(c.id)) return false;
-          seen.add(c.id);
-          return true;
-        }),
+        shuffleInPlace(
+          pool.filter((c) => {
+            if (seen.has(c.id)) return false;
+            seen.add(c.id);
+            return true;
+          }),
+        ),
       );
     }
   }, [apiFetch, locale, presetId, presetCharacterId]);
@@ -353,9 +366,6 @@ function VideoPageInner() {
                 </div>
                 <div className="tg-portrait-meta">
                   <strong>{t.title}</strong>
-                  {(t.templateKind === "lora_i2v" || t.requiresLora) && (
-                    <span className="tg-best-badge">{u.bestQuality}</span>
-                  )}
                   <small>
                     {t.pricePeaches} 🍑
                     {t.durationSec ? ` · ~${t.durationSec}с` : ""}
@@ -385,13 +395,7 @@ function VideoPageInner() {
               <TgCatalogVideo
                 src={tpl.previewVideoUrl}
                 poster={tpl.previewPhotoUrl}
-                className="tg-reel-media"
-                style={{
-                  marginTop: "0.5rem",
-                  maxHeight: 240,
-                  width: "100%",
-                  borderRadius: 12,
-                }}
+                className="tg-video-detail-preview"
                 onClick={togglePreview}
               />
             )}
@@ -407,9 +411,6 @@ function VideoPageInner() {
           {isLoraI2v ? (
             <>
               <p className="tg-muted tg-section-hint" style={{ marginTop: "0.75rem" }}>
-                <span className="tg-best-badge" style={{ position: "static", display: "inline-block", marginRight: "0.4rem" }}>
-                  {u.bestQuality}
-                </span>
                 {u.bestHint}
               </p>
               <h2 style={{ fontSize: "1rem", margin: "1rem 0 0.5rem" }}>
@@ -436,32 +437,47 @@ function VideoPageInner() {
                   </button>
                 </div>
               ) : (
-                <div className="tg-card-list">
-                  {loraChars.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={`tg-char-card ${characterId === c.id ? "active" : ""}`}
-                      onClick={() => {
-                        setCharacterId(c.id);
-                        setReady(true);
-                      }}
-                    >
-                      <div>
-                        <strong>{c.name}</strong>
-                        <small>{u.bestQuality}</small>
-                      </div>
-                    </button>
-                  ))}
+                <>
+                  <div className="tg-portrait-grid" style={{ padding: 0 }}>
+                    {loraChars.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`tg-portrait-card ${
+                          characterId === c.id ? "is-selected" : ""
+                        }`}
+                        onClick={() => {
+                          setCharacterId(c.id);
+                          setReady(true);
+                        }}
+                      >
+                        <div className="tg-portrait-media">
+                          {c.coverUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={c.coverUrl}
+                              alt=""
+                              className="tg-portrait-img"
+                            />
+                          ) : (
+                            <div className="tg-portrait-placeholder" />
+                          )}
+                        </div>
+                        <div className="tg-portrait-meta">
+                          <strong>{c.name}</strong>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                   <button
                     type="button"
                     className="tg-lang"
-                    style={{ width: "100%", marginTop: "0.35rem" }}
+                    style={{ width: "100%", marginTop: "0.55rem" }}
                     onClick={() => router.push("/tg/characters?section=train")}
                   >
                     {u.trainCta}
                   </button>
-                </div>
+                </>
               )}
             </>
           ) : (

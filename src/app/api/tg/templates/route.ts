@@ -16,6 +16,7 @@ import {
 } from "@/lib/tg/template-speech";
 import { extractSpeechSlots } from "@/lib/speech-slots";
 import { resolveTgCatalogAssetUrl } from "@/lib/tg/catalog-asset-url";
+import { shuffleInPlace } from "@/lib/tg/feed-order";
 
 function videoTitle(
   row: { title: string; titleEn?: string },
@@ -33,6 +34,9 @@ export async function GET(req: Request) {
   void import("@/lib/tg/migrate-video-preview")
     .then((m) => m.migrateVideoTemplatePreviewHygiene())
     .catch((e) => console.error("[peach] video preview migrate:", e));
+  void import("@/lib/tg/repair-tg-video-previews")
+    .then((m) => m.repairMissingTgVideoPreviews())
+    .catch((e) => console.error("[peach] video preview repair:", e));
 
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
@@ -148,8 +152,9 @@ export async function GET(req: Request) {
   }));
 
   return NextResponse.json({
-    video: [...loraI2v, ...video],
-    photo: photoMapped,
+    // Mix max-quality (lora_i2v) with regular quick videos — no priority order.
+    video: shuffleInPlace([...loraI2v, ...video]),
+    photo: shuffleInPlace([...photoMapped]),
     locale,
   });
 }

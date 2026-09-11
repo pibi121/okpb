@@ -111,11 +111,43 @@ export async function publishQuickVideoTemplateToTg(
   const row = await prisma.quickVideoTemplate.findUnique({ where: { id: templateId } });
   if (!row) throw new Error("Шаблон не найден");
 
-  const { ensureTemplatePreviewPhoto, isSafeVideoTemplateThumb } = await import(
-    "@/lib/quick-video-template-preview"
-  );
-  const safeThumb = await ensureTemplatePreviewPhoto(row, {
-    force: !isSafeVideoTemplateThumb(row.previewPhotoUrl),
+  const { ensureTemplatePreviewPhoto, isSafeVideoTemplateThumb, resolveVideoLocalPath } =
+    await import("@/lib/quick-video-template-preview");
+
+  // If catalog preview was wiped, recover from source run / ref before copying.
+  let sourcePreview = row.previewVideoUrl?.trim() || "";
+  if (!sourcePreview || !resolveVideoLocalPath(sourcePreview)) {
+    const candidates: string[] = [];
+    if (row.refVideoUrl?.trim()) candidates.push(row.refVideoUrl.trim());
+    if (row.sourceRunId?.trim()) {
+      const run = await prisma.quickVideoRun.findUnique({
+        where: { id: row.sourceRunId },
+        select: { resultVideoUrl: true, refVideoUrl: true },
+      });
+      if (run?.resultVideoUrl?.trim()) candidates.push(run.resultVideoUrl.trim());
+      if (run?.refVideoUrl?.trim()) candidates.push(run.refVideoUrl.trim());
+    }
+    for (const c of candidates) {
+      if (resolveVideoLocalPath(c)) {
+        sourcePreview = c;
+        break;
+      }
+    }
+  }
+  if (sourcePreview && sourcePreview !== row.previewVideoUrl) {
+    await prisma.quickVideoTemplate.update({
+      where: { id: templateId },
+      data: { previewVideoUrl: sourcePreview },
+    });
+  }
+
+  const forThumb = await prisma.quickVideoTemplate.findUnique({
+    where: { id: templateId },
+  });
+  if (!forThumb) throw new Error("Шаблон не найден");
+
+  const safeThumb = await ensureTemplatePreviewPhoto(forThumb, {
+    force: !isSafeVideoTemplateThumb(forThumb.previewPhotoUrl),
     atSec: 1,
   });
   const fresh = await prisma.quickVideoTemplate.findUnique({

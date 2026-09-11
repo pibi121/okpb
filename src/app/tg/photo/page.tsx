@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
-import { PHOTO_SCENE_CATEGORIES, photoMatchesSceneCategory } from "@/lib/tg/feed-order";
+import { PHOTO_SCENE_CATEGORIES, photoMatchesSceneCategory, shuffleInPlace } from "@/lib/tg/feed-order";
 import {
   TgBannerCarousel,
   useHorizontalBanners,
@@ -80,7 +80,7 @@ function PhotoPageInner() {
     const res = await apiFetch(`/api/tg/templates?kind=photo&locale=${locale}`);
     if (!res.ok) return;
     const data = (await res.json()) as { photo: PhotoTpl[] };
-    setTemplates(data.photo || []);
+    setTemplates(shuffleInPlace([...(data.photo || [])]));
   }, [apiFetch, locale]);
 
   useEffect(() => {
@@ -91,6 +91,11 @@ function PhotoPageInner() {
   const visible = templates.filter((t) =>
     photoMatchesSceneCategory(t.sceneCategory, category),
   );
+  const castIdsKey = (profile?.casts || []).map((c) => c.id).join(",");
+  const showcaseCasts = useMemo(() => {
+    return shuffleInPlace([...(profile?.casts || [])]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [castIdsKey]);
   const selected = templates.find((t) => t.id === templateId);
   const lockedCharacter =
     presetCharacterId &&
@@ -267,7 +272,7 @@ function PhotoPageInner() {
           <div className="tg-section">
             <p className="tg-muted tg-section-hint">{u.showcase}</p>
             <div className="tg-portrait-grid">
-              {(profile?.casts || []).map((c) => (
+              {showcaseCasts.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -288,7 +293,6 @@ function PhotoPageInner() {
                   </div>
                   <div className="tg-portrait-meta">
                     <strong>{c.name}</strong>
-                    <small>PeachBitch Studio</small>
                   </div>
                 </button>
               ))}

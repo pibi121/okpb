@@ -18,6 +18,7 @@ import {
 import { TG_LORA_TRAIN_PATH } from "@/lib/tg/miniapp-url";
 import { ImageGeneration } from "@/components/image-generation";
 import { BorderBeam } from "@/components/border-beam";
+import { shuffleInPlace } from "@/lib/tg/feed-order";
 
 type CharTab = "showcase" | "personal" | "favorites";
 
@@ -38,7 +39,11 @@ const UI = {
     tabShowcase: "Каталог",
     tabPersonal: "Личные",
     tabFavorites: "Избранное",
-    showcaseHint: "Актрисы студии — уже готовы к фото",
+    showcaseTitle: "Актрисы студии",
+    showcaseHint:
+      "Можешь опробовать наш генератор фото и видео с максимальным качеством с уже готовыми актрисами. А потом обучить свою, если понравится.",
+    castDisclaimer:
+      "Все персонажи полностью сгенерированы через ИИ, любое совпадение с внешностью реального человека случайно. Все персонажи старше 18 лет!",
     personalHint: "Твои модели после подготовки внешности",
     favoritesHint: "Актрисы, отмеченные ★",
     emptyPersonal: "Пока нет своих моделей — создай и подготовь ниже",
@@ -85,7 +90,11 @@ const UI = {
     tabShowcase: "Catalog",
     tabPersonal: "Personal",
     tabFavorites: "Favorites",
-    showcaseHint: "Studio actresses — ready for photos",
+    showcaseTitle: "Studio actresses",
+    showcaseHint:
+      "Try our photo & video generator at max quality with ready-made actresses. Then train your own if you like it.",
+    castDisclaimer:
+      "All characters are fully AI-generated; any resemblance to a real person is coincidental. All characters are 18+!",
     personalHint: "Your models after appearance setup",
     favoritesHint: "Actresses marked with ★",
     emptyPersonal: "No models yet — create and set up below",
@@ -294,7 +303,13 @@ function TgCharactersPageInner() {
       (c) =>
         !c.isStudioCast && !c.videoRefOnly && c.loraStatus === "lora_training",
     ) || [];
-  const casts = profile?.casts || [];
+  const castIdsKey = (profile?.casts || []).map((c) => c.id).join(",");
+  const casts = useMemo(() => {
+    const list = [...(profile?.casts || [])];
+    return shuffleInPlace(list);
+    // Reshuffle when cast set changes; stable within a visit otherwise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [castIdsKey]);
   const favorites = casts.filter((c) => favoriteIds.has(c.id));
 
   const goToTrainSection = (opts?: { openCreate?: boolean }) => {
@@ -751,6 +766,8 @@ function TgCharactersPageInner() {
         </span>
       </button>
 
+      <p className="tg-muted tg-cast-disclaimer">{u.castDisclaimer}</p>
+
       <div className="tg-char-tabs">
         <button
           type="button"
@@ -777,6 +794,7 @@ function TgCharactersPageInner() {
 
       {tab === "showcase" && (
         <div className="tg-section">
+          <h2 className="tg-section-title">{u.showcaseTitle}</h2>
           <p className="tg-muted tg-section-hint">{u.showcaseHint}</p>
           <div className="tg-portrait-grid">
             {casts.map((c) => (
@@ -784,7 +802,6 @@ function TgCharactersPageInner() {
                 key={c.id}
                 name={c.name}
                 coverUrl={c.coverUrl}
-                subtitle="PeachBitch Studio"
                 showStar
                 favorited={favoriteIds.has(c.id)}
                 onToggleFavorite={() =>

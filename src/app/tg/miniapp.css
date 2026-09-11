@@ -858,6 +858,25 @@
   font-size: 0.78rem;
 }
 
+.tg-section-title {
+  margin: 0 0 0.35rem;
+  padding: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.tg-cast-disclaimer {
+  margin: 0 1rem 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--tg-hairline) 90%, transparent);
+  background: color-mix(in srgb, var(--tg-surface) 88%, transparent);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
 .tg-empty-grid {
   grid-column: 1 / -1;
   padding: 1rem 0;
@@ -1333,7 +1352,9 @@
 }
 
 .tg-portrait-action.ready {
-  background: linear-gradient(135deg, #b8ffd4 0%, #7dffb0 100%);
+  /* Same brand peach gradient as default CTA — not mint. */
+  background: var(--tg-grad);
+  color: #1a120e;
 }
 
 .tg-portrait-meta .tg-best-badge {

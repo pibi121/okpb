@@ -727,6 +727,18 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "repair_tg_video_previews") {
+    const { repairMissingTgVideoPreviews } = await import(
+      "@/lib/tg/repair-tg-video-previews"
+    );
+    const result = await repairMissingTgVideoPreviews({ force: true });
+    return NextResponse.json({
+      ok: true,
+      action: "repair_tg_video_previews",
+      ...result,
+    });
+  }
+
   if (action === "list_video_templates") {
     const q = typeof body.q === "string" ? body.q.trim() : "";
     const rows = await prisma.quickVideoTemplate.findMany({

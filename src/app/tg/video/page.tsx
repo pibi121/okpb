@@ -13,6 +13,7 @@ import {
   clipSpeechText,
   countSpeechSignificantChars,
 } from "@/lib/speech-slots";
+import { shuffleInPlace } from "@/lib/tg/feed-order";
 
 type SpeechSlotDto = {
   id: string;
@@ -137,7 +138,7 @@ function VideoPageInner() {
     ]);
     if (tRes.ok) {
       const data = (await tRes.json()) as { video: VideoTpl[] };
-      setTemplates(data.video || []);
+      setTemplates(shuffleInPlace([...(data.video || [])]));
       if (presetId && data.video.some((v) => v.id === presetId)) {
         setTemplateId(presetId);
       }

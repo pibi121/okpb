@@ -51,7 +51,17 @@ export function resolveGalleryFile(relKey: string): string | null {
   const safe = relKey.replace(/\\/g, "/").replace(/\.\./g, "");
   const abs = path.join(galleryRoot(), ...safe.split("/"));
   if (!abs.startsWith(galleryRoot())) return null;
-  return fs.existsSync(abs) ? abs : null;
+  if (fs.existsSync(abs)) return abs;
+
+  // Published cast covers sometimes land only in public/tg/catalog (legacy publish
+  // or incomplete volume copy). Media API must still serve them so Mini App
+  // URLs like /api/media/tg-catalog/cast-*.png do not 404.
+  const m = /^tg-catalog\/([^/]+)$/i.exec(safe);
+  if (m?.[1]) {
+    const pub = path.join(process.cwd(), "public", "tg", "catalog", m[1]);
+    if (fs.existsSync(pub)) return pub;
+  }
+  return null;
 }
 
 /** Copy SQLite DB into data/backups. Safe to call often. */

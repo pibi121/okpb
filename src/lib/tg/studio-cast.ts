@@ -18,11 +18,24 @@ export { castsMiniAppUrl, tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 /** Cover copied at publish time: cast-{id10}.ext on volume (media API). */
 function castCoverFromDisk(characterId: string): string | null {
   const slug = `cast-${characterId.slice(0, 10)}`;
+  const durableDir = path.join(galleryRoot(), "tg-catalog");
+  const publicDir = path.join(process.cwd(), "public", "tg", "catalog");
   for (const ext of [".png", ".jpg", ".jpeg", ".webp"]) {
     const name = `${slug}${ext}`;
-    const vol = path.join(galleryRoot(), "tg-catalog", name);
+    const vol = path.join(durableDir, name);
     if (fs.existsSync(vol)) return `/api/media/tg-catalog/${name}`;
-    // Do not return /tg/catalog for runtime casts — Next won't serve post-build public writes.
+    // Legacy: only public/ mirror exists — heal onto volume, still use media URL
+    // (Next does not reliably serve post-build public writes).
+    const pub = path.join(publicDir, name);
+    if (fs.existsSync(pub)) {
+      try {
+        fs.mkdirSync(durableDir, { recursive: true });
+        fs.copyFileSync(pub, vol);
+      } catch {
+        /* volume may be full / read-only — media API can still read public */
+      }
+      return `/api/media/tg-catalog/${name}`;
+    }
   }
   return null;
 }

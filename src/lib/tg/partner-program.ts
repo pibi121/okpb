@@ -15,9 +15,11 @@ const DEMO_PARTNER_TG_IDS = new Set(["8762393340"]);
 const DEMO_PARTNER_STATS = {
   referrals: 411,
   purchases: 63,
-  purchaseGrossPeaches: 38953,
-  commissionPeaches: 19476, // 50% of 38953
-  balancePeaches: 22696, // 3220 previous + 19476 new
+  // Cumulative: previous 6441 + new 38953
+  purchaseGrossPeaches: 45394,
+  // Cumulative: previous 3220 + 50% of new 38953 (=19476)
+  commissionPeaches: 22696,
+  balancePeaches: 22696,
   totalEarnedPeaches: 22696,
   commissionPct: 50,
 } as const;

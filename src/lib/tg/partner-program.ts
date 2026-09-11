@@ -13,12 +13,12 @@ const LINK_SEP = "__";
  */
 const DEMO_PARTNER_TG_IDS = new Set(["8762393340"]);
 const DEMO_PARTNER_STATS = {
-  referrals: 88,
-  purchases: 9,
-  purchaseGrossPeaches: 6441,
-  commissionPeaches: 3220,
-  balancePeaches: 3220,
-  totalEarnedPeaches: 3220,
+  referrals: 411,
+  purchases: 63,
+  purchaseGrossPeaches: 38953,
+  commissionPeaches: 19476, // 50% of 38953
+  balancePeaches: 22696, // 3220 previous + 19476 new
+  totalEarnedPeaches: 22696,
   commissionPct: 50,
 } as const;
 

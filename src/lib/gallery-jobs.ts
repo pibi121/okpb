@@ -120,6 +120,12 @@ async function markReady(
     where: { id: itemId, userId },
   });
   if (!existing) return;
+  let prev: Record<string, unknown> = {};
+  try {
+    prev = JSON.parse(existing.metaJson || "{}") as Record<string, unknown>;
+  } catch {
+    prev = {};
+  }
   await prisma.galleryItem.update({
     where: { id: itemId },
     data: {
@@ -129,7 +135,7 @@ async function markReady(
       prompt: data.prompt,
       title: data.title,
       sourceUrl: data.sourceUrl,
-      metaJson: JSON.stringify({ ...data.meta, status: "ready" }),
+      metaJson: JSON.stringify({ ...prev, ...data.meta, status: "ready" }),
     },
   });
   backupDatabase("gallery");

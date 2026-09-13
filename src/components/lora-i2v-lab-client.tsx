@@ -159,40 +159,100 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     void load();
   }, [load]);
 
-  // Restore lab draft once (survives refresh / deploy). Skip if URL has templateId.
+  // Restore: localStorage first; if empty / ?recover=1 — rebuild from gallery on server.
   useEffect(() => {
     if (draftRestored) return;
     if (presetTemplateId) {
       setDraftRestored(true);
       return;
     }
-    const draft = readDraft();
-    setDraftRestored(true);
-    if (!draft) return;
-    const hasWork = draft.shots.some(
-      (s) =>
-        s.stillPrompt.trim() ||
-        s.i2vPrompt.trim() ||
-        s.stillItemId ||
-        s.videoItemId ||
-        s.stillUrl ||
-        s.videoUrl,
-    );
-    if (!hasWork) return;
-    setCharacterId(draft.characterId || "");
-    setTitle(draft.title || "");
-    setNotes(draft.notes || "");
-    setOrientation(draft.orientation || "9_16");
-    setCategories(Array.isArray(draft.categories) ? draft.categories : []);
-    setEditingId(draft.editingId || "");
-    setShots(draft.shots.map((s) => emptyShotForm(s)));
-    setStitchedVideoItemId(draft.stitchedVideoItemId || "");
-    setStitchedVideoUrl(draft.stitchedVideoUrl || "");
-    setStitchedDurationSec(draft.stitchedDurationSec || 0);
-    setMsg("Восстановлен черновик из браузера — шоты на месте");
+    let cancelled = false;
+    void (async () => {
+      const wantRecover =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("recover") === "1";
+      const local = readDraft();
+      const localHasWork =
+        !!local &&
+        local.shots.some(
+          (s) =>
+            s.stillPrompt.trim() ||
+            s.i2vPrompt.trim() ||
+            s.stillItemId ||
+            s.videoItemId ||
+            s.stillUrl ||
+            s.videoUrl,
+        );
+
+      if (localHasWork && !wantRecover && local) {
+        if (cancelled) return;
+        setCharacterId(local.characterId || "");
+        setTitle(local.title || "");
+        setNotes(local.notes || "");
+        setOrientation(local.orientation || "9_16");
+        setCategories(Array.isArray(local.categories) ? local.categories : []);
+        setEditingId(local.editingId || "");
+        setShots(local.shots.map((s) => emptyShotForm(s)));
+        setStitchedVideoItemId(local.stitchedVideoItemId || "");
+        setStitchedVideoUrl(local.stitchedVideoUrl || "");
+        setStitchedDurationSec(local.stitchedDurationSec || 0);
+        setMsg("Восстановлен черновик из браузера — шоты на месте");
+        setDraftRestored(true);
+        return;
+      }
+
+      try {
+        const q = wantRecover || !localHasWork ? "?recover=1" : "";
+        const res = await fetch(`/api/peach/lora-i2v/lab-draft${q}`);
+        const data = await readJson(res);
+        if (cancelled) return;
+        if (res.ok && data.draft) {
+          const d = data.draft as LabDraft & { shots: ShotForm[] };
+          setCharacterId(d.characterId || "");
+          setTitle(d.title || "");
+          setNotes(d.notes || "");
+          setOrientation(d.orientation || "9_16");
+          setCategories(Array.isArray(d.categories) ? d.categories : []);
+          setEditingId(d.editingId || "");
+          setShots((d.shots || []).map((s) => emptyShotForm(s)));
+          setStitchedVideoItemId(d.stitchedVideoItemId || "");
+          setStitchedVideoUrl(d.stitchedVideoUrl || "");
+          setStitchedDurationSec(d.stitchedDurationSec || 0);
+          try {
+            localStorage.setItem(
+              DRAFT_KEY,
+              JSON.stringify({ ...d, savedAt: Date.now() }),
+            );
+          } catch {
+            /* ignore */
+          }
+          setMsg(
+            data.recovered
+              ? `Восстановил ${Array.isArray(d.shots) ? d.shots.length : 0} шотов из галереи (still+видео+промпты)`
+              : "Загружен серверный черновик",
+          );
+        } else if (!localHasWork) {
+          setError(
+            String(
+              data.error ||
+                "Черновик пуст — если клипы в галерее, открой /peach/lora-i2v?recover=1",
+            ),
+          );
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "recover error");
+        }
+      } finally {
+        if (!cancelled) setDraftRestored(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [draftRestored, presetTemplateId]);
 
-  // Autosave draft — never wipe shots on stitch errors.
+  // Autosave draft locally + mirror to server (survives browser wipe).
   useEffect(() => {
     if (!draftRestored) return;
     if (typeof window === "undefined") return;
@@ -214,6 +274,22 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     } catch {
       /* quota */
     }
+    const hasWork = shots.some(
+      (s) =>
+        s.stillPrompt.trim() ||
+        s.i2vPrompt.trim() ||
+        s.stillItemId ||
+        s.videoItemId,
+    );
+    if (!hasWork) return;
+    const t = window.setTimeout(() => {
+      void fetch("/api/peach/lora-i2v/lab-draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: payload }),
+      }).catch(() => undefined);
+    }, 800);
+    return () => window.clearTimeout(t);
   }, [
     draftRestored,
     characterId,
@@ -750,6 +826,16 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
             На каждый шот: still (Krea+LoRA) → оживление MiniMax → при нескольких
             шотах «Склеить» → сохранить шаблон → справа «В Telegram».
           </p>
+          <button
+            type="button"
+            className="mt-2 rounded-full border border-amber-400/40 px-3 py-1 text-[11px] text-amber-200 hover:bg-amber-500/10"
+            disabled={!!busy}
+            onClick={() => {
+              window.location.href = "/peach/lora-i2v?recover=1";
+            }}
+          >
+            Восстановить шоты из галереи
+          </button>
         </div>
 
         {!loraChars.length ? (

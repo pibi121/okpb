@@ -502,14 +502,16 @@ function enqueueLoraI2vJob(opts: {
           tmpCleanup.push(tmp);
         }
 
-        const { stitchClipsFfmpeg, ffmpegStitchTempPath } = await import(
-          "@/lib/ffmpeg-stitch"
+        const { stitchClipFilesWithFallback } = await import(
+          "@/lib/stitch-fallback"
         );
+        const { ffmpegStitchTempPath } = await import("@/lib/ffmpeg-stitch");
         const outPath = ffmpegStitchTempPath(`tg_li2v_${itemId}_final`);
         tmpCleanup.push(outPath);
-        await stitchClipsFfmpeg({
+        const stitched = await stitchClipFilesWithFallback({
           clipPaths,
           outPath,
+          tag: `tg_li2v_${itemId}`,
           trimStartSec: 0,
         });
         const finalBytes = fs.readFileSync(outPath);
@@ -526,12 +528,12 @@ function enqueueLoraI2vJob(opts: {
           where: { id: itemId },
           data: {
             resultUrl: saved.publicUrl,
-            width: lastWidth,
-            height: lastHeight,
+            width: stitched.width || lastWidth,
+            height: stitched.height || lastHeight,
             prompt: i2vPrompt,
             metaJson: JSON.stringify({
               status: "ready",
-              engine: `${engine}+ffmpeg-concat`,
+              engine: `${engine}+${stitched.engine}`,
               jobAction: "lora_i2v",
               loraI2vTemplateId: tpl.id,
               localKey: saved.relKey,

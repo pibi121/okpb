@@ -6,21 +6,9 @@
 import fs from "node:fs";
 import { prisma } from "@/lib/db";
 import { galleryStatus, GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
-import {
-  ffmpegStitchTempPath,
-  stitchClipsFfmpeg,
-} from "@/lib/ffmpeg-stitch";
+import { ffmpegStitchTempPath } from "@/lib/ffmpeg-stitch";
 import { localPathFromResultUrl, saveGalleryBinary } from "@/lib/local-store";
 import { clampLoraI2vDurationSec } from "@/lib/lora-i2v-shots";
-import { localBytesFromResultUrl } from "@/lib/peach-lab";
-import {
-  comfyStitchTimeoutMs,
-  comfyUploadImage,
-  ensureComfyReady,
-  runComfyJob,
-} from "@/lib/comfy-client";
-import { buildStitchGraph } from "@/lib/video-graphs";
-import { useComfy } from "@/lib/metalnode-config";
 import { enqueueGpuJob } from "@/lib/gallery-jobs";
 
 type OrderedClip = {
@@ -83,62 +71,24 @@ async function renderStitchBytes(opts: {
   runId: string;
 }): Promise<{ bytes: Buffer; width: number; height: number; engine: string }> {
   const tmpOut = ffmpegStitchTempPath(`li2v_${opts.userId}_${opts.runId}`);
-  let width = 0;
-  let height = 0;
-  let bytes: Buffer | undefined;
-  let engine = "ffmpeg-concat";
-
   try {
-    try {
-      const size = await stitchClipsFfmpeg({
-        clipPaths: opts.ordered.map((c) => c.abs),
-        outPath: tmpOut,
-        trimStartSec: 0,
-      });
-      width = size.width;
-      height = size.height;
-      bytes = fs.readFileSync(tmpOut);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(
-        "[peach] lora-i2v ffmpeg stitch failed, Comfy fallback:",
-        msg.slice(0, 240),
-      );
-      if (!useComfy()) {
-        throw new Error(
-          `Склейка: нет ffmpeg/ffprobe (${msg.slice(0, 120)}). Установи ffmpeg или включи Comfy.`,
-        );
-      }
-      await ensureComfyReady(20, 1500);
-      const subfolder = `peach_li2v_stitch/${opts.userId}_${opts.runId}`;
-      for (let i = 0; i < opts.ordered.length; i++) {
-        const clipBytes = localBytesFromResultUrl(opts.ordered[i]!.url);
-        if (!clipBytes?.length) {
-          throw new Error(`Клип ${i + 1}: локальный файл не найден`);
-        }
-        await comfyUploadImage(
-          `s${String(i + 1).padStart(2, "0")}.mp4`,
-          clipBytes,
-          "video/mp4",
-          subfolder,
-        );
-      }
-      const stitchDir = `/work/ComfyUI/input/${subfolder}`;
-      const stitched = await runComfyJob(
-        buildStitchGraph({
-          directoryPath: stitchDir,
-          filenamePrefix: `peach/li2v/${opts.userId}`,
-          trimStart: false,
-          trimStartSec: 0,
-        }),
-        "peach-li2v-stitch",
-        comfyStitchTimeoutMs(opts.ordered.length),
-      );
-      bytes = stitched.bytes;
-      engine = "minimax_h3+autoedit";
-      width = 0;
-      height = 0;
+    const { stitchClipFilesWithFallback } = await import("@/lib/stitch-fallback");
+    const size = await stitchClipFilesWithFallback({
+      clipPaths: opts.ordered.map((c) => c.abs),
+      outPath: tmpOut,
+      tag: `li2v_${opts.userId}`,
+      trimStartSec: 0,
+    });
+    const bytes = fs.readFileSync(tmpOut);
+    if (!bytes?.length || bytes.length < 1000) {
+      throw new Error("Склейка вернула пустой файл");
     }
+    return {
+      bytes,
+      width: size.width,
+      height: size.height,
+      engine: size.engine,
+    };
   } finally {
     try {
       if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
@@ -146,11 +96,6 @@ async function renderStitchBytes(opts: {
       /* ignore */
     }
   }
-
-  if (!bytes?.length || bytes.length < 1000) {
-    throw new Error("Склейка вернула пустой файл");
-  }
-  return { bytes, width, height, engine };
 }
 
 /** Sync path kept for scripts/tests — prefer enqueueLoraI2vStitchJob in HTTP. */

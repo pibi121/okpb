@@ -54,6 +54,22 @@ type ShotForm = LoraI2vShotSpec & {
   videoUrl: string;
 };
 
+const DRAFT_KEY = "peach:lora-i2v-lab-draft:v1";
+
+type LabDraft = {
+  characterId: string;
+  title: string;
+  notes: string;
+  orientation: VideoOrientationId;
+  categories: string[];
+  editingId: string;
+  shots: ShotForm[];
+  stitchedVideoItemId: string;
+  stitchedVideoUrl: string;
+  stitchedDurationSec: number;
+  savedAt: number;
+};
+
 function emptyShotForm(partial?: Partial<ShotForm>): ShotForm {
   const base = emptyLoraI2vShot(partial);
   return {
@@ -64,6 +80,19 @@ function emptyShotForm(partial?: Partial<ShotForm>): ShotForm {
     videoItemId: partial?.videoItemId || "",
     videoUrl: partial?.videoUrl || "",
   };
+}
+
+function readDraft(): LabDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as LabDraft;
+    if (!Array.isArray(data.shots) || !data.shots.length) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 async function readJson(res: Response) {
@@ -104,6 +133,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   const [stitchedVideoItemId, setStitchedVideoItemId] = useState("");
   const [stitchedVideoUrl, setStitchedVideoUrl] = useState("");
   const [stitchedDurationSec, setStitchedDurationSec] = useState(0);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,6 +152,75 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Restore lab draft once (survives refresh / deploy). Skip if URL has templateId.
+  useEffect(() => {
+    if (draftRestored) return;
+    if (presetTemplateId) {
+      setDraftRestored(true);
+      return;
+    }
+    const draft = readDraft();
+    setDraftRestored(true);
+    if (!draft) return;
+    const hasWork = draft.shots.some(
+      (s) =>
+        s.stillPrompt.trim() ||
+        s.i2vPrompt.trim() ||
+        s.stillItemId ||
+        s.videoItemId ||
+        s.stillUrl ||
+        s.videoUrl,
+    );
+    if (!hasWork) return;
+    setCharacterId(draft.characterId || "");
+    setTitle(draft.title || "");
+    setNotes(draft.notes || "");
+    setOrientation(draft.orientation || "9_16");
+    setCategories(Array.isArray(draft.categories) ? draft.categories : []);
+    setEditingId(draft.editingId || "");
+    setShots(draft.shots.map((s) => emptyShotForm(s)));
+    setStitchedVideoItemId(draft.stitchedVideoItemId || "");
+    setStitchedVideoUrl(draft.stitchedVideoUrl || "");
+    setStitchedDurationSec(draft.stitchedDurationSec || 0);
+    setMsg("Восстановлен черновик из браузера — шоты на месте");
+  }, [draftRestored, presetTemplateId]);
+
+  // Autosave draft — never wipe shots on stitch errors.
+  useEffect(() => {
+    if (!draftRestored) return;
+    if (typeof window === "undefined") return;
+    const payload: LabDraft = {
+      characterId,
+      title,
+      notes,
+      orientation,
+      categories,
+      editingId,
+      shots,
+      stitchedVideoItemId,
+      stitchedVideoUrl,
+      stitchedDurationSec,
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    } catch {
+      /* quota */
+    }
+  }, [
+    draftRestored,
+    characterId,
+    title,
+    notes,
+    orientation,
+    categories,
+    editingId,
+    shots,
+    stitchedVideoItemId,
+    stitchedVideoUrl,
+    stitchedDurationSec,
+  ]);
 
   useEffect(() => {
     if (!presetTemplateId || !templates.length || editingId) return;
@@ -411,7 +510,9 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   async function onStitch() {
     setError("");
     setMsg("");
+    // Snapshot ids so a re-render / draft restore cannot empty the request mid-flight.
     const ready = shots.filter((s) => s.videoItemId && s.videoUrl);
+    const videoItemIds = ready.map((s) => s.videoItemId);
     if (ready.length < 2) {
       setError("Нужно минимум два готовых клипа");
       return;
@@ -426,7 +527,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoItemIds: ready.map((s) => s.videoItemId),
+          videoItemIds,
           title: title || "LoRA I2V stitch",
         }),
       });
@@ -439,6 +540,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
       setMsg("Склейка готова — сохрани шаблон");
       setStripRefresh((n) => n + 1);
     } catch (e) {
+      // Do not clear shots / stills / clips on stitch failure — only show the error.
       setError(e instanceof Error ? e.message : "error");
     } finally {
       setBusy("");
@@ -603,6 +705,11 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     setStitchedDurationSec(0);
     setMsg("");
     setError("");
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 
   const readyClipCount = shots.filter((s) => s.videoUrl && s.videoItemId).length;

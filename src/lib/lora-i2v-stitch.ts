@@ -1,5 +1,6 @@
 /**
  * Stitch LoRA→I2V gallery clips for multi-shot templates.
+ * Prefer local ffmpeg (incl. bundled static bins); fall back to Comfy AutoEdit.
  */
 import fs from "node:fs";
 import { prisma } from "@/lib/db";
@@ -10,6 +11,15 @@ import {
 } from "@/lib/ffmpeg-stitch";
 import { localPathFromResultUrl, saveGalleryBinary } from "@/lib/local-store";
 import { clampLoraI2vDurationSec } from "@/lib/lora-i2v-shots";
+import { localBytesFromResultUrl } from "@/lib/peach-lab";
+import {
+  comfyStitchTimeoutMs,
+  comfyUploadImage,
+  ensureComfyReady,
+  runComfyJob,
+} from "@/lib/comfy-client";
+import { buildStitchGraph } from "@/lib/video-graphs";
+import { useComfy } from "@/lib/metalnode-config";
 
 export async function stitchLoraI2vGalleryClips(opts: {
   userId: string;
@@ -49,16 +59,57 @@ export async function stitchLoraI2vGalleryClips(opts: {
   const tmpOut = ffmpegStitchTempPath(`li2v_${opts.userId}_${runId}`);
   let width = 0;
   let height = 0;
-  let bytes: Buffer;
+  let bytes: Buffer | undefined;
+  let engine = "ffmpeg-concat";
+
   try {
-    const size = await stitchClipsFfmpeg({
-      clipPaths: ordered.map((c) => c.abs),
-      outPath: tmpOut,
-      trimStartSec: 0,
-    });
-    width = size.width;
-    height = size.height;
-    bytes = fs.readFileSync(tmpOut);
+    try {
+      const size = await stitchClipsFfmpeg({
+        clipPaths: ordered.map((c) => c.abs),
+        outPath: tmpOut,
+        trimStartSec: 0,
+      });
+      width = size.width;
+      height = size.height;
+      bytes = fs.readFileSync(tmpOut);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[peach] lora-i2v ffmpeg stitch failed, Comfy fallback:", msg.slice(0, 240));
+      if (!useComfy()) {
+        throw new Error(
+          `Склейка: нет ffmpeg/ffprobe (${msg.slice(0, 120)}). Установи ffmpeg или включи Comfy.`,
+        );
+      }
+      await ensureComfyReady(20, 1500);
+      const subfolder = `peach_li2v_stitch/${opts.userId}_${runId}`;
+      for (let i = 0; i < ordered.length; i++) {
+        const clipBytes = localBytesFromResultUrl(ordered[i]!.url);
+        if (!clipBytes?.length) {
+          throw new Error(`Клип ${i + 1}: локальный файл не найден`);
+        }
+        await comfyUploadImage(
+          `s${String(i + 1).padStart(2, "0")}.mp4`,
+          clipBytes,
+          "video/mp4",
+          subfolder,
+        );
+      }
+      const stitchDir = `/work/ComfyUI/input/${subfolder}`;
+      const stitched = await runComfyJob(
+        buildStitchGraph({
+          directoryPath: stitchDir,
+          filenamePrefix: `peach/li2v/${opts.userId}`,
+          trimStart: false,
+          trimStartSec: 0,
+        }),
+        "peach-li2v-stitch",
+        comfyStitchTimeoutMs(ordered.length),
+      );
+      bytes = stitched.bytes;
+      engine = "minimax_h3+autoedit";
+      width = 0;
+      height = 0;
+    }
   } finally {
     try {
       if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
@@ -102,7 +153,7 @@ export async function stitchLoraI2vGalleryClips(opts: {
       height: height || null,
       metaJson: JSON.stringify({
         status: "ready",
-        engine: "ffmpeg-concat",
+        engine,
         jobAction: "lora_i2v_stitch",
         sourceVideoIds: opts.videoItemIds,
         durationSec,

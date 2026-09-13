@@ -4,9 +4,12 @@
  * on disk; stitch them here instead.
  */
 import { spawn, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
 
 let cachedFfmpeg = "";
 let cachedFfprobe = "";
@@ -24,11 +27,36 @@ function resolveFromWhere(name: string): string {
   }
 }
 
+function resolveWhich(name: string): string {
+  try {
+    const r = spawnSync("which", [name], { encoding: "utf8" });
+    const line = (r.stdout || "").trim().split(/\r?\n/)[0]?.trim() || "";
+    return line && fs.existsSync(line) ? line : "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveBundledBinary(pkg: string): string {
+  try {
+    const mod = nodeRequire(pkg) as string | { path?: string } | undefined;
+    const p = typeof mod === "string" ? mod : mod?.path;
+    if (p && fs.existsSync(p)) return p;
+  } catch {
+    /* optional dep / platform mismatch */
+  }
+  return "";
+}
+
 function ffmpegBin(): string {
   if (cachedFfmpeg) return cachedFfmpeg;
   const env = process.env.FFMPEG_PATH?.trim();
   if (env && fs.existsSync(env)) return (cachedFfmpeg = env);
-  cachedFfmpeg = resolveFromWhere("ffmpeg") || "ffmpeg";
+  const fromPath =
+    resolveFromWhere("ffmpeg") ||
+    resolveWhich("ffmpeg") ||
+    resolveBundledBinary("ffmpeg-static");
+  cachedFfmpeg = fromPath || "ffmpeg";
   return cachedFfmpeg;
 }
 
@@ -36,10 +64,12 @@ function ffprobeBin(): string {
   if (cachedFfprobe) return cachedFfprobe;
   const env = process.env.FFPROBE_PATH?.trim();
   if (env && fs.existsSync(env)) return (cachedFfprobe = env);
-  const fromWhere = resolveFromWhere("ffprobe");
+  const fromWhere = resolveFromWhere("ffprobe") || resolveWhich("ffprobe");
   if (fromWhere) return (cachedFfprobe = fromWhere);
+  const bundled = resolveBundledBinary("ffprobe-static");
+  if (bundled) return (cachedFfprobe = bundled);
   const ff = ffmpegBin();
-  if (ff !== "ffmpeg") {
+  if (ff !== "ffmpeg" && !/ffmpeg-static/i.test(ff)) {
     const probe = ff.replace(/ffmpeg(\.exe)?$/i, (_m, ext: string) => `ffprobe${ext || ""}`);
     if (probe !== ff && fs.existsSync(probe)) return (cachedFfprobe = probe);
   }

@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { stitchLoraI2vGalleryClips } from "@/lib/lora-i2v-stitch";
 
 export const runtime = "nodejs";
-export const maxDuration = 900;
+export const maxDuration = 3600;
 
 const schema = z.object({
   videoItemIds: z.array(z.string().min(1)).min(2),

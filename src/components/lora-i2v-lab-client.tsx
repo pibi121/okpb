@@ -100,7 +100,13 @@ async function readJson(res: Response) {
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    throw new Error(`Сервер вернул не JSON (${res.status})`);
+    throw new Error(
+      `Сервер вернул не JSON (${res.status})${
+        res.status === 502 || res.status === 504
+          ? " — таймаут/прокси. Обнови страницу после фикса или подожди и нажми Склеить снова."
+          : ""
+      }`,
+    );
   }
 }
 
@@ -533,10 +539,26 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
       });
       const data = await readJson(res);
       if (!res.ok) throw new Error(String(data.error || "ошибка склейки"));
-      const item = data.item as { id: string; resultUrl: string };
+      const item = data.item as { id: string; resultUrl?: string };
       setStitchedVideoItemId(item.id);
-      setStitchedVideoUrl(String(data.resultUrl || item.resultUrl));
       setStitchedDurationSec(Number(data.durationSec) || 0);
+      if (data.pending || !item.resultUrl || /placeholder/i.test(item.resultUrl || "")) {
+        setMsg("Склейка в очереди… шоты не трогаем");
+        const done = await pollItem(item.id, {
+          maxAttempts: 240,
+          intervalMs: 3000,
+          label: "Ждём склейку",
+        });
+        if (!done) {
+          throw new Error(
+            "Таймаут склейки. Шоты на месте — нажми «Склеить» ещё раз или Дождаться по id ниже.",
+          );
+        }
+        setStitchedVideoUrl(done.resultUrl);
+        setStitchedVideoItemId(done.id);
+      } else {
+        setStitchedVideoUrl(String(data.resultUrl || item.resultUrl));
+      }
       setMsg("Склейка готова — сохрани шаблон");
       setStripRefresh((n) => n + 1);
     } catch (e) {

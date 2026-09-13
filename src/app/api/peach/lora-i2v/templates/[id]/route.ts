@@ -26,11 +26,23 @@ const patchSchema = z.object({
   notes: z.string().max(500).optional(),
   titleEn: z.string().max(120).optional(),
   notesEn: z.string().max(500).optional(),
-  stillPrompt: z.string().min(1).max(8000).optional(),
-  i2vPrompt: z.string().min(1).max(8000).optional(),
+  stillPrompt: z.string().min(1).max(50000).optional(),
+  i2vPrompt: z.string().min(1).max(50000).optional(),
   negativePrompt: z.string().max(2000).optional(),
+  shotsJson: z.string().max(200000).optional(),
+  shots: z
+    .array(
+      z.object({
+        id: z.string().max(64).optional(),
+        stillPrompt: z.string().min(1).max(8000),
+        i2vPrompt: z.string().min(1).max(8000),
+        negativePrompt: z.string().max(2000).optional(),
+        durationSec: z.number().int().min(4).max(12).optional(),
+      }),
+    )
+    .optional(),
   orientation: z.string().max(16).optional(),
-  durationSec: z.number().int().min(4).max(12).optional(),
+  durationSec: z.number().int().min(4).max(3600).optional(),
   pricePeaches: z.number().int().min(0).max(99999).optional(),
   sceneCategory: z.string().max(120).optional(),
   previewImageUrl: z.string().max(2000).optional(),
@@ -60,10 +72,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       });
       if (ch) scrub = { triggerWord: ch.triggerWord, characterName: ch.name };
     }
-    const { characterId: _c, ...rest } = body;
+    const { characterId: _c, shots, ...rest } = body;
     void _c;
     const template = await updateLoraI2vTemplate(user.id, id, {
       ...rest,
+      shots: shots?.map((s) => ({
+        id: s.id || "",
+        stillPrompt: s.stillPrompt,
+        i2vPrompt: s.i2vPrompt,
+        negativePrompt: s.negativePrompt || "",
+        durationSec: s.durationSec || 6,
+      })),
       scrub,
     });
     return NextResponse.json({ template });

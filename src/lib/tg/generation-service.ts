@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import fs from "node:fs";
 import { assertUserCanUseBot } from "@/lib/ops/gate";
 import {
   getQuickVideoTemplateDetail,
@@ -24,10 +25,6 @@ import { saveGalleryBinary } from "@/lib/local-store";
 import { kreaStillSize } from "@/lib/video-orientation";
 import {
   applyFirstVideoDiscount,
-  photoActressPeaches,
-  photoLoraPeaches,
-  premiumVideoPeaches,
-  storyH3Peaches,
 } from "@/lib/tg-pricing";
 import { getPhotoTemplate } from "@/lib/photo-template";
 import { debitPeaches } from "@/lib/tg/wallet";
@@ -94,46 +91,41 @@ export async function resolveTemplatePricePeaches(opts: {
   if (opts.kind === "photo") {
     const row = await getPhotoTemplate(opts.templateId);
     if (!row) throw new Error("template not found");
-    if (row.pricePeaches > 0) return row.pricePeaches;
-
-    let useLora = opts.tier === "pose";
+    const {
+      priceForPhotoCharacter,
+      priceForPhotoTemplateTier,
+    } = await import("@/lib/template-pricing");
     if (opts.characterId) {
       const ch = await prisma.character.findFirst({
         where: { id: opts.characterId },
         select: { isStudioCast: true, loraStatus: true, userId: true },
       });
       if (ch) {
-        useLora = !isStudioCastCharacter(ch) && characterUsesLoraPhoto(ch);
+        const useLora =
+          !isStudioCastCharacter(ch) && characterUsesLoraPhoto(ch);
+        return priceForPhotoCharacter({ isStudioCast: !useLora });
       }
     }
-    return Math.max(1, useLora ? photoLoraPeaches() : photoActressPeaches());
+    const useLora = opts.tier === "pose" || row.tier === "pose";
+    return priceForPhotoTemplateTier(useLora ? "pose" : "basic");
   }
 
   const loraI2v = await prisma.loraI2vTemplate.findFirst({
     where: { id: opts.templateId, tgPublished: true },
-    select: { pricePeaches: true, durationSec: true },
+    select: { durationSec: true },
   });
   if (loraI2v) {
-    if (loraI2v.pricePeaches > 0) return loraI2v.pricePeaches;
-    return Math.max(1, premiumVideoPeaches(loraI2v.durationSec || 6));
+    const { priceForLoraI2vTemplate } = await import("@/lib/template-pricing");
+    return priceForLoraI2vTemplate(loraI2v.durationSec || 6);
   }
 
   const detail = await getQuickVideoTemplateDetail(opts.userId, opts.templateId);
   if (!detail) throw new Error("template not found");
-  const row = await prisma.quickVideoTemplate.findFirst({
-    where: { id: opts.templateId },
-    select: { pricePeaches: true },
+  const { priceForQuickVideoTemplate } = await import("@/lib/template-pricing");
+  return priceForQuickVideoTemplate({
+    shotsJson: detail.shotsJson,
+    durationSec: detail.durationSec,
   });
-  if (row?.pricePeaches && row.pricePeaches > 0) return row.pricePeaches;
-  if (detail.priceCredits > 0) return detail.priceCredits;
-
-  const { parseStoryH3Template } = await import("@/lib/story-h3-prompt");
-  const storyTpl = parseStoryH3Template(detail.shotsJson);
-  const durationSec =
-    storyTpl?.totalDurationSec || detail.durationSec || 10;
-  if (storyTpl) return Math.max(1, storyH3Peaches(durationSec));
-  // Non-story quick video → treat as premium tier by length
-  return Math.max(1, premiumVideoPeaches(durationSec));
 }
 
 export async function startTgLoraI2vGeneration(opts: {
@@ -183,10 +175,8 @@ export async function startTgLoraI2vGeneration(opts: {
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (!user) throw new Error("user not found");
 
-  let price =
-    tpl.pricePeaches > 0
-      ? tpl.pricePeaches
-      : premiumVideoPeaches(tpl.durationSec || 6);
+  const { priceForLoraI2vTemplate } = await import("@/lib/template-pricing");
+  let price = priceForLoraI2vTemplate(tpl.durationSec || 6);
   const discounted = applyFirstVideoDiscount(
     price,
     user.tgFirstVideoDiscountUsed,
@@ -235,6 +225,7 @@ export async function startTgLoraI2vGeneration(opts: {
     userId: opts.userId,
     title,
     i2vPrompt,
+    speechFills: fills,
     tpl,
     character,
   });
@@ -298,6 +289,7 @@ export async function resumePendingLoraI2vGalleryItem(opts: {
     userId: opts.userId,
     title,
     i2vPrompt,
+    speechFills: [],
     tpl,
     character,
   });
@@ -353,6 +345,7 @@ function enqueueLoraI2vJob(opts: {
   userId: string;
   title: string;
   i2vPrompt: string;
+  speechFills?: SpeechSlotFill[];
   tpl: {
     id: string;
     stillPrompt: string;
@@ -360,6 +353,8 @@ function enqueueLoraI2vJob(opts: {
     orientation: string | null;
     durationSec: number | null;
     previewVideoUrl: string | null;
+    shotsJson?: string | null;
+    i2vPrompt?: string | null;
   };
   character: {
     id: string;
@@ -367,6 +362,7 @@ function enqueueLoraI2vJob(opts: {
   };
 }) {
   const { itemId, userId, title, i2vPrompt, tpl, character } = opts;
+  const speechFills = opts.speechFills || [];
   void enqueueGpuJob(
     async () => {
     try {
@@ -399,66 +395,160 @@ function enqueueLoraI2vJob(opts: {
         return;
       }
 
-      const trigger = character.triggerWord!.trim();
-      let composed = tpl.stillPrompt.trim();
-      const re = new RegExp(
-        `\\b${trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-        "i",
+      const { resolveLoraI2vShots } = await import("@/lib/lora-i2v-shots");
+      const { applySpeechFills: applyFills } = await import("@/lib/speech-slots");
+      const { resolveVideoTemplateSpeech } = await import(
+        "@/lib/tg/template-speech"
       );
-      if (!re.test(composed)) composed = `${trigger}, ${composed}`;
+      const { slots } = await resolveVideoTemplateSpeech(tpl.id);
+      const shots = resolveLoraI2vShots({
+        shotsJson: tpl.shotsJson,
+        stillPrompt: tpl.stillPrompt,
+        i2vPrompt: tpl.i2vPrompt || i2vPrompt,
+        negativePrompt: tpl.negativePrompt,
+        durationSec: tpl.durationSec,
+      });
+      if (!shots.length) throw new Error("В шаблоне нет шотов");
 
+      const trigger = character.triggerWord!.trim();
       const orient = (tpl.orientation || "9_16") as "9_16" | "16_9" | "1_1";
       const size = kreaStillSize(orient);
-      const still = await generatePhotoBytes({
-        userId,
-        characterId: character.id,
-        characterIds: [character.id],
-        useCharacterLora: true,
-        usePreset: false,
-        composedPrompt: composed,
-        negativePrompt: tpl.negativePrompt || undefined,
-        title: `${title}`,
-        width: size.width,
-        height: size.height,
-        orientationId: orient,
-      });
+      const clipPaths: string[] = [];
+      const tmpCleanup: string[] = [];
+      let lastWidth = size.width;
+      let lastHeight = size.height;
+      let engine = "minimax_h3";
 
-      const clip = await runI2VFromStill({
-        stillBytes: still.bytes,
-        prompt: i2vPrompt,
-        width: still.width,
-        height: still.height,
-        filenamePrefix: "peach/li2v",
-        durationSec: tpl.durationSec || 6,
-        extraHints: [tpl.stillPrompt, i2vPrompt, still.prompt],
-      });
-      if (!clip.bytes?.length || clip.bytes.length < 100) {
-        throw new Error("Видео не удалось создать — попробуй ещё раз");
+      try {
+        for (let i = 0; i < shots.length; i++) {
+          const shot = shots[i]!;
+          let composed = shot.stillPrompt.trim();
+          const re = new RegExp(
+            `\\b${trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+            "i",
+          );
+          if (!re.test(composed)) composed = `${trigger}, ${composed}`;
+
+          const motion =
+            shots.length === 1
+              ? i2vPrompt
+              : slots.length > 0
+                ? applyFills(shot.i2vPrompt, slots, speechFills)
+                : shot.i2vPrompt;
+
+          const still = await generatePhotoBytes({
+            userId,
+            characterId: character.id,
+            characterIds: [character.id],
+            useCharacterLora: true,
+            usePreset: false,
+            composedPrompt: composed,
+            negativePrompt: shot.negativePrompt || tpl.negativePrompt || undefined,
+            title: `${title} · shot ${i + 1}`,
+            width: size.width,
+            height: size.height,
+          });
+          lastWidth = still.width;
+          lastHeight = still.height;
+
+          const clip = await runI2VFromStill({
+            stillBytes: still.bytes,
+            prompt: motion,
+            width: still.width,
+            height: still.height,
+            filenamePrefix: "peach/li2v",
+            durationSec: shot.durationSec || 6,
+            extraHints: [shot.stillPrompt, motion, still.prompt],
+          });
+          if (!clip.bytes?.length || clip.bytes.length < 100) {
+            throw new Error(
+              `Шот ${i + 1}: видео не удалось создать — попробуй ещё раз`,
+            );
+          }
+          engine = clip.engine || engine;
+
+          if (shots.length === 1) {
+            const saved = saveGalleryBinary(
+              userId,
+              "mp4",
+              clip.bytes,
+              `tg_li2v_${itemId}`,
+            );
+            await prisma.galleryItem.update({
+              where: { id: itemId },
+              data: {
+                resultUrl: saved.publicUrl,
+                width: still.width,
+                height: still.height,
+                prompt: motion,
+                metaJson: JSON.stringify({
+                  status: "ready",
+                  engine: clip.engine,
+                  jobAction: "lora_i2v",
+                  loraI2vTemplateId: tpl.id,
+                  localKey: saved.relKey,
+                  shots: 1,
+                }),
+              },
+            });
+            await notifyTgVideoReady(userId, saved.publicUrl, title);
+            return;
+          }
+
+          const { ffmpegStitchTempPath } = await import("@/lib/ffmpeg-stitch");
+          const tmp = ffmpegStitchTempPath(`tg_li2v_${itemId}_s${i}`);
+          fs.writeFileSync(tmp, clip.bytes);
+          clipPaths.push(tmp);
+          tmpCleanup.push(tmp);
+        }
+
+        const { stitchClipsFfmpeg, ffmpegStitchTempPath } = await import(
+          "@/lib/ffmpeg-stitch"
+        );
+        const outPath = ffmpegStitchTempPath(`tg_li2v_${itemId}_final`);
+        tmpCleanup.push(outPath);
+        await stitchClipsFfmpeg({
+          clipPaths,
+          outPath,
+          trimStartSec: 0,
+        });
+        const finalBytes = fs.readFileSync(outPath);
+        if (!finalBytes.length || finalBytes.length < 1000) {
+          throw new Error("Склейка шотов вернула пустой файл");
+        }
+        const saved = saveGalleryBinary(
+          userId,
+          "mp4",
+          finalBytes,
+          `tg_li2v_${itemId}`,
+        );
+        await prisma.galleryItem.update({
+          where: { id: itemId },
+          data: {
+            resultUrl: saved.publicUrl,
+            width: lastWidth,
+            height: lastHeight,
+            prompt: i2vPrompt,
+            metaJson: JSON.stringify({
+              status: "ready",
+              engine: `${engine}+ffmpeg-concat`,
+              jobAction: "lora_i2v",
+              loraI2vTemplateId: tpl.id,
+              localKey: saved.relKey,
+              shots: shots.length,
+            }),
+          },
+        });
+        await notifyTgVideoReady(userId, saved.publicUrl, title);
+      } finally {
+        for (const p of tmpCleanup) {
+          try {
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+          } catch {
+            /* ignore */
+          }
+        }
       }
-
-      const saved = saveGalleryBinary(
-        userId,
-        "mp4",
-        clip.bytes,
-        `tg_li2v_${itemId}`,
-      );
-      await prisma.galleryItem.update({
-        where: { id: itemId },
-        data: {
-          resultUrl: saved.publicUrl,
-          width: still.width,
-          height: still.height,
-          prompt: i2vPrompt,
-          metaJson: JSON.stringify({
-            status: "ready",
-            engine: clip.engine,
-            jobAction: "lora_i2v",
-            loraI2vTemplateId: tpl.id,
-            localKey: saved.relKey,
-          }),
-        },
-      });
-      await notifyTgVideoReady(userId, saved.publicUrl, title);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "ошибка создания видео";
       console.error("[peach] lora_i2v job failed:", e);
@@ -600,7 +690,11 @@ export async function startTgVideoGeneration(opts: {
   let speechFills = normalizeFills(speechSlots, opts.speechFills);
   if (!speechFills.length && opts.speechLine?.trim()) {
     speechFills = [
-      { id: speechSlots[0]?.id || "s1", text: opts.speechLine.trim(), lang: "en" },
+      {
+        id: speechSlots[0]?.id || "s1",
+        text: opts.speechLine.trim(),
+        lang: "ru",
+      },
     ];
   }
 
@@ -632,30 +726,58 @@ export async function startTgVideoGeneration(opts: {
       cast?.name || "Subject",
       foreignNames,
     );
-    if (speechSlots.length) {
+    let slotsForShots = speechSlots;
+    if (!slotsForShots.length) {
+      const { extractSpeechSlots } = await import("@/lib/speech-slots");
+      const { parseQuickVideoShotsPlan: parsePlan } = await import(
+        "@/lib/quick-video-prompt"
+      );
+      const plan = parsePlan(boundJson);
+      const src = (plan?.shots || []).map((s) => s.legoQuery || "").join("\n\n");
+      slotsForShots = extractSpeechSlots(src).filter((s) => s.text.trim());
+    }
+    if (slotsForShots.length) {
       boundJson = applySpeechFillsToShotsJson(
         boundJson,
-        speechSlots,
-        speechFills,
+        slotsForShots,
+        speechFills.length
+          ? speechFills
+          : slotsForShots.map((s) => ({
+              id: s.id,
+              text: s.text,
+              lang: s.lang || "ru",
+            })),
       );
     }
     shotsPlan = parseQuickVideoShotsPlan(boundJson) || shotsPlan;
 
-    if (!speechSlots.length && opts.speechLine?.trim()) {
+    if (!slotsForShots.length && opts.speechLine?.trim()) {
       shotsPlan = injectSpeech(shotsPlan, opts.speechLine);
     }
-  } else if (storyTpl && speechSlots.length) {
-    const prompt = applySpeechFills(
-      storyTpl.prompt,
-      speechSlots,
-      speechFills,
-    );
-    storyTpl = { ...storyTpl, prompt };
-  } else if (storyTpl && opts.speechLine?.trim()) {
-    storyTpl = {
-      ...storyTpl,
-      prompt: `${storyTpl.prompt}\n\nSpoken dialogue (perform clearly): "${opts.speechLine.trim().replace(/"/g, "'")}"`,
-    };
+  } else if (storyTpl) {
+    let slotsForStory = speechSlots.filter((s) => s.text.trim());
+    if (!slotsForStory.length) {
+      const { extractSpeechSlots } = await import("@/lib/speech-slots");
+      slotsForStory = extractSpeechSlots(storyTpl.prompt).filter((s) =>
+        s.text.trim(),
+      );
+    }
+    if (slotsForStory.length) {
+      const fills = speechFills.length
+        ? speechFills
+        : slotsForStory.map((s) => ({
+            id: s.id,
+            text: s.text,
+            lang: s.lang || "ru",
+          }));
+      const prompt = applySpeechFills(storyTpl.prompt, slotsForStory, fills);
+      storyTpl = { ...storyTpl, prompt };
+    } else if (opts.speechLine?.trim()) {
+      storyTpl = {
+        ...storyTpl,
+        prompt: `${storyTpl.prompt}\n\nSpoken dialogue (perform clearly): "${opts.speechLine.trim().replace(/"/g, "'")}"`,
+      };
+    }
   }
 
   const manualSlots: ManualPictureSlotInput[] = [];
@@ -768,13 +890,10 @@ export async function startTgPhotoGeneration(opts: {
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (!user) throw new Error("user not found");
 
-  let price = row.pricePeaches > 0 ? row.pricePeaches : 0;
-  if (!price) {
-    price = isStudioCastCharacter(character)
-      ? photoActressPeaches()
-      : photoLoraPeaches();
-  }
-  price = Math.max(1, price);
+  const { priceForPhotoCharacter } = await import("@/lib/template-pricing");
+  let price = priceForPhotoCharacter({
+    isStudioCast: isStudioCastCharacter(character),
+  });
   let freePhoto = false;
 
   if (opts.studioDaily) {

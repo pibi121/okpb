@@ -12,6 +12,12 @@ import {
   parsePhotoSceneCategories,
 } from "@/lib/tg/feed-order";
 import type { VideoOrientationId } from "@/lib/video-orientation";
+import {
+  emptyLoraI2vShot,
+  newLoraI2vShotId,
+  parseLoraI2vShotsPlan,
+  type LoraI2vShotSpec,
+} from "@/lib/lora-i2v-shots";
 
 type Char = {
   id: string;
@@ -27,6 +33,7 @@ type Tpl = {
   stillPrompt: string;
   i2vPrompt: string;
   negativePrompt: string;
+  shotsJson?: string;
   orientation: string;
   durationSec: number;
   pricePeaches: number;
@@ -39,6 +46,25 @@ type Tpl = {
   sceneCategory: string;
   published: boolean;
 };
+
+type ShotForm = LoraI2vShotSpec & {
+  stillItemId: string;
+  stillUrl: string;
+  videoItemId: string;
+  videoUrl: string;
+};
+
+function emptyShotForm(partial?: Partial<ShotForm>): ShotForm {
+  const base = emptyLoraI2vShot(partial);
+  return {
+    ...base,
+    id: partial?.id || base.id || newLoraI2vShotId(),
+    stillItemId: partial?.stillItemId || "",
+    stillUrl: partial?.stillUrl || "",
+    videoItemId: partial?.videoItemId || "",
+    videoUrl: partial?.videoUrl || "",
+  };
+}
 
 async function readJson(res: Response) {
   const raw = await res.text();
@@ -64,24 +90,20 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
+  const [busyShotId, setBusyShotId] = useState("");
   const [stripRefresh, setStripRefresh] = useState(0);
 
   const [characterId, setCharacterId] = useState(loraChars[0]?.id || "");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
-  const [stillPrompt, setStillPrompt] = useState("");
-  const [i2vPrompt, setI2vPrompt] = useState("");
-  const [negativePrompt, setNegativePrompt] = useState("");
   const [orientation, setOrientation] = useState<VideoOrientationId>("9_16");
-  const [durationSec, setDurationSec] = useState(6);
-  const [pricePeaches, setPricePeaches] = useState(180);
   const [categories, setCategories] = useState<string[]>([]);
+  const [shots, setShots] = useState<ShotForm[]>([emptyShotForm()]);
 
   const [editingId, setEditingId] = useState("");
-  const [stillItemId, setStillItemId] = useState("");
-  const [stillUrl, setStillUrl] = useState("");
-  const [videoItemId, setVideoItemId] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
+  const [stitchedVideoItemId, setStitchedVideoItemId] = useState("");
+  const [stitchedVideoUrl, setStitchedVideoUrl] = useState("");
+  const [stitchedDurationSec, setStitchedDurationSec] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,65 +134,77 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     if (!characterId && loraChars[0]) setCharacterId(loraChars[0].id);
   }, [characterId, loraChars]);
 
+  function updateShot(id: string, patch: Partial<ShotForm>) {
+    setShots((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+    );
+  }
+
+  function addShot() {
+    setShots((prev) => [...prev, emptyShotForm()]);
+    setStitchedVideoItemId("");
+    setStitchedVideoUrl("");
+    setStitchedDurationSec(0);
+    setMsg("Добавлен новый шот");
+  }
+
+  function removeShot(id: string) {
+    setShots((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((s) => s.id !== id);
+    });
+    setStitchedVideoItemId("");
+    setStitchedVideoUrl("");
+    setStitchedDurationSec(0);
+  }
+
   async function pollItem(
     id: string,
     opts: { maxAttempts: number; intervalMs: number; label: string },
   ): Promise<{
     id: string;
     resultUrl: string;
-    kind: string;
-    status?: string;
   } | null> {
-    const started = Date.now();
     for (let i = 0; i < opts.maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, opts.intervalMs));
+      setMsg(`${opts.label}… ${i + 1}/${opts.maxAttempts}`);
       const res = await fetch(`/api/peach/gallery/${id}`);
-      if (!res.ok) continue;
       const data = await readJson(res);
+      if (!res.ok) throw new Error(String(data.error || "gallery"));
       const item = (data.item || data) as {
         id: string;
-        resultUrl: string;
-        kind: string;
+        resultUrl?: string;
         status?: string;
-        error?: string | null;
-        meta?: { status?: string; error?: string };
       };
-      const status = item.status || item.meta?.status || "";
+      if (item.status === "error") {
+        throw new Error("Генерация упала — смотри галерею / логи");
+      }
       if (
-        status === "ready" &&
+        item.status === "ready" &&
         item.resultUrl &&
         !/placeholder/i.test(item.resultUrl)
       ) {
-        return item;
+        return { id: item.id, resultUrl: item.resultUrl };
       }
-      if (status === "error") {
-        const detail =
-          item.error ||
-          item.meta?.error ||
-          "Генерация упала (смотри галерею)";
-        throw new Error(String(detail));
-      }
-      const elapsedMin = ((Date.now() - started) / 60_000).toFixed(1);
-      setMsg(
-        `${opts.label}… ${elapsedMin} мин · ${i + 1}/${opts.maxAttempts} · ${id.slice(0, 8)}`,
-      );
-      setStripRefresh((n) => n + 1);
+      await new Promise((r) => setTimeout(r, opts.intervalMs));
     }
     return null;
   }
 
-  async function onStill() {
+  async function onStill(shotId: string) {
+    const shot = shots.find((s) => s.id === shotId);
+    if (!shot) return;
     setError("");
     setMsg("");
     setBusy("still");
+    setBusyShotId(shotId);
     try {
       const res = await fetch("/api/peach/lora-i2v/still", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           characterId,
-          stillPrompt,
-          negativePrompt: negativePrompt || undefined,
+          stillPrompt: shot.stillPrompt,
+          negativePrompt: shot.negativePrompt || undefined,
           orientationId: orientation,
           title: title || undefined,
         }),
@@ -178,10 +212,17 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
       const data = await readJson(res);
       if (!res.ok) throw new Error(String(data.error || "ошибка"));
       const item = data.item as { id: string };
-      setStillItemId(item.id);
+      updateShot(shotId, {
+        stillItemId: item.id,
+        stillUrl: "",
+        videoItemId: "",
+        videoUrl: "",
+      });
+      setStitchedVideoItemId("");
+      setStitchedVideoUrl("");
+      setStitchedDurationSec(0);
       setStripRefresh((n) => n + 1);
-      setMsg("Still в очереди GPU…");
-      // Photo usually < 5 min; keep headroom for GPU queue.
+      setMsg(`Шот: still в очереди GPU…`);
       const ready = await pollItem(item.id, {
         maxAttempts: 120,
         intervalMs: 4000,
@@ -192,45 +233,51 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           "Таймаут still (~8 мин). Смотри галерею — если pending, подожди ещё; если error — перегенерируй.",
         );
       }
-      setStillUrl(ready.resultUrl);
+      updateShot(shotId, { stillUrl: ready.resultUrl, stillItemId: ready.id });
       setMsg("Still готов — можно оживлять");
       setStripRefresh((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "error");
     } finally {
       setBusy("");
+      setBusyShotId("");
     }
   }
 
-  async function onAnimate() {
+  async function onAnimate(shotId: string) {
+    const shot = shots.find((s) => s.id === shotId);
+    if (!shot) return;
     setError("");
     setMsg("");
-    if (!stillItemId) {
+    if (!shot.stillItemId) {
       setError("Сначала сделай still");
       return;
     }
-    if (!i2vPrompt.trim()) {
+    if (!shot.i2vPrompt.trim()) {
       setError("Нужен I2V-промпт (движение)");
       return;
     }
     setBusy("animate");
+    setBusyShotId(shotId);
     try {
       const res = await fetch("/api/peach/lora-i2v/animate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stillItemId,
-          i2vPrompt,
-          durationSec,
+          stillItemId: shot.stillItemId,
+          i2vPrompt: shot.i2vPrompt,
+          durationSec: shot.durationSec,
         }),
       });
       const data = await readJson(res);
       if (!res.ok) throw new Error(String(data.error || "ошибка"));
       const item = data.item as { id: string };
-      setVideoItemId(item.id);
+      updateShot(shotId, { videoItemId: item.id, videoUrl: "" });
+      setStitchedVideoItemId("");
+      setStitchedVideoUrl("");
+      setStitchedDurationSec(0);
       setStripRefresh((n) => n + 1);
       setMsg("I2V в очереди GPU (обычно 10–25 мин)…");
-      // MiniMax I2V comfy timeout ≈ 15–21 мин + очередь — UI must wait longer.
       const ready = await pollItem(item.id, {
         maxAttempts: 360,
         intervalMs: 5000,
@@ -238,29 +285,36 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
       });
       if (!ready) {
         throw new Error(
-          "Таймаут I2V (~30 мин). Видео может ещё считаться — открой Галерею или нажми «Дождаться видео» с id ниже.",
+          "Таймаут I2V (~30 мин). Видео может ещё считаться — открой Галерею или нажми «Дождаться видео».",
         );
       }
-      setVideoUrl(ready.resultUrl);
-      setMsg("Видео готово — сохрани шаблон");
+      updateShot(shotId, { videoUrl: ready.resultUrl, videoItemId: ready.id });
+      setMsg(
+        shots.length > 1
+          ? "Клип готов — когда все шоты ок, нажми «Склеить»"
+          : "Видео готово — сохрани шаблон",
+      );
       setStripRefresh((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "error");
     } finally {
       setBusy("");
+      setBusyShotId("");
     }
   }
 
-  async function onResumeVideoPoll() {
-    if (!videoItemId) {
+  async function onResumeVideoPoll(shotId: string) {
+    const shot = shots.find((s) => s.id === shotId);
+    if (!shot?.videoItemId) {
       setError("Нет video id — сначала запусти оживление");
       return;
     }
     setError("");
     setBusy("animate");
+    setBusyShotId(shotId);
     try {
       setMsg("Продолжаем ждать I2V…");
-      const ready = await pollItem(videoItemId, {
+      const ready = await pollItem(shot.videoItemId, {
         maxAttempts: 360,
         intervalMs: 5000,
         label: "Ждём I2V",
@@ -270,8 +324,119 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           "Всё ещё нет ready. Смотри Галерею — если error, перезапусти оживление.",
         );
       }
-      setVideoUrl(ready.resultUrl);
-      setMsg("Видео готово — сохрани шаблон");
+      updateShot(shotId, { videoUrl: ready.resultUrl });
+      setMsg("Видео готово");
+      setStripRefresh((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy("");
+      setBusyShotId("");
+    }
+  }
+
+  async function attachGallery(
+    shotId: string,
+    kind: "photo" | "video",
+    inputId: string,
+  ) {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
+    const id = el?.value.trim();
+    if (!id) return;
+    setError("");
+    setBusy(kind === "photo" ? "still" : "animate");
+    setBusyShotId(shotId);
+    try {
+      const res = await fetch(`/api/peach/gallery/${id}`);
+      const data = await readJson(res);
+      if (!res.ok) throw new Error(String(data.error || "нет"));
+      const item = (data.item || data) as {
+        id: string;
+        resultUrl: string;
+        kind: string;
+        status?: string;
+      };
+      if (item.kind !== kind) {
+        throw new Error(kind === "photo" ? "Нужен kind=photo" : "Нужен kind=video");
+      }
+      if (kind === "photo") {
+        if (item.status && item.status !== "ready") {
+          throw new Error(`Still status: ${item.status}`);
+        }
+        if (!item.resultUrl || /placeholder/i.test(item.resultUrl)) {
+          throw new Error("У кадра нет файла");
+        }
+        updateShot(shotId, {
+          stillItemId: item.id,
+          stillUrl: item.resultUrl,
+          videoItemId: "",
+          videoUrl: "",
+        });
+        setMsg("Still подключён из галереи");
+      } else {
+        updateShot(shotId, {
+          videoItemId: item.id,
+          videoUrl:
+            item.resultUrl && !/placeholder/i.test(item.resultUrl)
+              ? item.resultUrl
+              : "",
+        });
+        if (!item.resultUrl || /placeholder/i.test(item.resultUrl)) {
+          setMsg("Видео pending — ждём…");
+          const ready = await pollItem(item.id, {
+            maxAttempts: 360,
+            intervalMs: 5000,
+            label: "Ждём I2V",
+          });
+          if (!ready) throw new Error("Таймаут ожидания видео");
+          updateShot(shotId, {
+            videoItemId: ready.id,
+            videoUrl: ready.resultUrl,
+          });
+        }
+        setMsg("Видео подключено из галереи");
+      }
+      setStitchedVideoItemId("");
+      setStitchedVideoUrl("");
+      setStitchedDurationSec(0);
+      setStripRefresh((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy("");
+      setBusyShotId("");
+    }
+  }
+
+  async function onStitch() {
+    setError("");
+    setMsg("");
+    const ready = shots.filter((s) => s.videoItemId && s.videoUrl);
+    if (ready.length < 2) {
+      setError("Нужно минимум два готовых клипа");
+      return;
+    }
+    if (ready.length !== shots.length) {
+      setError("Сначала дождись видео по всем шотам");
+      return;
+    }
+    setBusy("stitch");
+    try {
+      const res = await fetch("/api/peach/lora-i2v/stitch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoItemIds: ready.map((s) => s.videoItemId),
+          title: title || "LoRA I2V stitch",
+        }),
+      });
+      const data = await readJson(res);
+      if (!res.ok) throw new Error(String(data.error || "ошибка склейки"));
+      const item = data.item as { id: string; resultUrl: string };
+      setStitchedVideoItemId(item.id);
+      setStitchedVideoUrl(String(data.resultUrl || item.resultUrl));
+      setStitchedDurationSec(Number(data.durationSec) || 0);
+      setMsg("Склейка готова — сохрани шаблон");
       setStripRefresh((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "error");
@@ -283,22 +448,62 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   async function onSave() {
     setError("");
     setMsg("");
+    const recipeShots = shots.filter(
+      (s) => s.stillPrompt.trim() && s.i2vPrompt.trim(),
+    );
+    if (!recipeShots.length) {
+      setError("Нужен хотя бы один шот с still + I2V промптами");
+      return;
+    }
+
+    const multi = recipeShots.length > 1;
+    if (multi && !stitchedVideoUrl) {
+      setError("Сначала склей клипы кнопкой «Склеить»");
+      return;
+    }
+
+    const first = recipeShots[0]!;
+    const previewImageUrl = first.stillUrl || shots.find((s) => s.stillUrl)?.stillUrl || "";
+    const previewVideoUrl = multi
+      ? stitchedVideoUrl
+      : first.videoUrl || "";
+    const sourceStillId = first.stillItemId || "";
+    const sourceVideoId = multi
+      ? stitchedVideoItemId
+      : first.videoItemId || "";
+
+    if (!previewVideoUrl) {
+      setError(multi ? "Нет склеенного видео" : "Сначала оживи still");
+      return;
+    }
+
     setBusy("save");
     try {
+      const durationSec = multi
+        ? stitchedDurationSec ||
+          recipeShots.reduce((sum, s) => sum + (s.durationSec || 6), 0)
+        : first.durationSec || 6;
       const payload = {
         title: title.trim() || "LoRA I2V",
         notes,
-        stillPrompt,
-        i2vPrompt,
-        negativePrompt,
+        stillPrompt: first.stillPrompt,
+        i2vPrompt: recipeShots.map((s) => s.i2vPrompt).join("\n\n"),
+        negativePrompt: first.negativePrompt || "",
+        shots: recipeShots.map((s) => ({
+          id: s.id,
+          stillPrompt: s.stillPrompt,
+          i2vPrompt: s.i2vPrompt,
+          negativePrompt: s.negativePrompt || "",
+          durationSec: s.durationSec,
+        })),
         orientation,
         durationSec,
-        pricePeaches,
+        pricePeaches: 0,
         sceneCategory: formatPhotoSceneCategories(categories),
-        previewImageUrl: stillUrl,
-        previewVideoUrl: videoUrl,
-        sourceStillId: stillItemId,
-        sourceVideoId: videoItemId,
+        previewImageUrl,
+        previewVideoUrl,
+        sourceStillId,
+        sourceVideoId,
         characterId,
       };
       const res = await fetch(
@@ -342,36 +547,70 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     setEditingId(t.id);
     setTitle(t.title);
     setNotes(t.notes);
-    setStillPrompt(t.stillPrompt);
-    setI2vPrompt(t.i2vPrompt);
-    setNegativePrompt(t.negativePrompt);
-    setOrientation(
-      (t.orientation as VideoOrientationId) || "9_16",
-    );
-    setDurationSec(t.durationSec || 6);
-    setPricePeaches(t.pricePeaches || 202);
+    setOrientation((t.orientation as VideoOrientationId) || "9_16");
     setCategories(parsePhotoSceneCategories(t.sceneCategory));
-    setStillUrl(t.previewImageUrl);
-    setVideoUrl(t.previewVideoUrl);
-    setStillItemId(t.sourceStillId);
-    setVideoItemId(t.sourceVideoId);
+    const plan = parseLoraI2vShotsPlan(t.shotsJson);
+    if (plan?.shots.length) {
+      setShots(
+        plan.shots.map((s, i) =>
+          emptyShotForm({
+            ...s,
+            stillItemId: i === 0 ? t.sourceStillId : "",
+            stillUrl: i === 0 ? t.previewImageUrl : "",
+            videoItemId: plan.shots.length === 1 ? t.sourceVideoId : "",
+            videoUrl: plan.shots.length === 1 ? t.previewVideoUrl : "",
+          }),
+        ),
+      );
+      if (plan.shots.length > 1) {
+        setStitchedVideoItemId(t.sourceVideoId);
+        setStitchedVideoUrl(t.previewVideoUrl);
+        setStitchedDurationSec(t.durationSec || 0);
+      } else {
+        setStitchedVideoItemId("");
+        setStitchedVideoUrl("");
+        setStitchedDurationSec(0);
+      }
+    } else {
+      setShots([
+        emptyShotForm({
+          stillPrompt: t.stillPrompt,
+          i2vPrompt: t.i2vPrompt,
+          negativePrompt: t.negativePrompt,
+          durationSec: Math.min(12, t.durationSec || 6),
+          stillItemId: t.sourceStillId,
+          stillUrl: t.previewImageUrl,
+          videoItemId: t.sourceVideoId,
+          videoUrl: t.previewVideoUrl,
+        }),
+      ]);
+      setStitchedVideoItemId("");
+      setStitchedVideoUrl("");
+      setStitchedDurationSec(0);
+    }
+    setMsg("");
+    setError("");
   }
 
   function resetForm() {
     setEditingId("");
     setTitle("");
     setNotes("");
-    setStillPrompt("");
-    setI2vPrompt("");
-    setNegativePrompt("");
-    setStillUrl("");
-    setVideoUrl("");
-    setStillItemId("");
-    setVideoItemId("");
+    setShots([emptyShotForm()]);
     setCategories([]);
+    setStitchedVideoItemId("");
+    setStitchedVideoUrl("");
+    setStitchedDurationSec(0);
     setMsg("");
     setError("");
   }
+
+  const readyClipCount = shots.filter((s) => s.videoUrl && s.videoItemId).length;
+  const canStitch = shots.length >= 2 && readyClipCount === shots.length;
+  const totalDurationHint = shots.reduce(
+    (sum, s) => sum + (s.durationSec || 6),
+    0,
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -379,9 +618,8 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
         <div>
           <h2 className="text-sm font-medium text-zinc-200">Сборка рецепта</h2>
           <p className="mt-1 text-[11px] text-zinc-500">
-            1) Still на LoRA (Krea) → 2) оживление MiniMax I2V (обычно 10–25 мин)
-            → 3) сохранить шаблон → 4) в карточке справа нажать «В Telegram».
-            Без шага 4 пользователь в боте/мини-аппе шаблон не увидит.
+            На каждый шот: still (Krea+LoRA) → оживление MiniMax → при нескольких
+            шотах «Склеить» → сохранить шаблон → справа «В Telegram».
           </p>
         </div>
 
@@ -426,34 +664,19 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           />
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-xs text-zinc-500">
             Ориентация
             <div className="mt-1">
               <OrientationSelect value={orientation} onChange={setOrientation} />
             </div>
           </label>
-          <label className="block text-xs text-zinc-500">
-            Длительность I2V (сек)
-            <input
-              type="number"
-              min={4}
-              max={12}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
-              value={durationSec}
-              onChange={(e) => setDurationSec(Number(e.target.value) || 6)}
-            />
-          </label>
-          <label className="block text-xs text-zinc-500">
+          <div className="block text-xs text-zinc-500">
             Цена 🍑
-            <input
-              type="number"
-              min={0}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
-              value={pricePeaches}
-              onChange={(e) => setPricePeaches(Number(e.target.value) || 0)}
-            />
-          </label>
+            <p className="mt-1 rounded-lg border border-white/10 bg-zinc-900/80 px-2 py-2 text-sm text-zinc-300">
+              Авто из /ops/prices (premium × ~{stitchedDurationSec || totalDurationHint}с).
+            </p>
+          </div>
         </div>
 
         <div>
@@ -481,82 +704,272 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           </div>
         </div>
 
-        <label className="block text-xs text-zinc-500">
-          Still-промпт (Krea + LoRA)
-          <textarea
-            className="mt-1 min-h-[100px] w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
-            value={stillPrompt}
-            onChange={(e) => setStillPrompt(e.target.value)}
-            placeholder="pose, camera, wardrobe, scene… (trigger подставится сам)"
-          />
-        </label>
-        <PhotoEditPromptPicker
-          value={stillPrompt}
-          onChange={setStillPrompt}
-          hint="Клик добавляет текст в still-промпт"
-        />
+        {shots.map((shot, idx) => {
+          const shotBusy = busyShotId === shot.id;
+          return (
+            <div
+              key={shot.id}
+              className="space-y-3 rounded-xl border border-white/10 bg-black/30 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  Шот {idx + 1}
+                </h3>
+                {shots.length > 1 ? (
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => removeShot(shot.id)}
+                    className="text-[10px] text-red-300/80 hover:text-red-300 disabled:opacity-40"
+                  >
+                    Удалить шот
+                  </button>
+                ) : null}
+              </div>
 
-        <label className="block text-xs text-zinc-500">
-          Negative (опционально)
-          <textarea
-            className="mt-1 min-h-[56px] w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
-            value={negativePrompt}
-            onChange={(e) => setNegativePrompt(e.target.value)}
-          />
-        </label>
+              <label className="block text-xs text-zinc-500">
+                Длительность I2V (сек)
+                <input
+                  type="number"
+                  min={4}
+                  max={12}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
+                  value={shot.durationSec}
+                  onChange={(e) =>
+                    updateShot(shot.id, {
+                      durationSec: Number(e.target.value) || 6,
+                    })
+                  }
+                />
+              </label>
 
-        <label className="block text-xs text-zinc-500">
-          I2V-промпт (движение Minimax)
-          <textarea
-            className="mt-1 min-h-[80px] w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
-            value={i2vPrompt}
-            onChange={(e) => setI2vPrompt(e.target.value)}
-            placeholder="…says {{s1}}…&#10;&#10;SPEECH_SLOTS:&#10;s1 | speaker=her | lang=ru | text=Мужчина"
-          />
-          <span className="mt-1 block text-[11px] text-zinc-600">
-            Речь: плейсхолдеры {"{{s1}}"} + блок SPEECH_SLOTS (speaker/lang/text).
-            Лимит символов для пользователя = длина дефолтного text (считает Peach).
-          </span>
-        </label>
+              <label className="block text-xs text-zinc-500">
+                Still-промпт (Krea + LoRA)
+                <textarea
+                  className="mt-1 min-h-[100px] w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
+                  value={shot.stillPrompt}
+                  onChange={(e) =>
+                    updateShot(shot.id, { stillPrompt: e.target.value })
+                  }
+                  placeholder="pose, camera, wardrobe, scene… (trigger подставится сам)"
+                />
+              </label>
+              <PhotoEditPromptPicker
+                value={shot.stillPrompt}
+                onChange={(v) => updateShot(shot.id, { stillPrompt: v })}
+                hint="Клик добавляет текст в still-промпт"
+              />
+
+              <label className="block text-xs text-zinc-500">
+                Negative (опционально)
+                <textarea
+                  className="mt-1 min-h-[56px] w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
+                  value={shot.negativePrompt || ""}
+                  onChange={(e) =>
+                    updateShot(shot.id, { negativePrompt: e.target.value })
+                  }
+                />
+              </label>
+
+              <label className="block text-xs text-zinc-500">
+                I2V-промпт (движение Minimax)
+                <textarea
+                  className="mt-1 min-h-[80px] w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
+                  value={shot.i2vPrompt}
+                  onChange={(e) =>
+                    updateShot(shot.id, { i2vPrompt: e.target.value })
+                  }
+                  placeholder="…says {{s1}}…&#10;&#10;SPEECH_SLOTS:&#10;s1 | speaker=her | lang=ru | text=Мужчина"
+                />
+                <span className="mt-1 block text-[11px] text-zinc-600">
+                  Речь: плейсхолдеры {"{{s1}}"} + блок SPEECH_SLOTS.
+                </span>
+              </label>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={
+                    !!busy || !characterId || !shot.stillPrompt.trim()
+                  }
+                  onClick={() => void onStill(shot.id)}
+                  className="rounded-full bg-peach px-3 py-1.5 text-xs font-medium text-black disabled:opacity-40"
+                >
+                  {shotBusy && busy === "still"
+                    ? "Still…"
+                    : "1. Сгенерировать still"}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !!busy || !shot.stillItemId || !shot.i2vPrompt.trim()
+                  }
+                  onClick={() => void onAnimate(shot.id)}
+                  className="rounded-full border border-peach/40 bg-peach/10 px-3 py-1.5 text-xs text-peach disabled:opacity-40"
+                >
+                  {shotBusy && busy === "animate"
+                    ? "I2V…"
+                    : "2. Оживить (I2V)"}
+                </button>
+                {shot.videoItemId && !shot.videoUrl ? (
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => void onResumeVideoPoll(shot.id)}
+                    className="rounded-full border border-amber-500/40 px-3 py-1.5 text-xs text-amber-200 disabled:opacity-40"
+                  >
+                    Дождаться видео
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-black/40 p-2">
+                  <div className="mb-1 text-[10px] uppercase text-zinc-500">
+                    Still
+                  </div>
+                  {shot.stillUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={shot.stillUrl}
+                      alt=""
+                      className="max-h-64 w-full object-contain"
+                    />
+                  ) : (
+                    <p className="text-[11px] text-zinc-600">ещё нет</p>
+                  )}
+                  {shot.stillItemId ? (
+                    <p className="mt-1 truncate text-[10px] text-zinc-600">
+                      id: {shot.stillItemId}
+                    </p>
+                  ) : null}
+                  <label className="mt-2 block text-[10px] text-zinc-500">
+                    Или gallery id still
+                    <div className="mt-1 flex gap-1">
+                      <input
+                        className="min-w-0 flex-1 rounded border border-white/10 bg-zinc-900 px-2 py-1 text-[11px]"
+                        placeholder="cm…"
+                        id={`li2v-still-attach-${shot.id}`}
+                      />
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-white/15 px-2 py-1 text-[10px]"
+                        disabled={!!busy}
+                        onClick={() =>
+                          void attachGallery(
+                            shot.id,
+                            "photo",
+                            `li2v-still-attach-${shot.id}`,
+                          )
+                        }
+                      >
+                        Взять
+                      </button>
+                    </div>
+                  </label>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/40 p-2">
+                  <div className="mb-1 text-[10px] uppercase text-zinc-500">
+                    Video
+                  </div>
+                  {shot.videoUrl ? (
+                    <video
+                      src={shot.videoUrl}
+                      controls
+                      playsInline
+                      className="max-h-64 w-full object-contain"
+                    />
+                  ) : (
+                    <p className="text-[11px] text-zinc-600">ещё нет</p>
+                  )}
+                  {shot.videoItemId ? (
+                    <p className="mt-1 truncate text-[10px] text-zinc-600">
+                      id: {shot.videoItemId}
+                    </p>
+                  ) : null}
+                  <label className="mt-2 block text-[10px] text-zinc-500">
+                    Или gallery id video
+                    <div className="mt-1 flex gap-1">
+                      <input
+                        className="min-w-0 flex-1 rounded border border-white/10 bg-zinc-900 px-2 py-1 text-[11px]"
+                        placeholder="cm…"
+                        id={`li2v-video-attach-${shot.id}`}
+                      />
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-white/15 px-2 py-1 text-[10px]"
+                        disabled={!!busy}
+                        onClick={() =>
+                          void attachGallery(
+                            shot.id,
+                            "video",
+                            `li2v-video-attach-${shot.id}`,
+                          )
+                        }
+                      >
+                        Взять
+                      </button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        <button
+          type="button"
+          disabled={!!busy}
+          onClick={addShot}
+          className="w-full rounded-xl border border-dashed border-peach/40 bg-peach/5 px-3 py-3 text-sm text-peach hover:bg-peach/10 disabled:opacity-40"
+        >
+          + Добавить шот
+        </button>
+
+        {stitchedVideoUrl ? (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+            <div className="mb-1 text-[10px] uppercase text-emerald-300/80">
+              Склеенный ролик
+            </div>
+            <video
+              src={stitchedVideoUrl}
+              controls
+              playsInline
+              className="max-h-72 w-full object-contain"
+            />
+            {stitchedVideoItemId ? (
+              <p className="mt-1 truncate text-[10px] text-zinc-600">
+                id: {stitchedVideoItemId}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={!!busy || !characterId || !stillPrompt.trim()}
-            onClick={() => void onStill()}
-            className="rounded-full bg-peach px-3 py-1.5 text-xs font-medium text-black disabled:opacity-40"
+            disabled={!!busy || !canStitch}
+            onClick={() => void onStitch()}
+            className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-200 disabled:opacity-40"
           >
-            {busy === "still" ? "Still…" : "1. Сгенерировать still"}
+            {busy === "stitch"
+              ? "Склейка…"
+              : `Склеить (${readyClipCount}/${shots.length})`}
           </button>
           <button
             type="button"
-            disabled={!!busy || !stillItemId || !i2vPrompt.trim()}
-            onClick={() => void onAnimate()}
-            className="rounded-full border border-peach/40 bg-peach/10 px-3 py-1.5 text-xs text-peach disabled:opacity-40"
-          >
-            {busy === "animate" ? "I2V…" : "2. Оживить (I2V)"}
-          </button>
-          {videoItemId && !videoUrl ? (
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={() => void onResumeVideoPoll()}
-              className="rounded-full border border-amber-500/40 px-3 py-1.5 text-xs text-amber-200 disabled:opacity-40"
-            >
-              Дождаться видео
-            </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={!!busy || !stillPrompt.trim() || !i2vPrompt.trim()}
+            disabled={
+              !!busy ||
+              !shots.some((s) => s.stillPrompt.trim() && s.i2vPrompt.trim())
+            }
             onClick={() => void onSave()}
             className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs text-emerald-300 disabled:opacity-40"
           >
             {busy === "save"
               ? "…"
               : editingId
-                ? "3. Обновить шаблон"
-                : "3. Сохранить шаблон"}
+                ? "Сохранить / обновить шаблон"
+                : "Сохранить шаблон"}
           </button>
           {editingId ? (
             <button
@@ -571,172 +984,6 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
 
         {msg ? <p className="text-xs text-emerald-400">{msg}</p> : null}
         {error ? <p className="text-xs text-red-400">{error}</p> : null}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-white/10 bg-black/40 p-2">
-            <div className="mb-1 text-[10px] uppercase text-zinc-500">Still</div>
-            {stillUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={stillUrl} alt="" className="max-h-64 w-full object-contain" />
-            ) : (
-              <p className="text-[11px] text-zinc-600">ещё нет</p>
-            )}
-            {stillItemId ? (
-              <p className="mt-1 truncate text-[10px] text-zinc-600">
-                id: {stillItemId}
-              </p>
-            ) : null}
-            <label className="mt-2 block text-[10px] text-zinc-500">
-              Или вставь gallery id готового still
-              <div className="mt-1 flex gap-1">
-                <input
-                  className="min-w-0 flex-1 rounded border border-white/10 bg-zinc-900 px-2 py-1 text-[11px]"
-                  placeholder="cm…"
-                  id="li2v-still-attach"
-                />
-                <button
-                  type="button"
-                  className="shrink-0 rounded border border-white/15 px-2 py-1 text-[10px]"
-                  disabled={!!busy}
-                  onClick={() => {
-                    const el = document.getElementById(
-                      "li2v-still-attach",
-                    ) as HTMLInputElement | null;
-                    const id = el?.value.trim();
-                    if (!id) return;
-                    void (async () => {
-                      setError("");
-                      setBusy("still");
-                      try {
-                        const res = await fetch(`/api/peach/gallery/${id}`);
-                        const data = await readJson(res);
-                        if (!res.ok) throw new Error(String(data.error || "нет"));
-                        const item = (data.item || data) as {
-                          id: string;
-                          resultUrl: string;
-                          kind: string;
-                          status?: string;
-                        };
-                        if (item.kind !== "photo") {
-                          throw new Error("Нужен kind=photo");
-                        }
-                        if (
-                          item.status &&
-                          item.status !== "ready"
-                        ) {
-                          throw new Error(`Still status: ${item.status}`);
-                        }
-                        if (
-                          !item.resultUrl ||
-                          /placeholder/i.test(item.resultUrl)
-                        ) {
-                          throw new Error("У кадра нет файла");
-                        }
-                        setStillItemId(item.id);
-                        setStillUrl(item.resultUrl);
-                        setMsg("Still подключён из галереи");
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : "error");
-                      } finally {
-                        setBusy("");
-                      }
-                    })();
-                  }}
-                >
-                  Взять
-                </button>
-              </div>
-            </label>
-          </div>
-          <div className="rounded-lg border border-white/10 bg-black/40 p-2">
-            <div className="mb-1 text-[10px] uppercase text-zinc-500">Video</div>
-            {videoUrl ? (
-              <video
-                src={videoUrl}
-                controls
-                playsInline
-                className="max-h-64 w-full object-contain"
-              />
-            ) : (
-              <p className="text-[11px] text-zinc-600">ещё нет</p>
-            )}
-            {videoItemId ? (
-              <p className="mt-1 truncate text-[10px] text-zinc-600">
-                id: {videoItemId}
-              </p>
-            ) : null}
-            <label className="mt-2 block text-[10px] text-zinc-500">
-              Или вставь gallery id готового / pending видео
-              <div className="mt-1 flex gap-1">
-                <input
-                  className="min-w-0 flex-1 rounded border border-white/10 bg-zinc-900 px-2 py-1 text-[11px]"
-                  placeholder="cm…"
-                  id="li2v-video-attach"
-                />
-                <button
-                  type="button"
-                  className="shrink-0 rounded border border-white/15 px-2 py-1 text-[10px]"
-                  disabled={!!busy}
-                  onClick={() => {
-                    const el = document.getElementById(
-                      "li2v-video-attach",
-                    ) as HTMLInputElement | null;
-                    const id = el?.value.trim();
-                    if (!id) return;
-                    void (async () => {
-                      setError("");
-                      setBusy("animate");
-                      try {
-                        const res = await fetch(`/api/peach/gallery/${id}`);
-                        const data = await readJson(res);
-                        if (!res.ok) throw new Error(String(data.error || "нет"));
-                        const item = (data.item || data) as {
-                          id: string;
-                          resultUrl: string;
-                          kind: string;
-                          status?: string;
-                        };
-                        if (item.kind !== "video") {
-                          throw new Error("Нужен kind=video");
-                        }
-                        setVideoItemId(item.id);
-                        if (
-                          item.status === "ready" &&
-                          item.resultUrl &&
-                          !/placeholder/i.test(item.resultUrl)
-                        ) {
-                          setVideoUrl(item.resultUrl);
-                          setMsg("Видео подключено из галереи");
-                          return;
-                        }
-                        if (item.status === "error") {
-                          throw new Error("Это видео в ошибке — перезапусти I2V");
-                        }
-                        setMsg("Видео ещё pending — жду GPU…");
-                        const ready = await pollItem(item.id, {
-                          maxAttempts: 360,
-                          intervalMs: 5000,
-                          label: "Ждём I2V",
-                        });
-                        if (!ready) {
-                          throw new Error("Таймаут — смотри галерею");
-                        }
-                        setVideoUrl(ready.resultUrl);
-                        setMsg("Видео готово — сохрани шаблон");
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : "error");
-                      } finally {
-                        setBusy("");
-                      }
-                    })();
-                  }}
-                >
-                  Взять
-                </button>
-              </div>
-            </label>
-          </div>
-        </div>
 
         <TodayGenerationsStrip
           kind="photo"

@@ -5,7 +5,14 @@ import { prisma } from "@/lib/db";
 import { copyAssetToTgCatalog } from "@/lib/tg/tg-publish";
 import { ensureTgCatalog } from "@/lib/tg/tg-catalog";
 import { formatPhotoSceneCategories } from "@/lib/tg/feed-order";
-import { premiumVideoPeaches } from "@/lib/tg-pricing";
+import { priceForLoraI2vTemplate } from "@/lib/template-pricing";
+import {
+  buildLoraI2vShotsPlan,
+  clampLoraI2vDurationSec,
+  parseLoraI2vShotsPlan,
+  serializeLoraI2vShotsPlan,
+  type LoraI2vShotSpec,
+} from "@/lib/lora-i2v-shots";
 
 export type LoraI2vTemplateRow = {
   id: string;
@@ -16,6 +23,7 @@ export type LoraI2vTemplateRow = {
   stillPrompt: string;
   negativePrompt: string;
   i2vPrompt: string;
+  shotsJson: string;
   orientation: string;
   durationSec: number;
   pricePeaches: number;
@@ -43,6 +51,7 @@ function mapRow(r: {
   stillPrompt: string;
   negativePrompt: string;
   i2vPrompt: string;
+  shotsJson: string;
   orientation: string;
   durationSec: number;
   pricePeaches: number;
@@ -69,9 +78,10 @@ function mapRow(r: {
     stillPrompt: r.stillPrompt,
     negativePrompt: r.negativePrompt,
     i2vPrompt: r.i2vPrompt,
+    shotsJson: r.shotsJson || "",
     orientation: r.orientation,
     durationSec: r.durationSec,
-    pricePeaches: r.pricePeaches,
+    pricePeaches: priceForLoraI2vTemplate(r.durationSec || 6),
     published: r.published,
     tgPublished: r.tgPublished,
     tgDisplayTitle: r.tgDisplayTitle,
@@ -142,7 +152,7 @@ export async function listTgPublishedLoraI2vTemplates(locale: "ru" | "en" = "ru"
       id: r.id,
       title,
       notes,
-      pricePeaches: r.pricePeaches || premiumVideoPeaches(r.durationSec || 6),
+      pricePeaches: priceForLoraI2vTemplate(r.durationSec || 6),
       previewImageUrl: r.previewImageUrl,
       previewVideoUrl: r.previewVideoUrl,
       durationSec: r.durationSec,
@@ -174,6 +184,8 @@ export async function createLoraI2vTemplate(opts: {
   stillPrompt: string;
   i2vPrompt: string;
   negativePrompt?: string;
+  shotsJson?: string;
+  shots?: LoraI2vShotSpec[];
   orientation?: string;
   durationSec?: number;
   pricePeaches?: number;
@@ -187,11 +199,38 @@ export async function createLoraI2vTemplate(opts: {
 }) {
   const title = opts.title.trim().slice(0, 120);
   if (!title) throw new Error("Укажи название");
+
+  let shotsPlan =
+    (opts.shots?.length
+      ? buildLoraI2vShotsPlan(
+          opts.shots.map((s) => ({
+            ...s,
+            stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, opts.scrub),
+            i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, opts.scrub),
+          })),
+        )
+      : null) || parseLoraI2vShotsPlan(opts.shotsJson);
+
+  if (shotsPlan?.shots.length) {
+    shotsPlan = buildLoraI2vShotsPlan(
+      shotsPlan.shots.map((s) => ({
+        ...s,
+        stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, opts.scrub),
+        i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, opts.scrub),
+      })),
+    );
+  }
+
   const stillPrompt = scrubAuthorIdentityFromPrompt(
-    opts.stillPrompt,
+    shotsPlan?.shots[0]?.stillPrompt || opts.stillPrompt,
     opts.scrub,
   );
-  const i2vPrompt = scrubAuthorIdentityFromPrompt(opts.i2vPrompt, opts.scrub);
+  const i2vPrompt = scrubAuthorIdentityFromPrompt(
+    shotsPlan
+      ? shotsPlan.shots.map((s) => s.i2vPrompt).join("\n\n")
+      : opts.i2vPrompt,
+    opts.scrub,
+  );
   if (!stillPrompt) throw new Error("Нужен still-промпт (Krea)");
   if (!i2vPrompt) throw new Error("Нужен I2V-промпт (движение)");
 
@@ -204,6 +243,17 @@ export async function createLoraI2vTemplate(opts: {
           .filter(Boolean),
       );
 
+  const durationSec = clampLoraI2vDurationSec(
+    shotsPlan?.totalDurationSec || opts.durationSec || 6,
+  );
+  const negativePrompt = (
+    shotsPlan?.shots[0]?.negativePrompt ||
+    opts.negativePrompt ||
+    ""
+  )
+    .trim()
+    .slice(0, 2000);
+
   const row = await prisma.loraI2vTemplate.create({
     data: {
       userId: opts.userId,
@@ -211,13 +261,11 @@ export async function createLoraI2vTemplate(opts: {
       notes: (opts.notes || "").trim().slice(0, 500),
       stillPrompt,
       i2vPrompt,
-      negativePrompt: (opts.negativePrompt || "").trim().slice(0, 2000),
+      negativePrompt,
+      shotsJson: shotsPlan ? serializeLoraI2vShotsPlan(shotsPlan) : "",
       orientation: opts.orientation || "9_16",
-      durationSec: Math.min(12, Math.max(4, opts.durationSec || 6)),
-      pricePeaches: Math.max(
-        0,
-        opts.pricePeaches ?? premiumVideoPeaches(opts.durationSec || 6),
-      ),
+      durationSec,
+      pricePeaches: priceForLoraI2vTemplate(durationSec),
       sceneCategory,
       previewImageUrl: opts.previewImageUrl || "",
       previewVideoUrl: opts.previewVideoUrl || "",
@@ -242,6 +290,8 @@ export async function updateLoraI2vTemplate(
     stillPrompt: string;
     i2vPrompt: string;
     negativePrompt: string;
+    shotsJson: string;
+    shots: LoraI2vShotSpec[];
     orientation: string;
     durationSec: number;
     pricePeaches: number;
@@ -264,25 +314,66 @@ export async function updateLoraI2vTemplate(
   if (patch.notes !== undefined) data.notes = patch.notes.trim().slice(0, 500);
   if (patch.titleEn !== undefined) data.titleEn = patch.titleEn.trim().slice(0, 120);
   if (patch.notesEn !== undefined) data.notesEn = patch.notesEn.trim().slice(0, 500);
-  if (patch.stillPrompt !== undefined) {
-    data.stillPrompt = scrubAuthorIdentityFromPrompt(
-      patch.stillPrompt,
-      patch.scrub,
+
+  let shotsPlan =
+    (patch.shots?.length
+      ? buildLoraI2vShotsPlan(
+          patch.shots.map((s) => ({
+            ...s,
+            stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, patch.scrub),
+            i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, patch.scrub),
+          })),
+        )
+      : null) ||
+    (patch.shotsJson !== undefined
+      ? parseLoraI2vShotsPlan(patch.shotsJson)
+      : null);
+
+  if (shotsPlan?.shots.length) {
+    shotsPlan = buildLoraI2vShotsPlan(
+      shotsPlan.shots.map((s) => ({
+        ...s,
+        stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, patch.scrub),
+        i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, patch.scrub),
+      })),
     );
+    data.shotsJson = serializeLoraI2vShotsPlan(shotsPlan);
+    data.stillPrompt = shotsPlan.shots[0]!.stillPrompt;
+    data.i2vPrompt = shotsPlan.shots.map((s) => s.i2vPrompt).join("\n\n");
+    data.negativePrompt = (shotsPlan.shots[0]!.negativePrompt || "").slice(
+      0,
+      2000,
+    );
+    data.durationSec = shotsPlan.totalDurationSec;
+  } else {
+    if (patch.shotsJson !== undefined) data.shotsJson = patch.shotsJson;
+    if (patch.stillPrompt !== undefined) {
+      data.stillPrompt = scrubAuthorIdentityFromPrompt(
+        patch.stillPrompt,
+        patch.scrub,
+      );
+    }
+    if (patch.i2vPrompt !== undefined) {
+      data.i2vPrompt = scrubAuthorIdentityFromPrompt(
+        patch.i2vPrompt,
+        patch.scrub,
+      );
+    }
+    if (patch.negativePrompt !== undefined) {
+      data.negativePrompt = patch.negativePrompt.trim().slice(0, 2000);
+    }
+    if (patch.durationSec !== undefined) {
+      data.durationSec = clampLoraI2vDurationSec(patch.durationSec);
+    }
   }
-  if (patch.i2vPrompt !== undefined) {
-    data.i2vPrompt = scrubAuthorIdentityFromPrompt(patch.i2vPrompt, patch.scrub);
-  }
-  if (patch.negativePrompt !== undefined) {
-    data.negativePrompt = patch.negativePrompt.trim().slice(0, 2000);
-  }
+
   if (patch.orientation !== undefined) data.orientation = patch.orientation;
-  if (patch.durationSec !== undefined) {
-    data.durationSec = Math.min(12, Math.max(4, patch.durationSec));
-  }
-  if (patch.pricePeaches !== undefined) {
-    data.pricePeaches = Math.max(0, patch.pricePeaches);
-  }
+  // Always formula from /ops/prices — ignore manual pricePeaches from lab.
+  const nextDuration =
+    typeof data.durationSec === "number"
+      ? (data.durationSec as number)
+      : existing.durationSec;
+  data.pricePeaches = priceForLoraI2vTemplate(nextDuration);
   if (patch.sceneCategory !== undefined) {
     data.sceneCategory = formatPhotoSceneCategories(
       patch.sceneCategory.split(/[,|;]+/).map((s) => s.trim()).filter(Boolean),

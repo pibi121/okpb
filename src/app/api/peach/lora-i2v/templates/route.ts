@@ -19,11 +19,23 @@ export async function GET() {
 const createSchema = z.object({
   title: z.string().min(1).max(120),
   notes: z.string().max(500).optional(),
-  stillPrompt: z.string().min(1).max(8000),
-  i2vPrompt: z.string().min(1).max(8000),
+  stillPrompt: z.string().min(1).max(50000),
+  i2vPrompt: z.string().min(1).max(50000),
   negativePrompt: z.string().max(2000).optional(),
+  shotsJson: z.string().max(200000).optional(),
+  shots: z
+    .array(
+      z.object({
+        id: z.string().max(64).optional(),
+        stillPrompt: z.string().min(1).max(8000),
+        i2vPrompt: z.string().min(1).max(8000),
+        negativePrompt: z.string().max(2000).optional(),
+        durationSec: z.number().int().min(4).max(12).optional(),
+      }),
+    )
+    .optional(),
   orientation: z.string().max(16).optional(),
-  durationSec: z.number().int().min(4).max(12).optional(),
+  durationSec: z.number().int().min(4).max(3600).optional(),
   pricePeaches: z.number().int().min(0).max(99999).optional(),
   sceneCategory: z.union([z.string(), z.array(z.string())]).optional(),
   previewImageUrl: z.string().max(2000).optional(),
@@ -58,6 +70,14 @@ export async function POST(req: NextRequest) {
       stillPrompt: body.stillPrompt,
       i2vPrompt: body.i2vPrompt,
       negativePrompt: body.negativePrompt,
+      shotsJson: body.shotsJson,
+      shots: body.shots?.map((s) => ({
+        id: s.id || "",
+        stillPrompt: s.stillPrompt,
+        i2vPrompt: s.i2vPrompt,
+        negativePrompt: s.negativePrompt || "",
+        durationSec: s.durationSec || 6,
+      })),
       orientation: body.orientation,
       durationSec: body.durationSec,
       pricePeaches: body.pricePeaches,

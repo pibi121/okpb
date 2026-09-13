@@ -5,10 +5,10 @@ import {
   LEGO_PLUS_MENU,
   LEGO_VIDEO_EXTRAS,
   LEGO_VIDEO_PLUS_MENU,
-  LEGO_VIDEO_SECTIONED_KINDS,
   analyzeLegoTokens,
   formatLegoTab,
   groupCatalogBySection,
+  isLegoSectionedKind,
   kindBlockClass,
   kindLabelRu,
   parseLegoQuery,
@@ -121,7 +121,7 @@ export function PromptLegoEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
 
-  function insertBracketSnippet(bracket: string) {
+  function insertBracketSnippet(bracket: string, keepPicker = false) {
     const editor = editorRef.current;
     if (!editor || disabled) return;
     const tab = tabTokenFromBracket(bracket, liveCatalog);
@@ -132,12 +132,54 @@ export function PromptLegoEditor({
     const spacer = document.createTextNode("\u200B");
     insertNodeAtSelection(editor, chip, spacer);
     emitFromDom();
-    setPlusOpen(false);
-    setPickerKind(null);
+    if (!keepPicker) {
+      setPlusOpen(false);
+      setPickerKind(null);
+      setPickerSection(null);
+    }
   }
 
-  function insertTab(item: LegoCatalogItem) {
-    insertBracketSnippet(formatLegoTab(item.label));
+  function insertTab(item: LegoCatalogItem, keepPicker = false) {
+    insertBracketSnippet(formatLegoTab(item.label), keepPicker);
+  }
+
+  function removeChipByBracket(bracket: string) {
+    const editor = editorRef.current;
+    if (!editor || disabled) return;
+    const chips = editor.querySelectorAll<HTMLElement>("[data-lego-tab]");
+    for (const chip of chips) {
+      if (chip.dataset.legoTab === bracket) {
+        chip.remove();
+        break;
+      }
+    }
+    emitFromDom();
+  }
+
+  function isTabSelected(item: LegoCatalogItem) {
+    return preview.tabIds.includes(item.id);
+  }
+
+  function toggleTab(item: LegoCatalogItem) {
+    const bracket = formatLegoTab(item.label);
+    if (isTabSelected(item)) {
+      removeChipByBracket(bracket);
+      return;
+    }
+    insertTab(item, true);
+  }
+
+  function toggleSectionAll(items: LegoCatalogItem[]) {
+    const allOn = items.every((item) => isTabSelected(item));
+    if (allOn) {
+      for (const item of items) {
+        removeChipByBracket(formatLegoTab(item.label));
+      }
+      return;
+    }
+    for (const item of items) {
+      if (!isTabSelected(item)) insertTab(item, true);
+    }
   }
 
   function applyChipBracket(chip: HTMLElement, bracket: string) {
@@ -268,13 +310,21 @@ export function PromptLegoEditor({
     : [];
 
   const pickerGroups =
-    isVideo && pickerKind && LEGO_VIDEO_SECTIONED_KINDS.includes(pickerKind)
+    pickerKind && isLegoSectionedKind(pickerKind, variant)
       ? groupCatalogBySection(liveCatalog, pickerKind)
       : null;
 
   const activeSectionGroup = pickerSection
     ? pickerGroups?.find((g) => g.section === pickerSection)
     : null;
+
+  const isMultiSelectSection =
+    !isVideo && activeSectionGroup?.section === "old_camera";
+
+  const multiAllSelected =
+    !!isMultiSelectSection &&
+    !!activeSectionGroup &&
+    activeSectionGroup.items.every((item) => isTabSelected(item));
 
   function closePicker() {
     setPlusOpen(false);
@@ -364,8 +414,8 @@ export function PromptLegoEditor({
             <p className="px-2 py-1 text-[10px] uppercase text-zinc-500">
               {kindLabelRu(editKind)}
             </p>
-            {isVideo && pickerKind && LEGO_VIDEO_SECTIONED_KINDS.includes(pickerKind)
-              ? groupCatalogBySection(liveCatalog, pickerKind).map((group) => (
+            {editKind && isLegoSectionedKind(editKind, variant)
+              ? groupCatalogBySection(liveCatalog, editKind).map((group) => (
                   <div key={group.section}>
                     <p className="px-2 py-1 text-[10px] font-medium text-zinc-400">
                       {group.label}
@@ -470,37 +520,89 @@ export function PromptLegoEditor({
                   ← назад
                 </button>
                 {pickerGroups && !pickerSection
-                  ? pickerGroups.map((group) => (
-                      <button
-                        key={group.section}
-                        type="button"
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white/5"
-                        onClick={() => setPickerSection(group.section)}
-                      >
-                        <span>{group.label}</span>
-                        <span className="text-xs text-zinc-500">{group.items.length}</span>
-                      </button>
-                    ))
+                  ? pickerGroups.map((group) =>
+                      group.section === "other" ? (
+                        group.items.map((item) => (
+                          <button
+                            key={`${item.kind}:${item.id}`}
+                            type="button"
+                            className="block w-full px-3 py-2 text-left text-sm hover:bg-white/5"
+                            onClick={() => {
+                              insertTab(item);
+                              closePicker();
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))
+                      ) : (
+                        <button
+                          key={group.section}
+                          type="button"
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white/5"
+                          onClick={() => setPickerSection(group.section)}
+                        >
+                          <span>{group.label}</span>
+                          <span className="text-xs text-zinc-500">
+                            {group.items.length}
+                          </span>
+                        </button>
+                      ),
+                    )
                   : null}
-                {activeSectionGroup ? (
+                {activeSectionGroup && isMultiSelectSection ? (
+                  <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                      {activeSectionGroup.label}
+                    </p>
+                    <button
+                      type="button"
+                      className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-peach hover:bg-white/5"
+                      onClick={() => toggleSectionAll(activeSectionGroup.items)}
+                    >
+                      {multiAllSelected ? "Снять все" : "Все"}
+                    </button>
+                  </div>
+                ) : activeSectionGroup ? (
                   <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                     {activeSectionGroup.label}
                   </p>
                 ) : null}
                 {activeSectionGroup
-                  ? activeSectionGroup.items.map((item) => (
-                      <button
-                        key={`${item.kind}:${item.id}`}
-                        type="button"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-white/5"
-                        onClick={() => {
-                          insertTab(item);
-                          closePicker();
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    ))
+                  ? activeSectionGroup.items.map((item) => {
+                      const selected = isMultiSelectSection && isTabSelected(item);
+                      return (
+                        <button
+                          key={`${item.kind}:${item.id}`}
+                          type="button"
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                            selected ? "bg-peach/10 text-peach" : ""
+                          }`}
+                          onClick={() => {
+                            if (isMultiSelectSection) {
+                              toggleTab(item);
+                              return;
+                            }
+                            insertTab(item);
+                            closePicker();
+                          }}
+                        >
+                          {isMultiSelectSection ? (
+                            <span
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${
+                                selected
+                                  ? "border-peach bg-peach text-[#0c0c0e]"
+                                  : "border-white/25 text-transparent"
+                              }`}
+                              aria-hidden
+                            >
+                              ✓
+                            </span>
+                          ) : null}
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })
                   : null}
                 {!pickerGroups
                   ? pickerItems.map((item) => (

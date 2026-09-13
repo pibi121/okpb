@@ -106,6 +106,17 @@ export const LEGO_VIDEO_SECTIONED_KINDS: LegoKind[] = [
   "camera",
 ];
 
+/** Photo kinds with section → items (e.g. OLD CAMERA STYLE under stylization). */
+export const LEGO_PHOTO_SECTIONED_KINDS: LegoKind[] = ["stylization"];
+
+export function isLegoSectionedKind(
+  kind: LegoKind,
+  variant: "photo" | "video",
+): boolean {
+  if (variant === "video") return LEGO_VIDEO_SECTIONED_KINDS.includes(kind);
+  return LEGO_PHOTO_SECTIONED_KINDS.includes(kind);
+}
+
 /** Video-only custom tab (popup). */
 export const LEGO_VIDEO_EXTRAS: {
   kind: "location";

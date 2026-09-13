@@ -2,7 +2,15 @@
   "maxExtraLoras": 5,
   "notes": "Put .safetensors under ComfyUI/models/loras/ using the exact `file` paths below. #12 footjob Klein cancelled. Rename your downloads to match `file` or edit `file` here.",
   "mutexGroups": {
-    "realism": ["realism_snapshot", "realism_krea2", "realism_analog"],
+    "realism": [
+      "realism_snapshot",
+      "realism_krea2",
+      "realism_analog",
+      "old_camera_vhs",
+      "old_camera_snapshot",
+      "old_camera_lenovo",
+      "old_camera_nicegirls"
+    ],
     "pov_camera": ["her_pov", "bj_pov"],
     "penis_size": ["penis_size"],
     "ass_size": ["ass_size"],
@@ -451,6 +459,70 @@
         "tabIds": ["realism_analog"],
         "poseIds": [],
         "aliases": ["analog madness", "analog realistic"]
+      }
+    },
+    {
+      "id": "old_camera_analog_core",
+      "file": "krea2/vhs_krea2.safetensors",
+      "label": "VHS / 2000s Analog Core",
+      "civitai": "https://civitai.red/models/1134895/2000s-analog-core?modelVersionId=3103914",
+      "defaultStrength": 1.0,
+      "strengthClip": 1.0,
+      "triggers": [],
+      "promptBoost": "2000s analog camera core look, VHS snapshot",
+      "priority": 24,
+      "match": {
+        "tabIds": ["old_camera_vhs"],
+        "poseIds": [],
+        "aliases": ["2000s analog core", "analog core", "vhs krea2", "vhs / analog"]
+      }
+    },
+    {
+      "id": "old_camera_realistic_snapshot",
+      "file": "krea2/RealisticSnapshotKrea2.safetensors",
+      "label": "Realistic Snapshot Z",
+      "civitai": "https://civitai.red/models/2268008/realistic-snapshot-z-image-turbo-krea-2?modelVersionId=3084537",
+      "defaultStrength": 0.8,
+      "strengthClip": 0.8,
+      "triggers": [],
+      "promptBoost": "realistic snapshot photo",
+      "priority": 23,
+      "match": {
+        "tabIds": ["old_camera_snapshot"],
+        "poseIds": [],
+        "aliases": ["realistic snapshot z", "realistic snapshot"]
+      }
+    },
+    {
+      "id": "old_camera_lenovo_ultrareal",
+      "file": "krea2/lenovo_krea2.safetensors",
+      "label": "Lenovo Ultrareal",
+      "civitai": "https://civitai.red/models/1662740/lenovo-ultrareal?modelVersionId=3075606",
+      "defaultStrength": 1.0,
+      "strengthClip": 1.0,
+      "triggers": [],
+      "promptBoost": "ultrareal phone camera photo",
+      "priority": 22,
+      "match": {
+        "tabIds": ["old_camera_lenovo"],
+        "poseIds": [],
+        "aliases": ["lenovo ultrareal"]
+      }
+    },
+    {
+      "id": "old_camera_nicegirls_ultrareal",
+      "file": "krea2/nicegirls_krea2.safetensors",
+      "label": "NiceGirls Ultrareal",
+      "civitai": "https://civitai.red/models/1862761/nicegirls-ultrareal?modelVersionId=3075498",
+      "defaultStrength": 0.8,
+      "strengthClip": 0.8,
+      "triggers": [],
+      "promptBoost": "ultrareal candid girl snapshot",
+      "priority": 21,
+      "match": {
+        "tabIds": ["old_camera_nicegirls"],
+        "poseIds": [],
+        "aliases": ["nicegirls ultrareal", "nice girls ultrareal"]
       }
     }
   ]

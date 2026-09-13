@@ -212,6 +212,38 @@
       "enabled": false,
       "aliases": ["analog madness", "analog realistic"],
       "text": "analog film realistic photo"
+    },
+    {
+      "id": "old_camera_vhs",
+      "label": "VHS / Analog",
+      "section": "old_camera",
+      "sectionLabel": "OLD CAMERA STYLE",
+      "aliases": ["vhs", "vhs analog", "2000s analog core", "analog core"],
+      "text": "2000s analog camera core look, VHS snapshot, soft film grain"
+    },
+    {
+      "id": "old_camera_snapshot",
+      "label": "Realistic Snapshot",
+      "section": "old_camera",
+      "sectionLabel": "OLD CAMERA STYLE",
+      "aliases": ["realistic snapshot z", "old camera snapshot"],
+      "text": "realistic snapshot photo, candid phone-era look"
+    },
+    {
+      "id": "old_camera_lenovo",
+      "label": "Lenovo Ultrareal",
+      "section": "old_camera",
+      "sectionLabel": "OLD CAMERA STYLE",
+      "aliases": ["lenovo ultrareal", "old camera lenovo"],
+      "text": "ultrareal phone camera photo"
+    },
+    {
+      "id": "old_camera_nicegirls",
+      "label": "NiceGirls Ultrareal",
+      "section": "old_camera",
+      "sectionLabel": "OLD CAMERA STYLE",
+      "aliases": ["nicegirls ultrareal", "nice girls ultrareal", "old camera nicegirls"],
+      "text": "ultrareal candid girl snapshot"
     }
   ]
 }

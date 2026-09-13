@@ -237,7 +237,7 @@ export async function startTgLoraI2vGeneration(opts: {
   };
 }
 
-/** Re-queue a pending/error lora_i2v gallery item without charging again. */
+/** Resume pending/error lora_i2v gallery item without charging again. */
 export async function resumePendingLoraI2vGalleryItem(opts: {
   galleryItemId: string;
   userId: string;
@@ -245,6 +245,21 @@ export async function resumePendingLoraI2vGalleryItem(opts: {
   templateId: string;
   characterId: string;
 }) {
+  const active = await prisma.gpuJob.findFirst({
+    where: {
+      refType: "galleryItem",
+      refId: opts.galleryItemId,
+      status: { in: ["queued", "assigned", "running"] },
+    },
+    select: { id: true, status: true },
+  });
+  if (active) {
+    console.warn(
+      `[peach] skip resume lora_i2v ${opts.galleryItemId}: already ${active.status} (${active.id})`,
+    );
+    return { galleryItemId: opts.galleryItemId, skipped: true as const };
+  }
+
   const tpl = await prisma.loraI2vTemplate.findFirst({
     where: { id: opts.templateId, tgPublished: true },
   });
@@ -294,7 +309,7 @@ export async function resumePendingLoraI2vGalleryItem(opts: {
     character,
   });
 
-  return { galleryItemId: opts.galleryItemId };
+  return { galleryItemId: opts.galleryItemId, skipped: false as const };
 }
 
 /** Resume pending lora_i2v gallery items after process restart (no re-charge). */
@@ -413,6 +428,7 @@ function enqueueLoraI2vJob(opts: {
       const trigger = character.triggerWord!.trim();
       const orient = (tpl.orientation || "9_16") as "9_16" | "16_9" | "1_1";
       const size = kreaStillSize(orient);
+      const clipBuffers: Buffer[] = [];
       const clipPaths: string[] = [];
       const tmpCleanup: string[] = [];
       let lastWidth = size.width;
@@ -436,35 +452,58 @@ function enqueueLoraI2vJob(opts: {
                 ? applyFills(shot.i2vPrompt, slots, speechFills)
                 : shot.i2vPrompt;
 
-          const still = await generatePhotoBytes({
-            userId,
-            characterId: character.id,
-            characterIds: [character.id],
-            useCharacterLora: true,
-            usePreset: false,
-            composedPrompt: composed,
-            negativePrompt: shot.negativePrompt || tpl.negativePrompt || undefined,
-            title: `${title} · shot ${i + 1}`,
-            width: size.width,
-            height: size.height,
-          });
+          let still;
+          let clip;
+          let lastShotErr: unknown;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              still = await generatePhotoBytes({
+                userId,
+                characterId: character.id,
+                characterIds: [character.id],
+                useCharacterLora: true,
+                usePreset: false,
+                composedPrompt: composed,
+                negativePrompt:
+                  shot.negativePrompt || tpl.negativePrompt || undefined,
+                title: `${title} · shot ${i + 1}`,
+                width: size.width,
+                height: size.height,
+              });
+              clip = await runI2VFromStill({
+                stillBytes: still.bytes,
+                prompt: motion,
+                width: still.width,
+                height: still.height,
+                filenamePrefix: "peach/li2v",
+                durationSec: shot.durationSec || 6,
+                extraHints: [shot.stillPrompt, motion, still.prompt],
+              });
+              if (!clip.bytes?.length || clip.bytes.length < 100) {
+                throw new Error(
+                  `Шот ${i + 1}: видео не удалось создать — попробуй ещё раз`,
+                );
+              }
+              lastShotErr = null;
+              break;
+            } catch (e) {
+              lastShotErr = e;
+              console.warn(
+                `[peach] lora_i2v shot ${i + 1} attempt ${attempt + 1} failed:`,
+                e instanceof Error ? e.message.slice(0, 200) : e,
+              );
+              if (attempt === 1) break;
+              await new Promise((r) => setTimeout(r, 5000));
+            }
+          }
+          if (lastShotErr || !still || !clip) {
+            throw lastShotErr instanceof Error
+              ? lastShotErr
+              : new Error(`Шот ${i + 1} не удалось создать`);
+          }
+
           lastWidth = still.width;
           lastHeight = still.height;
-
-          const clip = await runI2VFromStill({
-            stillBytes: still.bytes,
-            prompt: motion,
-            width: still.width,
-            height: still.height,
-            filenamePrefix: "peach/li2v",
-            durationSec: shot.durationSec || 6,
-            extraHints: [shot.stillPrompt, motion, still.prompt],
-          });
-          if (!clip.bytes?.length || clip.bytes.length < 100) {
-            throw new Error(
-              `Шот ${i + 1}: видео не удалось создать — попробуй ещё раз`,
-            );
-          }
           engine = clip.engine || engine;
 
           if (shots.length === 1) {
@@ -495,6 +534,7 @@ function enqueueLoraI2vJob(opts: {
             return;
           }
 
+          clipBuffers.push(Buffer.from(clip.bytes));
           const { ffmpegStitchTempPath } = await import("@/lib/ffmpeg-stitch");
           const tmp = ffmpegStitchTempPath(`tg_li2v_${itemId}_s${i}`);
           fs.writeFileSync(tmp, clip.bytes);
@@ -502,26 +542,43 @@ function enqueueLoraI2vJob(opts: {
           tmpCleanup.push(tmp);
         }
 
-        const { stitchClipFilesWithFallback } = await import(
+        const { stitchClipBuffersWithFallback } = await import(
           "@/lib/stitch-fallback"
         );
-        const { ffmpegStitchTempPath } = await import("@/lib/ffmpeg-stitch");
-        const outPath = ffmpegStitchTempPath(`tg_li2v_${itemId}_final`);
-        tmpCleanup.push(outPath);
-        const stitched = await stitchClipFilesWithFallback({
-          clipPaths,
-          outPath,
-          tag: `tg_li2v_${itemId}`,
-          trimStartSec: 0,
-        });
-        const finalBytes = fs.readFileSync(outPath);
-        if (!finalBytes.length || finalBytes.length < 1000) {
-          throw new Error("Склейка шотов вернула пустой файл");
+        let stitched: {
+          bytes: Buffer;
+          width: number;
+          height: number;
+          engine: string;
+        } | null = null;
+        let stitchErr: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            stitched = await stitchClipBuffersWithFallback({
+              clips: clipBuffers,
+              tag: `tg_li2v_${itemId}`,
+              trimStartSec: 0,
+            });
+            stitchErr = null;
+            break;
+          } catch (e) {
+            stitchErr = e;
+            console.warn(
+              `[peach] lora_i2v stitch attempt ${attempt + 1}/3:`,
+              e instanceof Error ? e.message.slice(0, 240) : e,
+            );
+            await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+          }
+        }
+        if (!stitched?.bytes?.length) {
+          throw stitchErr instanceof Error
+            ? stitchErr
+            : new Error("Склейка шотов вернула пустой файл");
         }
         const saved = saveGalleryBinary(
           userId,
           "mp4",
-          finalBytes,
+          stitched.bytes,
           `tg_li2v_${itemId}`,
         );
         await prisma.galleryItem.update({

@@ -7,6 +7,7 @@ import {
   videoTemplatePricePeaches,
 } from "@/lib/tg/tg-catalog";
 import { listTgPublishedLoraI2vTemplates } from "@/lib/lora-i2v-template";
+import { priceForLoraI2vTemplate } from "@/lib/template-pricing";
 import { normalizeLocale, type TgLocale } from "@/lib/tg/i18n";
 import { seedPreviewForPhoto, seedPreviewForVideo } from "@/lib/tg/tg-catalog-seed";
 import { isSafeVideoTemplateThumb } from "@/lib/quick-video-preview-safe";
@@ -42,6 +43,10 @@ export async function GET(req: Request) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  void import("@/lib/ops/seed")
+    .then((m) => m.bootOps())
+    .catch(() => undefined);
 
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind") || "all";
@@ -109,7 +114,7 @@ export async function GET(req: Request) {
       );
       const full = await prisma.loraI2vTemplate.findFirst({
         where: { id: t.id },
-        select: { i2vPrompt: true, stillPrompt: true },
+        select: { i2vPrompt: true, stillPrompt: true, shotsJson: true },
       });
       const slotsRaw = extractSpeechSlots(
         full?.i2vPrompt || "",
@@ -120,7 +125,9 @@ export async function GET(req: Request) {
         id: t.id,
         title: t.title,
         notes: t.notes,
-        pricePeaches: t.pricePeaches,
+        pricePeaches: priceForLoraI2vTemplate(t.durationSec, {
+          shotsJson: full?.shotsJson || "",
+        }),
         durationSec: t.durationSec,
         previewVideoUrl: previewVideo,
         previewPhotoUrl: previewPhoto,

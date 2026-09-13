@@ -4,6 +4,11 @@ import { requireUser } from "@/lib/auth";
 import { labAccess } from "@/lib/ops/roles";
 import { resolveTgCatalogAssetUrl } from "@/lib/tg/catalog-asset-url";
 import { resolveVideoLocalPath } from "@/lib/quick-video-template-preview";
+import {
+  priceForLoraI2vTemplate,
+  priceForPhotoTemplateTier,
+  priceForQuickVideoTemplate,
+} from "@/lib/template-pricing";
 
 export const runtime = "nodejs";
 
@@ -36,6 +41,10 @@ export async function GET() {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  await import("@/lib/ops/seed")
+    .then((m) => m.bootOps())
+    .catch(() => undefined);
+
   const [photos, videos, loraI2v] = await Promise.all([
     prisma.photoTemplate.findMany({
       orderBy: [{ tgPublished: "desc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
@@ -45,7 +54,7 @@ export async function GET() {
         tgDisplayTitle: true,
         tgPublished: true,
         published: true,
-        pricePeaches: true,
+        tier: true,
         previewImageUrl: true,
         sceneImageUrl: true,
         sortOrder: true,
@@ -60,7 +69,7 @@ export async function GET() {
         tgDisplayTitle: true,
         tgPublished: true,
         published: true,
-        pricePeaches: true,
+        shotsJson: true,
         previewVideoUrl: true,
         previewPhotoUrl: true,
         durationSec: true,
@@ -76,10 +85,10 @@ export async function GET() {
         tgDisplayTitle: true,
         tgPublished: true,
         published: true,
-        pricePeaches: true,
         previewVideoUrl: true,
         previewImageUrl: true,
         durationSec: true,
+        shotsJson: true,
         tgSortOrder: true,
         updatedAt: true,
       },
@@ -99,7 +108,7 @@ export async function GET() {
           displayTitle: r.tgDisplayTitle || "",
           tgPublished: r.tgPublished,
           published: r.published,
-          pricePeaches: r.pricePeaches,
+          pricePeaches: priceForPhotoTemplateTier(r.tier),
           sortOrder: r.sortOrder,
           durationSec: 0,
           previewUrl,
@@ -118,7 +127,10 @@ export async function GET() {
           displayTitle: r.tgDisplayTitle || "",
           tgPublished: r.tgPublished,
           published: r.published,
-          pricePeaches: r.pricePeaches,
+          pricePeaches: priceForQuickVideoTemplate({
+            shotsJson: r.shotsJson,
+            durationSec: r.durationSec,
+          }),
           sortOrder: r.tgSortOrder,
           durationSec: r.durationSec,
           previewUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewPhotoUrl)),
@@ -137,7 +149,9 @@ export async function GET() {
           displayTitle: r.tgDisplayTitle || "",
           tgPublished: r.tgPublished,
           published: r.published,
-          pricePeaches: r.pricePeaches,
+          pricePeaches: priceForLoraI2vTemplate(r.durationSec, {
+            shotsJson: r.shotsJson || "",
+          }),
           sortOrder: r.tgSortOrder,
           durationSec: r.durationSec,
           previewUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewImageUrl)),

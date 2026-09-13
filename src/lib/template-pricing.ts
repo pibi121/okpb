@@ -3,6 +3,7 @@
  * Stored template.pricePeaches is display cache only; never overrides charge.
  */
 import { parseStoryH3Template } from "@/lib/story-h3-prompt";
+import { billableDurationSecForLoraI2v } from "@/lib/lora-i2v-shots";
 import {
   photoActressPeaches,
   photoLoraPeaches,
@@ -51,10 +52,14 @@ export function priceForQuickVideoTemplate(opts: {
   return Math.max(1, storyH3Peaches(durationSec));
 }
 
-/** LoRA→I2V / best templates — premium 🍑/sec × duration. */
-export function priceForLoraI2vTemplate(durationSec?: number | null): number {
-  return Math.max(
-    1,
-    premiumVideoPeaches(Math.max(4, Math.round(Number(durationSec) || 6))),
-  );
+/** LoRA→I2V / best templates — premium 🍑/sec × billable duration. */
+export function priceForLoraI2vTemplate(
+  durationSec?: number | null,
+  opts?: { shotsJson?: string | null },
+): number {
+  const billable = billableDurationSecForLoraI2v({
+    durationSec,
+    shotsJson: opts?.shotsJson,
+  });
+  return Math.max(1, premiumVideoPeaches(billable));
 }

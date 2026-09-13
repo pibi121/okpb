@@ -31,6 +31,7 @@ import {
   parseGenPageCallback,
   parseGenPickCallback,
   photoCastPickerKeyboard,
+  videoModelPickerKeyboard,
   resolvePickIndex,
   sendTemplatePicker,
   successInlineKeyboard,
@@ -86,6 +87,7 @@ import {
   tgAnswerCallbackQuery,
   tgDownloadFile,
   tgEditMessageCaption,
+  tgEditMessageReplyMarkup,
   tgEditMessageText,
   tgSendMessage,
   tgSendPhoto,
@@ -160,6 +162,10 @@ async function touchLastBotForAccount(platformUserId: string) {
     const { currentTgBot } = await import("@/lib/tg/bot-context");
     const botId = currentTgBot()?.botInstanceId;
     if (!botId || botId === "env-primary") return;
+    const { getBotInstanceStatus } = await import("@/lib/tg/bot-registry");
+    const status = await getBotInstanceStatus(botId);
+    // Never pin outbox/miniapp routing to a reserve bot.
+    if (status !== "active") return;
     await prisma.platformAccount.updateMany({
       where: { platform: "telegram", platformUserId },
       data: { lastBotInstanceId: botId },
@@ -167,6 +173,39 @@ async function touchLastBotForAccount(platformUserId: string) {
   } catch {
     /* ignore */
   }
+}
+
+/** Reserve bots: only /start notice, no other traffic. */
+async function handleStandbyBotGate(opts: {
+  chatId: number;
+  text?: string;
+  isCallback?: boolean;
+  callbackId?: string;
+}): Promise<boolean> {
+  const { currentTgBot } = await import("@/lib/tg/bot-context");
+  const botId = currentTgBot()?.botInstanceId;
+  if (!botId || botId === "env-primary") return false;
+  const { getBotInstanceStatus } = await import("@/lib/tg/bot-registry");
+  const status = await getBotInstanceStatus(botId);
+  if (status !== "standby") return false;
+
+  if (opts.isCallback && opts.callbackId) {
+    const { tgAnswerCallbackQuery } = await import("@/lib/tg/telegram-api");
+    await tgAnswerCallbackQuery(
+      opts.callbackId,
+      "Это резервный бот — пока без действий",
+    ).catch(() => undefined);
+    return true;
+  }
+
+  const text = (opts.text || "").trim();
+  if (text.startsWith("/start")) {
+    await tgSendMessage(opts.chatId, t("standby_bot_notice", "ru"), {
+      disable_web_page_preview: true,
+    });
+  }
+  // Any other message / media: silent ignore (no drips, no menus).
+  return true;
 }
 
 async function handleStart(chatId: number, from: TelegramBotUser, payload?: string) {
@@ -370,6 +409,7 @@ async function loadTemplateMeta(
   hasSpeech: boolean;
   pricePeaches: number;
   requiresLora: boolean;
+  notes: string;
   speechSlots: Array<{
     id: string;
     speaker: string;
@@ -392,6 +432,7 @@ async function loadTemplateMeta(
       hasSpeech: row.hasSpeech,
       pricePeaches: price,
       requiresLora: false,
+      notes: "",
       speechSlots: row.hasSpeech
         ? [
             {
@@ -414,7 +455,13 @@ async function loadTemplateMeta(
 
   const loraI2v = await prisma.loraI2vTemplate.findFirst({
     where: { id: templateId, tgPublished: true },
-    select: { title: true, tgDisplayTitle: true, pricePeaches: true },
+    select: {
+      title: true,
+      tgDisplayTitle: true,
+      pricePeaches: true,
+      notes: true,
+      notesEn: true,
+    },
   });
   if (loraI2v) {
     const price = await resolveTemplatePricePeaches({
@@ -427,6 +474,7 @@ async function loadTemplateMeta(
       hasSpeech: speech.hasSpeech,
       pricePeaches: price,
       requiresLora: true,
+      notes: (loraI2v.notes || "").trim(),
       speechSlots: slots,
     };
   }
@@ -438,10 +486,11 @@ async function loadTemplateMeta(
     userId,
   });
   return {
-    title: detail.title,
+    title: detail.tgDisplayTitle?.trim() || detail.title,
     hasSpeech: speech.hasSpeech,
     pricePeaches: price,
     requiresLora: false,
+    notes: (detail.notes || "").trim(),
     speechSlots: slots,
   };
 }
@@ -563,6 +612,7 @@ async function showTemplateConfirm(
   hasSpeech: boolean,
   speechSlots: TgPending["speechSlots"] = [],
   requiresLora = false,
+  notes = "",
 ) {
   if (kind === "video") {
     const pricing = await templatePriceLabel({
@@ -573,6 +623,13 @@ async function showTemplateConfirm(
       character: null,
     });
     const balance = await getBalancePeaches(userId);
+    const rawNotes = notes.trim();
+    const notesBlock = rawNotes
+      ? `\n⚠️ ${rawNotes
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}\n`
+      : "\n";
     const caption = tFormat(
       requiresLora ? "gen_confirm_video_best" : "gen_confirm_video_pose",
       locale,
@@ -580,6 +637,7 @@ async function showTemplateConfirm(
         title,
         price: pricing.label,
         balance: String(balance),
+        notes: notesBlock,
       },
     );
     const rows: Array<Array<{ text: string; callback_data: string }>> = [];
@@ -792,7 +850,12 @@ async function beginLoraVideoCastFlow(
   const models = await listPhotoConfirmModels(userId, locale);
   await setTgSession(platformUserId, {
     chatState: "idle",
-    pending: { ...pending, requiresLora: true },
+    pending: {
+      ...pending,
+      requiresLora: true,
+      videoCastMode: "lora",
+      castPage: 0,
+    },
   });
 
   if (!models.length) {
@@ -818,25 +881,14 @@ async function beginLoraVideoCastFlow(
     return;
   }
 
-  const rows: Array<
-    Array<
-      | { text: string; callback_data: string }
-      | { text: string; web_app: { url: string } }
-    >
-  > = models.map((m) => [
-    { text: `✨ ${m.name}`, callback_data: VID_CB.pickLora(m.id) },
-  ]);
-  rows.push([
-    {
-      text: t("video_lora_train_btn", locale),
-      web_app: { url: tgLoraTrainMiniAppUrl() },
-    },
-  ]);
-  rows.push([
-    { text: t("gen_other_poses_btn", locale), callback_data: GEN_CB.backTemplates },
-  ]);
+  const { keyboard } = videoModelPickerKeyboard(
+    models.map((m) => ({ id: m.id, name: m.name })),
+    0,
+    locale,
+    "lora",
+  );
   await tgSendMessage(chatId, t("video_lora_pick_title", locale), {
-    reply_markup: { inline_keyboard: rows },
+    reply_markup: { inline_keyboard: keyboard },
   });
 }
 
@@ -852,14 +904,19 @@ async function beginVideoUploadFlow(
   );
 
   if (refs.length) {
-    const rows: Array<Array<{ text: string; callback_data: string }>> = refs.map((r) => [
-      { text: `🎬 ${r.name}`, callback_data: VID_CB.pickRef(r.id) },
-    ]);
-    rows.push([{ text: t("video_ref_upload_new", locale), callback_data: VID_CB.uploadNew }]);
+    const { keyboard } = videoModelPickerKeyboard(
+      refs.map((r) => ({ id: r.id, name: r.name })),
+      0,
+      locale,
+      "ref",
+    );
     await tgSendMessage(chatId, t("video_pick_ref_title", locale), {
-      reply_markup: { inline_keyboard: rows },
+      reply_markup: { inline_keyboard: keyboard },
     });
-    await setTgSession(platformUserId, { chatState: "idle", pending });
+    await setTgSession(platformUserId, {
+      chatState: "idle",
+      pending: { ...pending, videoCastMode: "ref", castPage: 0 },
+    });
     return;
   }
 
@@ -1104,6 +1161,7 @@ async function handleWebAppData(
     meta.hasSpeech,
     meta.speechSlots,
     meta.requiresLora,
+    meta.notes,
   );
 }
 
@@ -1119,7 +1177,9 @@ async function handleGenerationCallback(
 ): Promise<boolean> {
   if (data === GEN_CB.kindPhoto || data === GEN_CB.kindVideo) {
     const kind = data === GEN_CB.kindPhoto ? "photo" : "video";
-    const { templates } = await sendTemplatePicker(chatId, userId, locale, kind, 0);
+    const { templates } = await sendTemplatePicker(chatId, userId, locale, kind, 0, {
+      reshuffle: true,
+    });
     await setTgSession(platformUserId, {
       clearPending: true,
       pending: {
@@ -1148,7 +1208,11 @@ async function handleGenerationCallback(
       locale,
       kind,
       page,
-      messageId ? { editMessageId: messageId } : undefined,
+      {
+        editMessageId: messageId,
+        templateIds: pending.templateIds,
+        reshuffle: false,
+      },
     );
     await setTgSession(platformUserId, {
       clearPending: true,
@@ -1194,6 +1258,7 @@ async function handleGenerationCallback(
       meta.hasSpeech,
       meta.speechSlots,
       meta.requiresLora,
+      meta.notes,
     );
     return true;
   }
@@ -1275,6 +1340,52 @@ async function handleGenerationCallback(
       await setActiveTgCharacter(platformUserId, pending.studioCastId);
     }
     await beginGeneration(chatId, platformUserId, userId, locale, pending);
+    return true;
+  }
+
+  if (data.startsWith("vid:lp:") || data.startsWith("vid:rp:")) {
+    const mode: "lora" | "ref" = data.startsWith("vid:lp:") ? "lora" : "ref";
+    const pageNum =
+      Number(
+        data.startsWith("vid:lp:")
+          ? data.slice("vid:lp:".length)
+          : data.slice("vid:rp:".length),
+      ) || 0;
+
+    const models =
+      mode === "lora"
+        ? (await listPhotoConfirmModels(userId, locale)).map((m) => ({
+            id: m.id,
+            name: m.name,
+          }))
+        : (await listVideoRefCharacters(userId))
+            .filter((c) => characterReadyForVideo(c.id))
+            .map((r) => ({ id: r.id, name: r.name }));
+
+    const { keyboard } = videoModelPickerKeyboard(models, pageNum, locale, mode);
+    if (messageId) {
+      try {
+        await tgEditMessageReplyMarkup(chatId, messageId, {
+          inline_keyboard: keyboard,
+        });
+      } catch {
+        await tgSendMessage(
+          chatId,
+          mode === "lora"
+            ? t("video_lora_pick_title", locale)
+            : t("video_pick_ref_title", locale),
+          { reply_markup: { inline_keyboard: keyboard } },
+        );
+      }
+    }
+    await setTgSession(platformUserId, {
+      pending: {
+        ...pending,
+        videoCastMode: mode,
+        castPage: pageNum,
+        requiresLora: mode === "lora" ? true : pending.requiresLora,
+      },
+    });
     return true;
   }
 
@@ -1365,13 +1476,14 @@ async function handleGenerationCallback(
       userId,
       locale,
       kind,
-      pending.templatePage || 0,
+      0,
+      { reshuffle: true },
     );
     await setTgSession(platformUserId, {
       clearPending: true,
       pending: {
         templateKind: kind,
-        templatePage: pending.templatePage || 0,
+        templatePage: 0,
         templateIds: templates.map((x) => x.id),
       },
     });
@@ -1385,6 +1497,7 @@ async function handleGenerationCallback(
       locale,
       "photo",
       0,
+      { reshuffle: true },
     );
     await setTgSession(platformUserId, {
       clearPending: true,
@@ -1404,6 +1517,7 @@ async function handleGenerationCallback(
       locale,
       "video",
       0,
+      { reshuffle: true },
     );
     await setTgSession(platformUserId, {
       clearPending: true,
@@ -1485,6 +1599,16 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   const chatId = cq.message?.chat.id;
   if (!chatId) {
     await tgAnswerCallbackQuery(cq.id);
+    return;
+  }
+
+  if (
+    await handleStandbyBotGate({
+      chatId,
+      isCallback: true,
+      callbackId: cq.id,
+    })
+  ) {
     return;
   }
 
@@ -1632,6 +1756,15 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   const platformUserId = String(chatId);
   const from = msg.from || { id: chatId };
   const text = msg.text?.trim() || "";
+
+  if (
+    await handleStandbyBotGate({
+      chatId,
+      text,
+    })
+  ) {
+    return;
+  }
 
   let user = await findOrCreateTelegramUserFromBot(from);
   let locale = localeFromUser(user.locale);
@@ -2007,6 +2140,18 @@ export async function flushTgOutbox() {
               },
             });
           }
+        }
+
+        if (row.userId) {
+          const { maybeSendBanBackupAfterGeneration } = await import(
+            "@/lib/tg/ban-backup-notice"
+          );
+          await maybeSendBanBackupAfterGeneration(
+            chatId,
+            row.userId,
+            locale,
+            token,
+          );
         }
       }
 

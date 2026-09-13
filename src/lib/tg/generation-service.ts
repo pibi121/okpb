@@ -112,11 +112,13 @@ export async function resolveTemplatePricePeaches(opts: {
 
   const loraI2v = await prisma.loraI2vTemplate.findFirst({
     where: { id: opts.templateId, tgPublished: true },
-    select: { durationSec: true },
+    select: { durationSec: true, shotsJson: true },
   });
   if (loraI2v) {
     const { priceForLoraI2vTemplate } = await import("@/lib/template-pricing");
-    return priceForLoraI2vTemplate(loraI2v.durationSec || 6);
+    return priceForLoraI2vTemplate(loraI2v.durationSec || 6, {
+      shotsJson: loraI2v.shotsJson || "",
+    });
   }
 
   const detail = await getQuickVideoTemplateDetail(opts.userId, opts.templateId);
@@ -176,7 +178,9 @@ export async function startTgLoraI2vGeneration(opts: {
   if (!user) throw new Error("user not found");
 
   const { priceForLoraI2vTemplate } = await import("@/lib/template-pricing");
-  let price = priceForLoraI2vTemplate(tpl.durationSec || 6);
+  let price = priceForLoraI2vTemplate(tpl.durationSec || 6, {
+    shotsJson: tpl.shotsJson || "",
+  });
   const discounted = applyFirstVideoDiscount(
     price,
     user.tgFirstVideoDiscountUsed,

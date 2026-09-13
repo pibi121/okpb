@@ -11,12 +11,13 @@ export const maxDuration = 900;
 
 function authorized(req: NextRequest) {
   if (process.env.BOOTSTRAP_ADMIN_ENABLED !== "1") return false;
-  const expected =
-    process.env.BOOTSTRAP_ADMIN_SECRET?.trim() ||
-    process.env.AUTH_SECRET?.trim() ||
-    "";
+  // BOOTSTRAP_ADMIN_SECRET must be set explicitly — never fall back to AUTH_SECRET
+  // because AUTH_SECRET is a session-signing key and reusing it as an admin backdoor
+  // would let anyone who knows the session secret bypass all access controls.
+  const expected = process.env.BOOTSTRAP_ADMIN_SECRET?.trim() || "";
+  if (!expected) return false;
   const got = req.headers.get("x-bootstrap-secret")?.trim() || "";
-  return Boolean(expected && got === expected);
+  return Boolean(got && got === expected);
 }
 
 function prodDbPath() {
@@ -289,6 +290,58 @@ export async function POST(req: NextRequest) {
     } catch {
       meta = {};
     }
+
+    // Re-queue animate/clip from stored stillId (survives process restart).
+    if (meta.jobAction === "clip" && typeof meta.stillId === "string" && meta.stillId) {
+      const { enqueueAnimateJob } = await import("@/lib/gallery-jobs");
+      const { prisma: db } = await import("@/lib/db");
+      await db.gpuJob.updateMany({
+        where: {
+          refType: "galleryItem",
+          refId: item.id,
+          status: { in: ["queued", "assigned", "running"] },
+        },
+        data: {
+          status: "error",
+          stage: "error",
+          error: "superseded by bootstrap retry_gallery_item",
+          finishedAt: new Date(),
+        },
+      });
+      await db.galleryItem.update({
+        where: { id: item.id },
+        data: {
+          metaJson: JSON.stringify({
+            ...meta,
+            status: "error",
+            error: "superseded — new clip enqueued",
+            retriedAt: new Date().toISOString(),
+          }),
+        },
+      });
+      const fresh = await enqueueAnimateJob(
+        item.userId,
+        meta.stillId,
+        item.prompt || "animate",
+        Boolean(meta.withMusic),
+        typeof meta.composedPrompt === "string" ? meta.composedPrompt : undefined,
+        typeof meta.durationSec === "number" ? meta.durationSec : undefined,
+        {
+          templatePackId:
+            typeof meta.templatePackId === "string" ? meta.templatePackId : undefined,
+          templateFrameId:
+            typeof meta.templateFrameId === "string" ? meta.templateFrameId : undefined,
+        },
+      );
+      return NextResponse.json({
+        ok: true,
+        action: "retry_gallery_item",
+        galleryItemId: item.id,
+        newGalleryItemId: fresh.id,
+        note: "re-enqueued animate/clip from stillId",
+      });
+    }
+
     await prisma.galleryItem.update({
       where: { id: item.id },
       data: {
@@ -948,6 +1001,182 @@ export async function POST(req: NextRequest) {
         sourceVideoId: r.sourceVideoId,
         exists: Boolean(resolveVideoLocalPath(r.previewVideoUrl)),
       })),
+    });
+  }
+
+  if (action === "set_menu_button") {
+    const text = String(body.text || "Студия").trim().slice(0, 16) || "Студия";
+    const { tgSetChatMenuButtonStudio } = await import("@/lib/tg/telegram-api");
+    await tgSetChatMenuButtonStudio({ text });
+    return NextResponse.json({ ok: true, action: "set_menu_button", text });
+  }
+
+  if (action === "lora_i2v_waive_last_shot") {
+    const templateId = String(body.templateId || "").trim();
+    if (!templateId) {
+      return NextResponse.json({ error: "templateId required" }, { status: 400 });
+    }
+    const row = await prisma.loraI2vTemplate.findFirst({ where: { id: templateId } });
+    if (!row) {
+      return NextResponse.json({ error: "template not found" }, { status: 404 });
+    }
+    const { parseLoraI2vShotsPlan, buildLoraI2vShotsPlan, serializeLoraI2vShotsPlan } =
+      await import("@/lib/lora-i2v-shots");
+    const { priceForLoraI2vTemplate } = await import("@/lib/template-pricing");
+    const plan = parseLoraI2vShotsPlan(row.shotsJson);
+    if (!plan || plan.shots.length < 2) {
+      return NextResponse.json(
+        { error: "need multi-shot recipe with 2+ shots", shots: plan?.shots.length || 0 },
+        { status: 400 },
+      );
+    }
+    const nextPlan = buildLoraI2vShotsPlan(plan.shots, {
+      billingWaiveLastShot: true,
+    });
+    const notesRu =
+      typeof body.notes === "string" && body.notes.trim()
+        ? body.notes.trim().slice(0, 1000)
+        : "Внимание! Третий кадр из примера видео не всегда получается стабильно, дорабатываем его, чтобы был стабильный хороший результат. За него деньги не взымаются.";
+    const notesEn =
+      typeof body.notesEn === "string" && body.notesEn.trim()
+        ? body.notesEn.trim().slice(0, 1000)
+        : "Note: the third frame from the sample video is not always stable yet — we're improving it. You are not charged for that frame.";
+    const shotsJson = serializeLoraI2vShotsPlan(nextPlan);
+    const pricePeaches = priceForLoraI2vTemplate(row.durationSec, { shotsJson });
+    const updated = await prisma.loraI2vTemplate.update({
+      where: { id: templateId },
+      data: {
+        shotsJson,
+        notes: notesRu,
+        notesEn,
+        pricePeaches,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "lora_i2v_waive_last_shot",
+      id: updated.id,
+      title: updated.title,
+      durationSec: updated.durationSec,
+      billableShots: nextPlan.shots.length - 1,
+      waivedShotDurationSec: nextPlan.shots[nextPlan.shots.length - 1]!.durationSec,
+      priceWas: row.pricePeaches,
+      priceNow: updated.pricePeaches,
+      notes: updated.notes,
+    });
+  }
+
+  if (action === "sync_template_prices") {
+    await import("@/lib/ops/seed").then((m) => m.bootOps()).catch(() => undefined);
+    const {
+      priceForPhotoTemplateTier,
+      priceForQuickVideoTemplate,
+      priceForLoraI2vTemplate,
+    } = await import("@/lib/template-pricing");
+    const { getOpsPrices } = await import("@/lib/ops/prices");
+    const rates = getOpsPrices();
+
+    const photos = await prisma.photoTemplate.findMany({
+      select: { id: true, tier: true, pricePeaches: true },
+    });
+    let photoUpdated = 0;
+    for (const p of photos) {
+      const next = priceForPhotoTemplateTier(p.tier);
+      if (p.pricePeaches !== next) {
+        await prisma.photoTemplate.update({
+          where: { id: p.id },
+          data: { pricePeaches: next },
+        });
+        photoUpdated += 1;
+      }
+    }
+
+    const videos = await prisma.quickVideoTemplate.findMany({
+      select: {
+        id: true,
+        shotsJson: true,
+        durationSec: true,
+        pricePeaches: true,
+        priceCredits: true,
+      },
+    });
+    let videoUpdated = 0;
+    for (const v of videos) {
+      const next = priceForQuickVideoTemplate({
+        shotsJson: v.shotsJson,
+        durationSec: v.durationSec,
+      });
+      if (v.pricePeaches !== next || v.priceCredits !== 0) {
+        await prisma.quickVideoTemplate.update({
+          where: { id: v.id },
+          data: { pricePeaches: next, priceCredits: 0 },
+        });
+        videoUpdated += 1;
+      }
+    }
+
+    const loras = await prisma.loraI2vTemplate.findMany({
+      select: { id: true, durationSec: true, pricePeaches: true, shotsJson: true },
+    });
+    let loraUpdated = 0;
+    for (const l of loras) {
+      const next = priceForLoraI2vTemplate(l.durationSec, {
+        shotsJson: l.shotsJson || "",
+      });
+      if (l.pricePeaches !== next) {
+        await prisma.loraI2vTemplate.update({
+          where: { id: l.id },
+          data: { pricePeaches: next },
+        });
+        loraUpdated += 1;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      action: "sync_template_prices",
+      rates: {
+        photo_actress: rates.photo_actress,
+        photo_lora: rates.photo_lora,
+        video_sec_animate: rates.video_sec_animate,
+        video_sec_story: rates.video_sec_story,
+        video_sec_premium: rates.video_sec_premium,
+        video_min_sec: rates.video_min_sec,
+      },
+      updated: {
+        photo: photoUpdated,
+        video: videoUpdated,
+        lora_i2v: loraUpdated,
+      },
+      totals: {
+        photo: photos.length,
+        video: videos.length,
+        lora_i2v: loras.length,
+      },
+      samples: {
+        photo: photos.slice(0, 3).map((p) => ({
+          id: p.id,
+          was: p.pricePeaches,
+          now: priceForPhotoTemplateTier(p.tier),
+        })),
+        video: videos.slice(0, 5).map((v) => ({
+          id: v.id,
+          was: v.pricePeaches,
+          now: priceForQuickVideoTemplate({
+            shotsJson: v.shotsJson,
+            durationSec: v.durationSec,
+          }),
+          durationSec: v.durationSec,
+        })),
+        lora_i2v: loras.slice(0, 5).map((l) => ({
+          id: l.id,
+          was: l.pricePeaches,
+          now: priceForLoraI2vTemplate(l.durationSec, {
+            shotsJson: l.shotsJson || "",
+          }),
+          durationSec: l.durationSec,
+        })),
+      },
     });
   }
 

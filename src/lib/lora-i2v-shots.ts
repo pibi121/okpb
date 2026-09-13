@@ -13,6 +13,11 @@ export type LoraI2vShotsPlan = {
   __li2vShots: 1;
   totalDurationSec: number;
   shots: LoraI2vShotSpec[];
+  /**
+   * If true, last shot still generates, but its duration is excluded from 🍑 price
+   * (unstable freebie / WIP shot).
+   */
+  billingWaiveLastShot?: boolean;
 };
 
 export function clampLoraI2vDurationSec(n: number | null | undefined) {
@@ -41,6 +46,7 @@ export function emptyLoraI2vShot(
 
 export function buildLoraI2vShotsPlan(
   shots: LoraI2vShotSpec[],
+  opts?: { billingWaiveLastShot?: boolean },
 ): LoraI2vShotsPlan {
   const cleaned = shots
     .map((s) => ({
@@ -59,7 +65,23 @@ export function buildLoraI2vShotsPlan(
     __li2vShots: 1,
     totalDurationSec: clampLoraI2vDurationSec(totalDurationSec || 6),
     shots: cleaned,
+    ...(opts?.billingWaiveLastShot ? { billingWaiveLastShot: true } : {}),
   };
+}
+
+/** Duration used for 🍑 charge (may omit last shot if waived). */
+export function billableDurationSecForLoraI2v(opts: {
+  durationSec?: number | null;
+  shotsJson?: string | null;
+}): number {
+  const plan = parseLoraI2vShotsPlan(opts.shotsJson);
+  const full = clampLoraI2vDurationSec(
+    plan?.totalDurationSec || opts.durationSec || 6,
+  );
+  if (!plan?.billingWaiveLastShot || plan.shots.length < 2) return full;
+  const last = plan.shots[plan.shots.length - 1]!;
+  const waived = Math.max(0, full - last.durationSec);
+  return clampLoraI2vDurationSec(waived || full);
 }
 
 export function serializeLoraI2vShotsPlan(plan: LoraI2vShotsPlan): string {
@@ -88,7 +110,9 @@ export function parseLoraI2vShotsPlan(
       )
       .filter((s) => s.stillPrompt.trim() && s.i2vPrompt.trim());
     if (!shots.length) return null;
-    return buildLoraI2vShotsPlan(shots);
+    return buildLoraI2vShotsPlan(shots, {
+      billingWaiveLastShot: Boolean(data.billingWaiveLastShot),
+    });
   } catch {
     return null;
   }

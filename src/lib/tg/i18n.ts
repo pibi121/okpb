@@ -426,13 +426,13 @@ Pick an actress below, then tap Generate.`,
 
 Стоимость генерации: {price}
 У вас на балансе: <b>{balance}</b>🍑
-
+{notes}
 Дальше загрузи фото модели (или выбери сохранённую 🎬) — подготовка модели не нужна.`,
     en: `Selected pose: <b>{title}</b>
 
 Generation cost: {price}
 Your balance: <b>{balance}</b>🍑
-
+{notes}
 Next upload model photos (or pick a saved 🎬) — no model setup needed.`,
   },
 
@@ -442,14 +442,14 @@ Next upload model photos (or pick a saved 🎬) — no model setup needed.`,
 Поза: <b>{title}</b>
 Стоимость генерации: {price}
 У вас на балансе: <b>{balance}</b>🍑
-
+{notes}
 Этот формат работает <b>только с обученной моделью</b> (твоя или актриса студии). Обычное фото «с телефона» здесь не подойдёт — лицо держится за счёт подготовки.`,
     en: `✨ <b>Max quality</b>
 
 Pose: <b>{title}</b>
 Generation cost: {price}
 Your balance: <b>{balance}</b>🍑
-
+{notes}
 This format works <b>only with a trained model</b> (yours or a studio actress). A plain phone selfie isn't enough — identity comes from setup.`,
   },
 
@@ -598,6 +598,40 @@ When ready — tap «Done, start».`,
   gen_again_video_btn: { ru: "Сгенерировать видео", en: "Generate video" },
   gen_to_hub_btn: { ru: "В главное меню", en: "Main menu" },
 
+  /** Anti-ban backup links — after first hub + gens 1/3/6/9. */
+  /** Reserve / standby bot — only /start reply until cutover. */
+  standby_bot_notice: {
+    ru: `<b>Этот бот является резервным.</b>
+
+Если вдруг основной заблокируют, то включится этот и подтянется вся информация и возможности студии из старого бота.
+
+Просто держите этот бот включённым на всякий случай, чтобы не потерять.
+
+До переезда на него бот не будет присылать никаких сообщений.`,
+    en: `<b>This is a backup bot.</b>
+
+If the main bot gets blocked, this one will take over with all your studio data and features.
+
+Just keep this bot enabled so you don't lose access.
+
+Until cutover, it won't send any messages.`,
+  },
+
+  ban_backup_notice: {
+    ru: `❗️ <b>БОТ МОГУТ ЗАБЛОКИРОВАТЬ</b> ❗️
+
+Чтобы не потерять, сохрани себе:
+
+📎 Сайт, где всегда актуальная рабочая ссылка 👉 http://pichbitch.live/
+💦 Наш чат 👉 https://t.me/+6aVo5HU0Yrc4NjYy`,
+    en: `❗️ <b>THE BOT MAY GET BLOCKED</b> ❗️
+
+Save these so you don't lose us:
+
+📎 Always-updated working link 👉 http://pichbitch.live/
+💦 Our chat 👉 https://t.me/+6aVo5HU0Yrc4NjYy`,
+  },
+
   gen_insufficient: {
     ru: `Эх, PeachBitch такой битч, что без персиков не работает 😢
 
@@ -616,19 +650,21 @@ Tap below to top up 👇`,
   topup_prompt: {
     ru: `<b>Сколько персиков хочешь приобрести?</b>
 
-🍑 1 персик = 1 рубль ({usdt}$ по актуальному курсу)
+🍑 1 персик = 1 рубль
+Минимум — <b>100 🍑</b> (≈ {usdt} USDT по курсу)
 
 Выбери по кнопке или введи число в чате 👇`,
     en: `<b>How many peaches do you want?</b>
 
-🍑 1 peach = 1 RUB ({usdt}$ at current rate)
+🍑 1 peach = 1 RUB
+Minimum — <b>100 🍑</b> (≈ {usdt} USDT at current rate)
 
 Pick a button or type a number 👇`,
   },
 
   topup_min_error: {
-    ru: "Минимальная сумма для пополнения — 100 🍑 ({usdt}$). Введи число от 100.",
-    en: "Minimum top-up is 100 🍑 ({usdt}$). Enter 100 or more.",
+    ru: "Минимальная сумма для пополнения — 100 🍑 (≈ {usdt} USDT). Введи число от 100.",
+    en: "Minimum top-up is 100 🍑 (≈ {usdt} USDT). Enter 100 or more.",
   },
 
   topup_btn: { ru: "Пополнить баланс 💳", en: "Top up balance 💳" },
@@ -660,8 +696,8 @@ Your balance: {balance}🍑
   },
 
   hub_open_studio_btn: {
-    ru: "Открыть студию PeachBitch",
-    en: "Open PeachBitch studio",
+    ru: "Студия",
+    en: "Studio",
   },
 
   hub_guide_btn: {

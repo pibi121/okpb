@@ -81,7 +81,9 @@ function mapRow(r: {
     shotsJson: r.shotsJson || "",
     orientation: r.orientation,
     durationSec: r.durationSec,
-    pricePeaches: priceForLoraI2vTemplate(r.durationSec || 6),
+    pricePeaches: priceForLoraI2vTemplate(r.durationSec || 6, {
+      shotsJson: r.shotsJson || "",
+    }),
     published: r.published,
     tgPublished: r.tgPublished,
     tgDisplayTitle: r.tgDisplayTitle,
@@ -152,7 +154,9 @@ export async function listTgPublishedLoraI2vTemplates(locale: "ru" | "en" = "ru"
       id: r.id,
       title,
       notes,
-      pricePeaches: priceForLoraI2vTemplate(r.durationSec || 6),
+      pricePeaches: priceForLoraI2vTemplate(r.durationSec || 6, {
+        shotsJson: r.shotsJson || "",
+      }),
       previewImageUrl: r.previewImageUrl,
       previewVideoUrl: r.previewVideoUrl,
       durationSec: r.durationSec,
@@ -208,6 +212,11 @@ export async function createLoraI2vTemplate(opts: {
             stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, opts.scrub),
             i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, opts.scrub),
           })),
+          {
+            billingWaiveLastShot: Boolean(
+              parseLoraI2vShotsPlan(opts.shotsJson)?.billingWaiveLastShot,
+            ),
+          },
         )
       : null) || parseLoraI2vShotsPlan(opts.shotsJson);
 
@@ -218,6 +227,7 @@ export async function createLoraI2vTemplate(opts: {
         stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, opts.scrub),
         i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, opts.scrub),
       })),
+      { billingWaiveLastShot: Boolean(shotsPlan.billingWaiveLastShot) },
     );
   }
 
@@ -258,14 +268,16 @@ export async function createLoraI2vTemplate(opts: {
     data: {
       userId: opts.userId,
       title,
-      notes: (opts.notes || "").trim().slice(0, 500),
+      notes: (opts.notes || "").trim().slice(0, 1000),
       stillPrompt,
       i2vPrompt,
       negativePrompt,
       shotsJson: shotsPlan ? serializeLoraI2vShotsPlan(shotsPlan) : "",
       orientation: opts.orientation || "9_16",
       durationSec,
-      pricePeaches: priceForLoraI2vTemplate(durationSec),
+      pricePeaches: priceForLoraI2vTemplate(durationSec, {
+        shotsJson: shotsPlan ? serializeLoraI2vShotsPlan(shotsPlan) : "",
+      }),
       sceneCategory,
       previewImageUrl: opts.previewImageUrl || "",
       previewVideoUrl: opts.previewVideoUrl || "",
@@ -311,7 +323,7 @@ export async function updateLoraI2vTemplate(
 
   const data: Record<string, unknown> = {};
   if (patch.title !== undefined) data.title = patch.title.trim().slice(0, 120);
-  if (patch.notes !== undefined) data.notes = patch.notes.trim().slice(0, 500);
+  if (patch.notes !== undefined) data.notes = patch.notes.trim().slice(0, 1000);
   if (patch.titleEn !== undefined) data.titleEn = patch.titleEn.trim().slice(0, 120);
   if (patch.notesEn !== undefined) data.notesEn = patch.notesEn.trim().slice(0, 500);
 
@@ -323,6 +335,12 @@ export async function updateLoraI2vTemplate(
             stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, patch.scrub),
             i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, patch.scrub),
           })),
+          {
+            billingWaiveLastShot: Boolean(
+              parseLoraI2vShotsPlan(patch.shotsJson ?? existing.shotsJson)
+                ?.billingWaiveLastShot,
+            ),
+          },
         )
       : null) ||
     (patch.shotsJson !== undefined
@@ -330,12 +348,16 @@ export async function updateLoraI2vTemplate(
       : null);
 
   if (shotsPlan?.shots.length) {
+    const waive =
+      shotsPlan.billingWaiveLastShot ??
+      parseLoraI2vShotsPlan(existing.shotsJson)?.billingWaiveLastShot;
     shotsPlan = buildLoraI2vShotsPlan(
       shotsPlan.shots.map((s) => ({
         ...s,
         stillPrompt: scrubAuthorIdentityFromPrompt(s.stillPrompt, patch.scrub),
         i2vPrompt: scrubAuthorIdentityFromPrompt(s.i2vPrompt, patch.scrub),
       })),
+      { billingWaiveLastShot: Boolean(waive) },
     );
     data.shotsJson = serializeLoraI2vShotsPlan(shotsPlan);
     data.stillPrompt = shotsPlan.shots[0]!.stillPrompt;
@@ -373,7 +395,13 @@ export async function updateLoraI2vTemplate(
     typeof data.durationSec === "number"
       ? (data.durationSec as number)
       : existing.durationSec;
-  data.pricePeaches = priceForLoraI2vTemplate(nextDuration);
+  const nextShotsJson =
+    typeof data.shotsJson === "string"
+      ? (data.shotsJson as string)
+      : existing.shotsJson;
+  data.pricePeaches = priceForLoraI2vTemplate(nextDuration, {
+    shotsJson: nextShotsJson,
+  });
   if (patch.sceneCategory !== undefined) {
     data.sceneCategory = formatPhotoSceneCategories(
       patch.sceneCategory.split(/[,|;]+/).map((s) => s.trim()).filter(Boolean),

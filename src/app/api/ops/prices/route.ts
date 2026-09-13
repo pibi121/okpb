@@ -23,6 +23,57 @@ export async function POST(req: Request) {
     const json = JSON.stringify(next);
     await saveOpsSettings({ pricesJson: json });
     setPriceOverlay(json);
+    // Keep template.pricePeaches cache in sync with the formula.
+    try {
+      const {
+        priceForPhotoTemplateTier,
+        priceForQuickVideoTemplate,
+        priceForLoraI2vTemplate,
+      } = await import("@/lib/template-pricing");
+      const { prisma } = await import("@/lib/db");
+      const photos = await prisma.photoTemplate.findMany({
+        select: { id: true, tier: true },
+      });
+      for (const p of photos) {
+        await prisma.photoTemplate.update({
+          where: { id: p.id },
+          data: { pricePeaches: priceForPhotoTemplateTier(p.tier) },
+        });
+      }
+      const videos = await prisma.quickVideoTemplate.findMany({
+        select: { id: true, shotsJson: true, durationSec: true },
+      });
+      for (const v of videos) {
+        await prisma.quickVideoTemplate.update({
+          where: { id: v.id },
+          data: {
+            pricePeaches: priceForQuickVideoTemplate({
+              shotsJson: v.shotsJson,
+              durationSec: v.durationSec,
+            }),
+            priceCredits: 0,
+          },
+        });
+      }
+      const loras = await prisma.loraI2vTemplate.findMany({
+        select: { id: true, durationSec: true, shotsJson: true },
+      });
+      for (const l of loras) {
+        await prisma.loraI2vTemplate.update({
+          where: { id: l.id },
+          data: {
+            pricePeaches: priceForLoraI2vTemplate(l.durationSec, {
+              shotsJson: l.shotsJson || "",
+            }),
+          },
+        });
+      }
+    } catch (e) {
+      console.warn(
+        "[ops] template price sync failed:",
+        e instanceof Error ? e.message : e,
+      );
+    }
     await writeAudit({
       actorId: actor.id,
       action: "prices",

@@ -287,10 +287,10 @@ export function useTgMiniApp() {
   }, []);
 
   useEffect(() => {
-    rememberShellWallet(profile?.balancePeaches, () =>
-      sendAction({ action: "topup" }),
-    );
-  }, [profile?.balancePeaches, sendAction]);
+    rememberShellWallet(profile?.balancePeaches, () => {
+      window.location.assign("/tg/topup");
+    });
+  }, [profile?.balancePeaches]);
 
   const trackEvent = useCallback(
     (eventKey: string, meta?: Record<string, unknown>) => {

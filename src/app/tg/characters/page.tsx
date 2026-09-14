@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   Suspense,
@@ -852,7 +852,7 @@ function TgCharactersPageInner() {
                 type="button"
                 className="tg-primary-btn"
                 style={{ width: "100%", marginBottom: "0.55rem" }}
-                onClick={() => sendAction({ action: "topup" })}
+                onClick={() => window.location.assign("/tg/topup")}
               >
                 {u.topup}
               </button>
@@ -868,7 +868,7 @@ function TgCharactersPageInner() {
                   <button
                     type="button"
                     className="tg-lang"
-                    onClick={() => sendAction({ action: "topup" })}
+                    onClick={() => window.location.assign("/tg/topup")}
                   >
                     {u.topup}
                   </button>

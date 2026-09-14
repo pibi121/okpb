@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -247,7 +247,7 @@ function PhotoPageInner() {
               cost={selected.pricePeaches}
               balance={profile?.balancePeaches ?? 0}
               locale={locale}
-              onTopup={() => sendAction({ action: "topup" })}
+              onTopup={() => window.location.assign("/tg/topup")}
             />
             <h2 style={{ fontSize: "1rem", margin: "0.75rem 0 0.35rem" }}>
               {u.pickChar}
@@ -261,7 +261,7 @@ function PhotoPageInner() {
                   type="button"
                   className="tg-primary-btn"
                   style={{ width: "100%", marginTop: "0.35rem" }}
-                  onClick={() => sendAction({ action: "topup" })}
+                  onClick={() => window.location.assign("/tg/topup")}
                 >
                   {u.topup}
                 </button>

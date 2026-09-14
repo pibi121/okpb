@@ -52,7 +52,7 @@ export default function TgProfilePage() {
           <h2>{u.cabinet}</h2>
           <div className="tg-settings-row">
             <span>🍑 {profile?.balancePeaches ?? 0}</span>
-            <button type="button" onClick={() => sendAction({ action: "topup" })}>
+            <button type="button" onClick={() => router.push("/tg/topup")}>
               {u.topup}
             </button>
           </div>

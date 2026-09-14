@@ -653,13 +653,15 @@ Tap below to top up 👇`,
 🍑 1 персик = 1 рубль
 Минимум — <b>100 🍑</b> (≈ {usdt} USDT по курсу)
 
-Выбери по кнопке или введи число в чате 👇`,
+Выбери по кнопке или введи число в чате 👇
+Дальше покажем сумму в ₽ ($) и способы: СБП / карта / крипта.`,
     en: `<b>How many peaches do you want?</b>
 
 🍑 1 peach = 1 RUB
 Minimum — <b>100 🍑</b> (≈ {usdt} USDT at current rate)
 
-Pick a button or type a number 👇`,
+Pick a button or type a number 👇
+Next: amount in ₽ ($) and SBP / card / crypto.`,
   },
 
   topup_min_error: {
@@ -672,6 +674,45 @@ Pick a button or type a number 👇`,
   topup_stub: {
     ru: "Оплата скоро будет подключена. Выбрано: {n} 🍑",
     en: "Payments coming soon. Selected: {n} 🍑",
+  },
+
+  topup_choose_method: {
+    ru: `Сумма: <b>{price}</b>
+
+Выбери способ оплаты:`,
+    en: `Amount: <b>{price}</b>
+
+Choose a payment method:`,
+  },
+
+  topup_payments_offline: {
+    ru: `Сумма: <b>{price}</b>
+
+Платёжный шлюз ещё не подключён на сервере. Напиши в поддержку — или попробуй позже.`,
+    en: `Amount: <b>{price}</b>
+
+Payment gateway is not configured yet. Contact support — or try later.`,
+  },
+
+  topup_pay_link: {
+    ru: `К оплате: <b>{price}</b>
+Способ: <b>{method}</b>
+
+Нажми кнопку ниже — откроется форма Cashera. После оплаты персики зачислятся автоматически.`,
+    en: `To pay: <b>{price}</b>
+Method: <b>{method}</b>
+
+Tap below to open the Cashera form. Peaches credit automatically after payment.`,
+  },
+
+  topup_pay_error: {
+    ru: "Не удалось создать платёж: {msg}",
+    en: "Could not create payment: {msg}",
+  },
+
+  topup_paid: {
+    ru: "✅ Оплата получена!\n\nЗачислено: <b>{n}</b> 🍑\nБаланс: <b>{balance}</b> 🍑",
+    en: "✅ Payment received!\n\nCredited: <b>{n}</b> 🍑\nBalance: <b>{balance}</b> 🍑",
   },
 
   hub_main: {

@@ -71,6 +71,7 @@ model User {
   scenarios         Scenario[]
   renderJobs        RenderJob[]
   ledger            LedgerEntry[]
+  paymentOrders     PaymentOrder[]
   galleryItems      GalleryItem[]
   peachPresets      PeachPreset[]
   testSessions      TestSession[]
@@ -252,6 +253,35 @@ model LedgerEntry {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+
+/// Cashera top-up orders (SBP / card / crypto).
+model PaymentOrder {
+  id              String   @id @default(cuid())
+  /// Our idempotent external_id for Cashera
+  externalId      String   @unique
+  userId          String
+  peaches         Int
+  /// Amount in minor units (kopecks for RUB)
+  amountMinor     Int
+  currency        String   @default("RUB")
+  /// sbp | card | crypto
+  paymentMethod   String
+  status          String   @default("pending")
+  casheraUuid     String   @default("")
+  paymentUrl      String   @default("")
+  paidAt          DateTime?
+  creditedAt      DateTime?
+  rawStatusJson   String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([casheraUuid])
 }
 
 model GpuVault {

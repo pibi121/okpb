@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -223,7 +223,7 @@ export default function TgGalleryPage() {
                 type="button"
                 className="tg-lang"
                 style={{ marginTop: "0.35rem" }}
-                onClick={() => sendAction({ action: "topup" })}
+                onClick={() => window.location.assign("/tg/topup")}
               >
                 {u.topup}
               </button>

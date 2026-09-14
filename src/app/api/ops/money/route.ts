@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import { writeAudit } from "@/lib/ops/audit";
+import { z } from "zod";
 
 export async function GET() {
   return withOps("money", async () => {
@@ -45,8 +46,13 @@ export async function GET() {
       })),
       vaultRub: vault?.balanceRub || 0,
       stubTopups,
-      paymentsLive: false,
-      note: "Живые оплаты ещё не подключены. Персики из заглушки — не выручка. Расходы вносите руками.",
+      paymentsLive: Boolean(
+        process.env.CASHERA_API_KEY?.trim() &&
+          process.env.CASHERA_API_SECRET?.trim(),
+      ),
+      note: process.env.CASHERA_API_KEY?.trim()
+        ? "Cashera подключён: SBP / карта / крипта. Партнёрка 50% с topup."
+        : "Живые оплаты: задайте CASHERA_API_KEY и CASHERA_API_SECRET. Stub-персики — не выручка.",
     });
   });
 }
@@ -56,21 +62,23 @@ export async function POST(req: Request) {
     if (actor.adminRole === "partner") {
       return jsonErr("Партнёру доступен только просмотр", 403);
     }
-    const body = (await req.json()) as {
-      title?: string;
-      amountRub?: number;
-      category?: string;
-      note?: string;
-    };
-    const title = (body.title || "").trim();
-    const amountRub = Math.floor(Number(body.amountRub) || 0);
-    if (!title || amountRub === 0) return jsonErr("Нужны название и сумма в рублях");
+    const bodySchema = z.object({
+      title: z.string().min(1).max(200),
+      amountRub: z.number().int().min(1).max(10_000_000),
+      category: z.string().max(40).optional(),
+      note: z.string().max(500).optional(),
+    });
+    const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return jsonErr("Нужны корректные название и сумма в рублях");
+    }
+    const { title, amountRub, category, note } = parsed.data;
     const row = await prisma.opsExpense.create({
       data: {
         title,
         amountRub,
-        category: (body.category || "other").slice(0, 40),
-        note: (body.note || "").slice(0, 500),
+        category: category || "other",
+        note: note || "",
       },
     });
     await writeAudit({

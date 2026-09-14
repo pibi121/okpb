@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -405,7 +405,7 @@ function VideoPageInner() {
             cost={tpl.pricePeaches}
             balance={profile?.balancePeaches ?? 0}
             locale={locale}
-            onTopup={() => sendAction({ action: "topup" })}
+            onTopup={() => window.location.assign("/tg/topup")}
           />
 
           {isLoraI2v ? (
@@ -620,7 +620,7 @@ function VideoPageInner() {
                   type="button"
                   className="tg-primary-btn"
                   style={{ width: "100%", marginTop: "0.4rem" }}
-                  onClick={() => sendAction({ action: "topup" })}
+                  onClick={() => window.location.assign("/tg/topup")}
                 >
                   {u.topup}
                 </button>

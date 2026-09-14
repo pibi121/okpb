@@ -7,6 +7,8 @@ import { isStudioCastCharacter, characterUsesLoraPhoto } from "@/lib/tg/studio-c
 import {
   canUseStudioDailyFree,
 } from "@/lib/tg/tg-promo";
+import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
+import { shuffleInPlace } from "@/lib/tg/feed-order";
 
 export const GEN_CB = {
   kindPhoto: "g:k:p",
@@ -59,6 +61,10 @@ export function parseGenPageCallback(data: string): {
 export const VID_CB = {
   pickRef: (id: string) => `vid:ref:${id}`,
   pickLora: (id: string) => `vid:lora:${id}`,
+  /** Paginate LoRA model list after video pose confirm */
+  loraPage: (page: number) => `vid:lp:${page}`,
+  /** Paginate saved video-ref list */
+  refPage: (page: number) => `vid:rp:${page}`,
   trainLora: "vid:train",
   uploadNew: "vid:new",
   photosDone: "vid:done",
@@ -78,11 +84,19 @@ export const OB_CB = {
 
 export const TOPUP_CB = {
   amount: (n: number) => `tu:${n}`,
+  method: (m: string) => `tu:pay:${m}`,
 } as const;
 
-const PAGE_SIZE = 6;
+/** One row of pose buttons; Telegram is narrow — keep labels short. */
+const TEMPLATE_COLS = 7;
+const PAGE_SIZE = 7;
+/** Short label for 7-across grid */
+const TEMPLATE_LABEL_MAX = 12;
 /** Studio casts on photo confirm: 2 columns × 3 rows */
 export const CAST_PAGE_SIZE = 6;
+/** Video model / ref lists after pose confirm */
+export const VIDEO_CAST_PAGE_SIZE = 6;
+const VIDEO_CAST_COLS = 2;
 
 export type BotTemplateRow = {
   id: string;
@@ -132,7 +146,35 @@ export async function listBotInlineTemplates(
   return picked.length ? picked : mapped;
 }
 
-import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
+/** Order catalog by session ids; append any new catalog items at the end. */
+export function orderTemplatesByIds(
+  templates: BotTemplateRow[],
+  ids: string[] | null | undefined,
+): BotTemplateRow[] {
+  if (!ids?.length) return templates;
+  const byId = new Map(templates.map((t) => [t.id, t]));
+  const out: BotTemplateRow[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    const hit = byId.get(id);
+    if (hit) {
+      out.push(hit);
+      seen.add(id);
+    }
+  }
+  for (const t of templates) {
+    if (!seen.has(t.id)) out.push(t);
+  }
+  return out;
+}
+
+function templateButtonLabel(row: BotTemplateRow): string {
+  const base = row.title.trim() || row.id.slice(0, 8);
+  if (row.requiresLora) {
+    return `✨ ${base}`.slice(0, TEMPLATE_LABEL_MAX);
+  }
+  return base.slice(0, TEMPLATE_LABEL_MAX);
+}
 
 function miniAppUrl(): string {
   return tgMiniAppUrl();
@@ -155,33 +197,23 @@ export function templatePickerKeyboard(
       web_app?: { url: string };
     }>
   > = [];
-  for (let i = 0; i < slice.length; i += 2) {
+  for (let i = 0; i < slice.length; i += TEMPLATE_COLS) {
     const row: Array<{
       text: string;
       callback_data?: string;
       web_app?: { url: string };
     }> = [];
-    const a = slice[i]!;
-    const aLabel = a.requiresLora
-      ? `✨ ${a.title}`.slice(0, 40)
-      : a.title.slice(0, 40);
-    row.push({
-      text: aLabel,
-      callback_data: GEN_CB.pick(kind, safePage * PAGE_SIZE + i),
-    });
-    const b = slice[i + 1];
-    if (b) {
-      const bLabel = b.requiresLora
-        ? `✨ ${b.title}`.slice(0, 40)
-        : b.title.slice(0, 40);
+    for (let j = 0; j < TEMPLATE_COLS && i + j < slice.length; j++) {
+      const item = slice[i + j]!;
       row.push({
-        text: bLabel,
-        callback_data: GEN_CB.pick(kind, safePage * PAGE_SIZE + i + 1),
+        text: templateButtonLabel(item),
+        callback_data: GEN_CB.pick(kind, safePage * PAGE_SIZE + i + j),
       });
     }
     rows.push(row);
   }
 
+  // Arrow row always below the pose grid (when more than one page).
   if (totalPages > 1) {
     const nav: Array<{ text: string; callback_data: string }> = [];
     if (safePage > 0)
@@ -272,15 +304,96 @@ export function photoCastPickerKeyboard(
   return { keyboard: rows, page: safePage, totalPages };
 }
 
+/** After video pose confirm: LoRA models or saved refs, paginated like photo cast. */
+export function videoModelPickerKeyboard(
+  models: BotCastRow[],
+  page: number,
+  locale: TgLocale,
+  mode: "lora" | "ref",
+) {
+  const totalPages = Math.max(1, Math.ceil(models.length / VIDEO_CAST_PAGE_SIZE));
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const slice = models.slice(
+    safePage * VIDEO_CAST_PAGE_SIZE,
+    safePage * VIDEO_CAST_PAGE_SIZE + VIDEO_CAST_PAGE_SIZE,
+  );
+
+  type Btn =
+    | { text: string; callback_data: string }
+    | { text: string; web_app: { url: string } };
+  const rows: Array<Array<Btn>> = [];
+
+  for (let i = 0; i < slice.length; i += VIDEO_CAST_COLS) {
+    const row: Array<Btn> = [];
+    for (let j = 0; j < VIDEO_CAST_COLS && i + j < slice.length; j++) {
+      const m = slice[i + j]!;
+      const prefix = mode === "lora" ? "✨ " : "🎬 ";
+      row.push({
+        text: `${prefix}${m.name}`.slice(0, 32),
+        callback_data:
+          mode === "lora" ? VID_CB.pickLora(m.id) : VID_CB.pickRef(m.id),
+      });
+    }
+    rows.push(row);
+  }
+
+  if (totalPages > 1) {
+    const nav: Array<{ text: string; callback_data: string }> = [];
+    if (safePage > 0) {
+      nav.push({
+        text: t("gen_page_prev", locale),
+        callback_data:
+          mode === "lora"
+            ? VID_CB.loraPage(safePage - 1)
+            : VID_CB.refPage(safePage - 1),
+      });
+    }
+    if (safePage < totalPages - 1) {
+      nav.push({
+        text: t("gen_page_next", locale),
+        callback_data:
+          mode === "lora"
+            ? VID_CB.loraPage(safePage + 1)
+            : VID_CB.refPage(safePage + 1),
+      });
+    }
+    if (nav.length) rows.push(nav);
+  }
+
+  if (mode === "lora") {
+    rows.push([
+      {
+        text: t("video_lora_train_btn", locale),
+        web_app: { url: tgLoraTrainMiniAppUrl() },
+      },
+    ]);
+    rows.push([
+      { text: t("gen_other_poses_btn", locale), callback_data: GEN_CB.backTemplates },
+    ]);
+  } else {
+    rows.push([
+      { text: t("video_ref_upload_new", locale), callback_data: VID_CB.uploadNew },
+    ]);
+  }
+
+  return { keyboard: rows, page: safePage, totalPages };
+}
+
 export async function sendTemplatePicker(
   chatId: number,
   userId: string,
   locale: TgLocale,
   kind: "photo" | "video",
   page = 0,
-  opts?: { editMessageId?: number },
+  opts?: {
+    editMessageId?: number;
+    /** Keep this order while paging (no reshuffle). */
+    templateIds?: string[];
+    /** Fresh shuffle when opening the list (default true if no templateIds). */
+    reshuffle?: boolean;
+  },
 ) {
-  const templates = await listBotInlineTemplates(userId, kind, locale);
+  let templates = await listBotInlineTemplates(userId, kind, locale);
   if (!templates.length) {
     const emptyMarkup = {
       reply_markup: {
@@ -299,6 +412,15 @@ export async function sendTemplatePicker(
     }
     await tgSendMessage(chatId, t("templates_empty", locale), emptyMarkup);
     return { templates: [], page: 0 };
+  }
+
+  const shouldShuffle =
+    opts?.reshuffle === true ||
+    (opts?.reshuffle !== false && !opts?.templateIds?.length);
+  if (shouldShuffle) {
+    templates = shuffleInPlace([...templates]);
+  } else if (opts?.templateIds?.length) {
+    templates = orderTemplatesByIds(templates, opts.templateIds);
   }
 
   const { keyboard, page: safePage } = templatePickerKeyboard(
@@ -386,17 +508,11 @@ export async function templatePriceLabel(opts: {
   }
 
   if (opts.kind === "photo" && opts.character && !opts.character.id) {
-    const { photoActressPeaches, photoLoraPeaches } = await import(
-      "@/lib/tg-pricing"
-    );
-    const { getPhotoTemplate } = await import("@/lib/photo-template");
-    const row = await getPhotoTemplate(opts.templateId);
-    if (!row || !(row.pricePeaches > 0)) {
-      if (isStudioCastCharacter(opts.character)) {
-        basePrice = Math.max(1, photoActressPeaches());
-      } else if (characterUsesLoraPhoto(opts.character)) {
-        basePrice = Math.max(1, photoLoraPeaches());
-      }
+    const { priceForPhotoCharacter } = await import("@/lib/template-pricing");
+    if (isStudioCastCharacter(opts.character)) {
+      basePrice = priceForPhotoCharacter({ isStudioCast: true });
+    } else if (characterUsesLoraPhoto(opts.character)) {
+      basePrice = priceForPhotoCharacter({ isStudioCast: false });
     }
   }
 

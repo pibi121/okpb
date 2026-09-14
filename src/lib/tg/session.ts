@@ -12,6 +12,7 @@ export type TgChatState =
   | "awaiting_character_name"
   | "awaiting_character_rename"
   | "awaiting_topup_amount"
+  | "awaiting_topup_method"
   | "awaiting_lookbook_custom"
   | "awaiting_video_ref_name";
 
@@ -53,8 +54,12 @@ export type TgPending = {
   uploadProgressMessageId?: number;
   /** Studio cast id when generating photo from mini app */
   studioCastId?: string;
+  /** Pending peach amount while choosing SBP/card/crypto */
+  topupPeaches?: number;
   /** Cast picker page on photo confirm */
   castPage?: number;
+  /** Video model/ref picker mode after pose confirm */
+  videoCastMode?: "lora" | "ref";
   /** Message id of photo confirm (for inline edit) */
   confirmMessageId?: number;
   /** Confirm message is photo/video (edit caption) vs text */

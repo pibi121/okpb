@@ -93,6 +93,7 @@ import {
 } from "@/lib/tg/telegram-api";
 import {
   handleTopupAmount,
+  handleTopupMethod,
   sendInsufficientBalance,
   sendTopupPrompt,
 } from "@/lib/tg/topup-flow";
@@ -1606,6 +1607,26 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     return;
   }
 
+  if (data.startsWith("tu:pay:")) {
+    await tgAnswerCallbackQuery(cq.id);
+    const method = data.slice("tu:pay:".length) as "sbp" | "card" | "crypto";
+    if (!["sbp", "card", "crypto"].includes(method)) return;
+    const peaches = Number(pending.topupPeaches || 0);
+    if (peaches <= 0) {
+      await sendTopupPrompt(chatId, locale);
+      return;
+    }
+    await handleTopupMethod(
+      chatId,
+      platformUserId,
+      locale,
+      method,
+      user.id,
+      peaches,
+    );
+    return;
+  }
+
   if (data.startsWith("tu:") && data !== "tu:open") {
     await tgAnswerCallbackQuery(cq.id);
     const n = Number(data.slice(3));
@@ -1767,7 +1788,11 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     return;
   }
 
-  if (chatState === "awaiting_topup_amount" && text) {
+  if (
+    (chatState === "awaiting_topup_amount" ||
+      chatState === "awaiting_topup_method") &&
+    text
+  ) {
     const n = Number(text.replace(/\s/g, ""));
     if (Number.isFinite(n)) {
       await handleTopupAmount(chatId, platformUserId, locale, Math.round(n), user.id);

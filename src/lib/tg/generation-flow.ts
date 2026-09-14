@@ -87,11 +87,11 @@ export const TOPUP_CB = {
   method: (m: string) => `tu:pay:${m}`,
 } as const;
 
-/** One row of pose buttons; Telegram is narrow — keep labels short. */
-const TEMPLATE_COLS = 7;
-const PAGE_SIZE = 7;
-/** Short label for 7-across grid */
-const TEMPLATE_LABEL_MAX = 12;
+/** Template picker: 2 columns × 3 rows, then ◀️ ▶️ on their own row. */
+const TEMPLATE_COLS = 2;
+const PAGE_SIZE = 6;
+/** Longer labels fit when only 2 buttons per row. */
+const TEMPLATE_LABEL_MAX = 28;
 /** Studio casts on photo confirm: 2 columns × 3 rows */
 export const CAST_PAGE_SIZE = 6;
 /** Video model / ref lists after pose confirm */

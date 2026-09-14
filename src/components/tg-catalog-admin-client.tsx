@@ -22,6 +22,28 @@ type Item = {
   updatedAt: string;
 };
 
+type PromptShot = {
+  id?: string;
+  stillPrompt?: string;
+  i2vPrompt?: string;
+  legoQuery?: string;
+  durationSec?: number;
+};
+
+type PromptPayload = {
+  ok?: boolean;
+  kind: Kind;
+  id: string;
+  title: string;
+  mode: "photo" | "single" | "multi" | "story" | "shots" | "raw";
+  editPrompt?: string;
+  stillPrompt?: string;
+  i2vPrompt?: string;
+  prompt?: string;
+  shots?: PromptShot[];
+  error?: string;
+};
+
 const KIND_LABEL: Record<Kind, string> = {
   photo: "Фото",
   video: "Видео",
@@ -43,9 +65,10 @@ export function TgCatalogAdminClient() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [filter, setFilter] = useState<"all" | Kind | "broken">("broken");
+  const [filter, setFilter] = useState<"all" | Kind | "broken">("all");
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [editItem, setEditItem] = useState<Item | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,7 +117,7 @@ export function TgCatalogAdminClient() {
 
   const patch = async (
     item: Item,
-    body: { displayTitle?: string; title?: string; tgPublished?: boolean },
+    body: Record<string, unknown>,
   ) => {
     setBusyId(`${item.kind}:${item.id}`);
     setErr("");
@@ -110,11 +133,13 @@ export function TgCatalogAdminClient() {
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         setErr(j.error || "Не удалось сохранить");
-        return;
+        return false;
       }
       await load();
+      return true;
     } catch {
       setErr("Сеть");
+      return false;
     } finally {
       setBusyId("");
     }
@@ -125,12 +150,13 @@ export function TgCatalogAdminClient() {
       <div>
         <h1 className="text-xl font-semibold text-zinc-100">TG каталог</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Скрыть / переименовать шаблоны. Для битых превью: сгенерируй ролик в
-          лабе → «Перенести в TG» или пришли ссылку на mp4.
+          Скрыть / переименовать /{" "}
+          <span className="text-zinc-300">редактировать промпты</span>. После
+          «Сохранить» шаблон сразу обновляется для бота и Mini App.
         </p>
         {brokenCount > 0 ? (
           <p className="mt-2 text-sm text-amber-300/90">
-            Нужно превью: {brokenCount} шт. (фильтр уже открыт)
+            Нужно превью: {brokenCount} шт.
           </p>
         ) : null}
       </div>
@@ -138,8 +164,8 @@ export function TgCatalogAdminClient() {
       <div className="flex flex-wrap items-center gap-2">
         {(
           [
-            ["broken", `Нет превью${brokenCount ? ` (${brokenCount})` : ""}`],
             ["all", "Все"],
+            ["broken", `Нет превью${brokenCount ? ` (${brokenCount})` : ""}`],
             ["photo", KIND_LABEL.photo],
             ["video", KIND_LABEL.video],
             ["lora_i2v", KIND_LABEL.lora_i2v],
@@ -193,10 +219,23 @@ export function TgCatalogAdminClient() {
               onRename={(title, displayTitle) =>
                 void patch(it, { title, displayTitle })
               }
+              onEditPrompt={() => setEditItem(it)}
             />
           );
         })}
       </div>
+
+      {editItem ? (
+        <PromptEditModal
+          item={editItem}
+          onClose={() => setEditItem(null)}
+          onSave={async (body) => {
+            const ok = await patch(editItem, body);
+            if (ok) setEditItem(null);
+            return ok;
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -207,12 +246,14 @@ function CatalogRow({
   onHide,
   onShow,
   onRename,
+  onEditPrompt,
 }: {
   item: Item;
   busy: boolean;
   onHide: () => void;
   onShow: () => void;
   onRename: (title: string, displayTitle: string) => void;
+  onEditPrompt: () => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [displayTitle, setDisplayTitle] = useState(item.displayTitle);
@@ -302,12 +343,20 @@ function CatalogRow({
         </div>
         <p className="truncate font-mono text-[10px] text-zinc-600">{item.id}</p>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-lg bg-peach/90 px-3 py-1.5 text-xs font-medium text-zinc-950 disabled:opacity-40"
+            onClick={onEditPrompt}
+          >
+            Редактировать промпт
+          </button>
           {item.kind !== "photo" ? (
             <Link
               href={labHref}
-              className="rounded-lg bg-peach/90 px-3 py-1.5 text-xs font-medium text-zinc-950"
+              className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300"
             >
-              Сделать видео →
+              Открыть в лабе →
             </Link>
           ) : null}
           <button
@@ -345,5 +394,254 @@ function CatalogRow({
         </div>
       </div>
     </article>
+  );
+}
+
+function PromptEditModal({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: Item;
+  onClose: () => void;
+  onSave: (body: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [payload, setPayload] = useState<PromptPayload | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [stillPrompt, setStillPrompt] = useState("");
+  const [i2vPrompt, setI2vPrompt] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [shots, setShots] = useState<PromptShot[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr("");
+      try {
+        const res = await fetch(
+          `/api/peach/tg-catalog-admin/${item.kind}/${encodeURIComponent(item.id)}`,
+        );
+        const data = (await res.json()) as PromptPayload;
+        if (!res.ok) {
+          if (!cancelled) setErr(data.error || "Не удалось загрузить промпт");
+          return;
+        }
+        if (cancelled) return;
+        setPayload(data);
+        setEditPrompt(data.editPrompt || "");
+        setStillPrompt(data.stillPrompt || "");
+        setI2vPrompt(data.i2vPrompt || "");
+        setPrompt(data.prompt || "");
+        setShots(data.shots || []);
+      } catch {
+        if (!cancelled) setErr("Сеть");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, item.kind]);
+
+  const save = async () => {
+    if (!payload) return;
+    setSaving(true);
+    setErr("");
+    try {
+      let body: Record<string, unknown> = {};
+      if (payload.mode === "photo") {
+        body = { editPrompt };
+      } else if (payload.kind === "lora_i2v" && payload.mode === "multi") {
+        body = { shots };
+      } else if (payload.kind === "lora_i2v") {
+        body = { stillPrompt, i2vPrompt };
+      } else if (payload.mode === "shots") {
+        body = { shots };
+      } else {
+        body = { prompt };
+      }
+      const ok = await onSave(body);
+      if (!ok) setErr("Не удалось сохранить");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose();
+      }}
+    >
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-[#121214] shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-medium text-zinc-100">
+              Промпт · {KIND_LABEL[item.kind]}
+            </h2>
+            <p className="truncate text-xs text-zinc-500">{item.title}</p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg px-2 py-1 text-sm text-zinc-400 hover:bg-white/5"
+            onClick={onClose}
+            disabled={saving}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          {loading ? (
+            <p className="text-sm text-zinc-500">Загрузка промпта…</p>
+          ) : null}
+          {err ? <p className="text-sm text-red-400">{err}</p> : null}
+
+          {!loading && payload?.mode === "photo" ? (
+            <label className="block text-xs text-zinc-400">
+              Промпт фото (edit)
+              <textarea
+                className="mt-1 min-h-[220px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed text-zinc-100"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+              />
+            </label>
+          ) : null}
+
+          {!loading &&
+          payload?.kind === "lora_i2v" &&
+          payload.mode !== "multi" ? (
+            <div className="space-y-3">
+              <label className="block text-xs text-zinc-400">
+                Still (картинка)
+                <textarea
+                  className="mt-1 min-h-[120px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed text-zinc-100"
+                  value={stillPrompt}
+                  onChange={(e) => setStillPrompt(e.target.value)}
+                />
+              </label>
+              <label className="block text-xs text-zinc-400">
+                I2V (движение)
+                <textarea
+                  className="mt-1 min-h-[120px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed text-zinc-100"
+                  value={i2vPrompt}
+                  onChange={(e) => setI2vPrompt(e.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {!loading &&
+          payload?.kind === "lora_i2v" &&
+          payload.mode === "multi" ? (
+            <div className="space-y-4">
+              {shots.map((shot, idx) => (
+                <div
+                  key={shot.id || idx}
+                  className="space-y-2 rounded-xl border border-zinc-800 p-3"
+                >
+                  <div className="text-xs font-medium text-peach">
+                    Шот {idx + 1}
+                    {shot.durationSec ? (
+                      <span className="ml-2 font-normal text-zinc-500">
+                        ~{shot.durationSec}с
+                      </span>
+                    ) : null}
+                  </div>
+                  <label className="block text-[11px] text-zinc-500">
+                    Still
+                    <textarea
+                      className="mt-1 min-h-[90px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs text-zinc-100"
+                      value={shot.stillPrompt || ""}
+                      onChange={(e) => {
+                        const next = [...shots];
+                        next[idx] = { ...shot, stillPrompt: e.target.value };
+                        setShots(next);
+                      }}
+                    />
+                  </label>
+                  <label className="block text-[11px] text-zinc-500">
+                    I2V
+                    <textarea
+                      className="mt-1 min-h-[90px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs text-zinc-100"
+                      value={shot.i2vPrompt || ""}
+                      onChange={(e) => {
+                        const next = [...shots];
+                        next[idx] = { ...shot, i2vPrompt: e.target.value };
+                        setShots(next);
+                      }}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {!loading && payload?.mode === "shots" ? (
+            <div className="space-y-4">
+              {shots.map((shot, idx) => (
+                <label
+                  key={shot.id || idx}
+                  className="block space-y-1 rounded-xl border border-zinc-800 p-3 text-xs text-zinc-400"
+                >
+                  Шот {idx + 1}
+                  {shot.durationSec ? (
+                    <span className="ml-2 text-zinc-500">~{shot.durationSec}с</span>
+                  ) : null}
+                  <textarea
+                    className="mt-1 min-h-[110px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs text-zinc-100"
+                    value={shot.legoQuery || ""}
+                    onChange={(e) => {
+                      const next = [...shots];
+                      next[idx] = { ...shot, legoQuery: e.target.value };
+                      setShots(next);
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          ) : null}
+
+          {!loading &&
+          (payload?.mode === "story" || payload?.mode === "raw") ? (
+            <label className="block text-xs text-zinc-400">
+              {payload.mode === "story" ? "Story / H3 промпт" : "Промпт (raw)"}
+              <textarea
+                className="mt-1 min-h-[260px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed text-zinc-100"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+            </label>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-800 px-4 py-3">
+          <button
+            type="button"
+            className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-peach px-4 py-1.5 text-xs font-medium text-zinc-950 disabled:opacity-40"
+            disabled={loading || saving || !payload}
+            onClick={() => void save()}
+          >
+            {saving ? "Сохраняю…" : "Сохранить в TG"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -152,6 +152,64 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, users });
   }
 
+  if (action === "inspect_payments") {
+    const take = Math.min(50, Math.max(1, Number(body.take) || 20));
+    const orders = await prisma.paymentOrder.findMany({
+      orderBy: { createdAt: "desc" },
+      take,
+      include: {
+        user: {
+          select: {
+            id: true,
+            balancePeaches: true,
+            name: true,
+            email: true,
+            platformAccounts: {
+              where: { platform: "telegram" },
+              select: { platformUserId: true, username: true },
+              take: 2,
+            },
+          },
+        },
+      },
+    });
+    const ledgers = await prisma.ledgerEntry.findMany({
+      where: {
+        OR: [
+          { reason: { contains: "topup" } },
+          { reason: { contains: "cashera" } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_payments",
+      orders: orders.map((o) => ({
+        id: o.id,
+        externalId: o.externalId,
+        peaches: o.peaches,
+        amountMinor: o.amountMinor,
+        method: o.paymentMethod,
+        status: o.status,
+        casheraUuid: o.casheraUuid,
+        creditedAt: o.creditedAt,
+        paidAt: o.paidAt,
+        createdAt: o.createdAt,
+        user: o.user,
+      })),
+      ledgers: ledgers.map((l) => ({
+        id: l.id,
+        userId: l.userId,
+        amount: l.amount,
+        reason: l.reason,
+        metaJson: l.metaJson,
+        createdAt: l.createdAt,
+      })),
+    });
+  }
+
   if (action === "probe_age_gate") {
     const { spawnSync } = await import("node:child_process");
     // Do NOT re-enable age-gate here — probe is read-only diagnostics.

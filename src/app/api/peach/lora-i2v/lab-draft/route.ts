@@ -9,17 +9,21 @@ import {
 
 export const runtime = "nodejs";
 
-/** Load saved draft or rebuild from recent gallery still+animate pairs. */
+/**
+ * Load autosaved draft (default) or rebuild from gallery when ?recover=1.
+ * Never rebuilds gallery unless recover is requested — lab opens empty by default.
+ */
 export async function GET(req: NextRequest) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 
-  const force = req.nextUrl.searchParams.get("recover") === "1";
-  if (!force) {
+  const forceRecover = req.nextUrl.searchParams.get("recover") === "1";
+  if (!forceRecover) {
     const saved = loadLoraI2vLabDraft(user.id);
-    if (saved?.shots?.length) {
-      return NextResponse.json({ draft: saved, recovered: false });
-    }
+    return NextResponse.json({
+      draft: saved,
+      recovered: false,
+    });
   }
 
   const recovered = await recoverLoraI2vLabDraftFromGallery(user.id, {

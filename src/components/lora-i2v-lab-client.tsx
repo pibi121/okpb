@@ -139,7 +139,24 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   const [stitchedVideoItemId, setStitchedVideoItemId] = useState("");
   const [stitchedVideoUrl, setStitchedVideoUrl] = useState("");
   const [stitchedDurationSec, setStitchedDurationSec] = useState(0);
-  const [draftRestored, setDraftRestored] = useState(false);
+  /** Autosave starts immediately; form stays empty until user picks a draft/template. */
+  const [autosaveReady, setAutosaveReady] = useState(false);
+  const [serverDraft, setServerDraft] = useState<LabDraft | null>(null);
+  const [localDraftMeta, setLocalDraftMeta] = useState<LabDraft | null>(null);
+  const [draftBusy, setDraftBusy] = useState("");
+
+  const draftHasWork = useCallback((d: LabDraft | null | undefined) => {
+    if (!d?.shots?.length) return false;
+    return d.shots.some(
+      (s) =>
+        s.stillPrompt.trim() ||
+        s.i2vPrompt.trim() ||
+        s.stillItemId ||
+        s.videoItemId ||
+        s.stillUrl ||
+        s.videoUrl,
+    );
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -155,107 +172,65 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     }
   }, []);
 
+  const refreshDraftShelf = useCallback(async () => {
+    const local = readDraft();
+    setLocalDraftMeta(draftHasWork(local) ? local : null);
+    try {
+      const res = await fetch("/api/peach/lora-i2v/lab-draft");
+      const data = await readJson(res);
+      if (res.ok && data.draft && draftHasWork(data.draft as LabDraft)) {
+        setServerDraft(data.draft as LabDraft);
+      } else {
+        setServerDraft(null);
+      }
+    } catch {
+      /* ignore shelf errors */
+    }
+  }, [draftHasWork]);
+
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Restore: localStorage first; if empty / ?recover=1 — rebuild from gallery on server.
+  // Open empty; only list drafts in the side column (no auto-fill).
   useEffect(() => {
-    if (draftRestored) return;
-    if (presetTemplateId) {
-      setDraftRestored(true);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      const wantRecover =
-        typeof window !== "undefined" &&
-        new URLSearchParams(window.location.search).get("recover") === "1";
-      const local = readDraft();
-      const localHasWork =
-        !!local &&
-        local.shots.some(
-          (s) =>
-            s.stillPrompt.trim() ||
-            s.i2vPrompt.trim() ||
-            s.stillItemId ||
-            s.videoItemId ||
-            s.stillUrl ||
-            s.videoUrl,
-        );
+    setAutosaveReady(true);
+    void refreshDraftShelf();
+  }, [refreshDraftShelf]);
 
-      if (localHasWork && !wantRecover && local) {
-        if (cancelled) return;
-        setCharacterId(local.characterId || "");
-        setTitle(local.title || "");
-        setNotes(local.notes || "");
-        setOrientation(local.orientation || "9_16");
-        setCategories(Array.isArray(local.categories) ? local.categories : []);
-        setEditingId(local.editingId || "");
-        setShots(local.shots.map((s) => emptyShotForm(s)));
-        setStitchedVideoItemId(local.stitchedVideoItemId || "");
-        setStitchedVideoUrl(local.stitchedVideoUrl || "");
-        setStitchedDurationSec(local.stitchedDurationSec || 0);
-        setMsg("Восстановлен черновик из браузера — шоты на месте");
-        setDraftRestored(true);
-        return;
-      }
-
-      try {
-        const q = wantRecover || !localHasWork ? "?recover=1" : "";
-        const res = await fetch(`/api/peach/lora-i2v/lab-draft${q}`);
-        const data = await readJson(res);
-        if (cancelled) return;
-        if (res.ok && data.draft) {
-          const d = data.draft as LabDraft & { shots: ShotForm[] };
-          setCharacterId(d.characterId || "");
-          setTitle(d.title || "");
-          setNotes(d.notes || "");
-          setOrientation(d.orientation || "9_16");
-          setCategories(Array.isArray(d.categories) ? d.categories : []);
-          setEditingId(d.editingId || "");
-          setShots((d.shots || []).map((s) => emptyShotForm(s)));
-          setStitchedVideoItemId(d.stitchedVideoItemId || "");
-          setStitchedVideoUrl(d.stitchedVideoUrl || "");
-          setStitchedDurationSec(d.stitchedDurationSec || 0);
-          try {
-            localStorage.setItem(
-              DRAFT_KEY,
-              JSON.stringify({ ...d, savedAt: Date.now() }),
-            );
-          } catch {
-            /* ignore */
-          }
-          setMsg(
-            data.recovered
-              ? `Восстановил ${Array.isArray(d.shots) ? d.shots.length : 0} шотов из галереи (still+видео+промпты)`
-              : "Загружен серверный черновик",
-          );
-        } else if (!localHasWork) {
-          setError(
-            String(
-              data.error ||
-                "Черновик пуст — если клипы в галерее, открой /peach/lora-i2v?recover=1",
-            ),
-          );
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "recover error");
-        }
-      } finally {
-        if (!cancelled) setDraftRestored(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [draftRestored, presetTemplateId]);
+  function applyDraft(d: LabDraft, label: string) {
+    setCharacterId(d.characterId || characterId || loraChars[0]?.id || "");
+    setTitle(d.title || "");
+    setNotes(d.notes || "");
+    setOrientation(d.orientation || "9_16");
+    setCategories(Array.isArray(d.categories) ? d.categories : []);
+    setEditingId(d.editingId || "");
+    setShots(
+      (d.shots?.length ? d.shots : [emptyShotForm()]).map((s) =>
+        emptyShotForm(s),
+      ),
+    );
+    setStitchedVideoItemId(d.stitchedVideoItemId || "");
+    setStitchedVideoUrl(d.stitchedVideoUrl || "");
+    setStitchedDurationSec(d.stitchedDurationSec || 0);
+    setError("");
+    setMsg(label);
+  }
 
   // Autosave draft locally + mirror to server (survives browser wipe).
+  // Empty form does NOT wipe an existing saved draft — only explicit «Очистить».
   useEffect(() => {
-    if (!draftRestored) return;
+    if (!autosaveReady) return;
     if (typeof window === "undefined") return;
+    const hasWork = shots.some(
+      (s) =>
+        s.stillPrompt.trim() ||
+        s.i2vPrompt.trim() ||
+        s.stillItemId ||
+        s.videoItemId,
+    );
+    if (!hasWork) return;
+
     const payload: LabDraft = {
       characterId,
       title,
@@ -274,24 +249,21 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     } catch {
       /* quota */
     }
-    const hasWork = shots.some(
-      (s) =>
-        s.stillPrompt.trim() ||
-        s.i2vPrompt.trim() ||
-        s.stillItemId ||
-        s.videoItemId,
-    );
-    if (!hasWork) return;
     const t = window.setTimeout(() => {
       void fetch("/api/peach/lora-i2v/lab-draft", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ draft: payload }),
-      }).catch(() => undefined);
+      })
+        .then(() => {
+          setServerDraft(payload);
+          setLocalDraftMeta(payload);
+        })
+        .catch(() => undefined);
     }, 800);
     return () => window.clearTimeout(t);
   }, [
-    draftRestored,
+    autosaveReady,
     characterId,
     title,
     notes,
@@ -808,6 +780,61 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     } catch {
       /* ignore */
     }
+    setLocalDraftMeta(null);
+    void refreshDraftShelf();
+  }
+
+  async function openGalleryRecover() {
+    setDraftBusy("gallery");
+    setError("");
+    try {
+      const res = await fetch("/api/peach/lora-i2v/lab-draft?recover=1");
+      const data = await readJson(res);
+      if (!res.ok || !data.draft) {
+        throw new Error(
+          String(data.error || "Не нашёл still+видео за последние 72ч"),
+        );
+      }
+      const d = data.draft as LabDraft;
+      applyDraft(
+        d,
+        `Загружено из галереи · ${d.shots?.length || 0} шотов`,
+      );
+      try {
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ ...d, savedAt: Date.now() }),
+        );
+      } catch {
+        /* ignore */
+      }
+      setLocalDraftMeta(d);
+      void fetch("/api/peach/lora-i2v/lab-draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: { ...d, savedAt: Date.now() } }),
+      })
+        .then(() => setServerDraft(d))
+        .catch(() => undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "recover error");
+    } finally {
+      setDraftBusy("");
+    }
+  }
+
+  function draftLabel(d: LabDraft) {
+    const name = (d.title || "").trim() || "Без названия";
+    const n = d.shots?.length || 0;
+    const when = d.savedAt
+      ? new Date(d.savedAt).toLocaleString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+    return { name, n, when };
   }
 
   const readyClipCount = shots.filter((s) => s.videoUrl && s.videoItemId).length;
@@ -818,24 +845,25 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="grid gap-6 lg:grid-cols-[1.05fr_0.75fr_0.85fr]">
       <div className="space-y-4 rounded-xl border border-white/10 bg-[#0c0c0e] p-4">
         <div>
           <h2 className="text-sm font-medium text-zinc-200">Сборка рецепта</h2>
           <p className="mt-1 text-[11px] text-zinc-500">
             На каждый шот: still (Krea+LoRA) → оживление MiniMax → при нескольких
-            шотах «Склеить» → сохранить шаблон → справа «В Telegram».
+            шотах «Склеить» → сохранить шаблон → справа «В Telegram». Форма
+            стартует пустой — черновики только из колонки рядом.
           </p>
-          <button
-            type="button"
-            className="mt-2 rounded-full border border-amber-400/40 px-3 py-1 text-[11px] text-amber-200 hover:bg-amber-500/10"
-            disabled={!!busy}
-            onClick={() => {
-              window.location.href = "/peach/lora-i2v?recover=1";
-            }}
-          >
-            Восстановить шоты из галереи
-          </button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-white/15 px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5"
+              disabled={!!busy}
+              onClick={resetForm}
+            >
+              Очистить форму
+            </button>
+          </div>
         </div>
 
         {!loraChars.length ? (
@@ -1210,6 +1238,101 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           editor="video"
           refreshKey={stripRefresh}
         />
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-sm font-medium text-zinc-200">Черновики</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Автосохранение идёт в фоне. В форму попадает только то, что откроешь
+            здесь.
+          </p>
+        </div>
+
+        {serverDraft && draftHasWork(serverDraft) ? (
+          <div className="rounded-xl border border-amber-400/25 bg-amber-500/5 p-3">
+            <div className="text-[10px] uppercase tracking-wide text-amber-200/80">
+              Автосохранение (сервер)
+            </div>
+            {(() => {
+              const { name, n, when } = draftLabel(serverDraft);
+              return (
+                <>
+                  <div className="mt-1 truncate text-sm font-medium text-zinc-100">
+                    {name}
+                  </div>
+                  <div className="text-[11px] text-zinc-500">
+                    {n} шот{n === 1 ? "" : n < 5 ? "а" : "ов"}
+                    {when ? ` · ${when}` : ""}
+                  </div>
+                </>
+              );
+            })()}
+            <button
+              type="button"
+              className="mt-2 rounded-full border border-amber-400/40 px-2.5 py-1 text-[11px] text-amber-100 hover:bg-amber-500/10"
+              disabled={!!busy || !!draftBusy}
+              onClick={() =>
+                applyDraft(serverDraft, "Открыт серверный черновик")
+              }
+            >
+              Открыть в форме
+            </button>
+          </div>
+        ) : null}
+
+        {localDraftMeta &&
+        draftHasWork(localDraftMeta) &&
+        (!serverDraft ||
+          (localDraftMeta.savedAt || 0) > (serverDraft.savedAt || 0)) ? (
+          <div className="rounded-xl border border-white/10 bg-[#0c0c0e] p-3">
+            <div className="text-[10px] uppercase tracking-wide text-zinc-500">
+              {serverDraft ? "Новее в браузере" : "В браузере"}
+            </div>
+            {(() => {
+              const { name, n, when } = draftLabel(localDraftMeta);
+              return (
+                <>
+                  <div className="mt-1 truncate text-sm font-medium">{name}</div>
+                  <div className="text-[11px] text-zinc-500">
+                    {n} шот{n === 1 ? "" : n < 5 ? "а" : "ов"}
+                    {when ? ` · ${when}` : ""}
+                  </div>
+                </>
+              );
+            })()}
+            <button
+              type="button"
+              className="mt-2 rounded-full border border-white/15 px-2.5 py-1 text-[11px] text-zinc-200 hover:bg-white/5"
+              disabled={!!busy || !!draftBusy}
+              onClick={() =>
+                applyDraft(localDraftMeta, "Открыт черновик из браузера")
+              }
+            >
+              Открыть в форме
+            </button>
+          </div>
+        ) : null}
+
+        <div className="rounded-xl border border-dashed border-white/15 bg-[#0c0c0e]/80 p-3">
+          <div className="text-[11px] text-zinc-400">
+            Собрать шоты из недавней галереи (still + Animate, до 72ч)
+          </div>
+          <button
+            type="button"
+            className="mt-2 rounded-full border border-amber-400/40 px-2.5 py-1 text-[11px] text-amber-200 hover:bg-amber-500/10 disabled:opacity-40"
+            disabled={!!busy || !!draftBusy}
+            onClick={() => void openGalleryRecover()}
+          >
+            {draftBusy === "gallery" ? "Ищу…" : "Восстановить из галереи"}
+          </button>
+        </div>
+
+        {!serverDraft && !localDraftMeta ? (
+          <p className="text-[11px] text-zinc-600">
+            Пока нет автосохранений — начни собирать рецепт слева.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-3">

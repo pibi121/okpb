@@ -388,7 +388,7 @@ export async function POST(req: NextRequest) {
     const blockBuckets =
       typeof body.blockBuckets === "string" && body.blockBuckets.trim()
         ? body.blockBuckets.trim()
-        : "(0-2),(4-6),(8-12),(15-20)";
+        : "(0-2),(4-6),(8-12)";
     await saveOpsSettings({
       ageGateEnabled: enabled,
       ageGateJson: JSON.stringify({

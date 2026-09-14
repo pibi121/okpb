@@ -36,7 +36,8 @@ export type AgeGateConfig = {
   failClosed: boolean;
 };
 
-const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12),(15-20)";
+/** Block child face buckets only (up to ~12). Teen (15-20) removed — too many false adult blocks. */
+const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12)";
 
 export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFlag: boolean): AgeGateConfig {
   let parsed: Partial<AgeGateConfig> & { minScore?: number } = {};
@@ -46,8 +47,8 @@ export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFl
     parsed = {};
   }
   let buckets = String(parsed.blockBuckets || DEFAULT_BUCKETS).trim() || DEFAULT_BUCKETS;
-  // Migrate softened default that dropped teen coverage after false adult blocks
-  if (buckets.replace(/\s/g, "") === "(0-2),(4-6),(8-12)") {
+  // Soften legacy hard default that included teen (15-20)
+  if (buckets.replace(/\s/g, "") === "(0-2),(4-6),(8-12),(15-20)") {
     buckets = DEFAULT_BUCKETS;
   }
   return {

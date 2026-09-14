@@ -91,7 +91,7 @@ export default function OpsSafetyPage() {
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 font-mono text-xs"
         />
         <span className="text-xs text-zinc-500">
-          По умолчанию: (0-2),(4-6),(8-12),(15-20) — teen только при высокой уверенности
+          По умолчанию: (0-2),(4-6),(8-12) — блок только детских бакетов (до ~12)
         </span>
       </label>
 

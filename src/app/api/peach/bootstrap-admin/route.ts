@@ -152,6 +152,251 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, users });
   }
 
+  if (action === "inspect_active_gens") {
+    const userId = String(body.userId || "").trim();
+    const take = Math.min(50, Math.max(5, Number(body.take) || 25));
+    const jobWhere = userId
+      ? {
+          userId,
+          status: { in: ["pending", "queued", "running", "busy", "processing"] },
+        }
+      : { status: { in: ["pending", "queued", "running", "busy", "processing"] } };
+    const jobs = await prisma.gpuJob.findMany({
+      where: jobWhere,
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        kind: true,
+        stage: true,
+        error: true,
+        createdAt: true,
+        finishedAt: true,
+        refType: true,
+        refId: true,
+      },
+    });
+    const recentJobs = await prisma.gpuJob.findMany({
+      where: userId ? { userId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        kind: true,
+        stage: true,
+        error: true,
+        createdAt: true,
+        finishedAt: true,
+        refType: true,
+        refId: true,
+      },
+    });
+    const gallery = await prisma.galleryItem.findMany({
+      where: userId ? { userId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: userId ? 40 : 80,
+      select: {
+        id: true,
+        userId: true,
+        kind: true,
+        title: true,
+        resultUrl: true,
+        createdAt: true,
+        metaJson: true,
+      },
+    });
+    const pendingGallery = gallery
+      .map((it) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = JSON.parse(it.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          meta = {};
+        }
+        return { it, meta };
+      })
+      .filter(({ meta }) => {
+        const st = String(meta.status || "").toLowerCase();
+        return st === "pending" || st === "busy" || st === "running" || st === "queued";
+      })
+      .slice(0, take)
+      .map(({ it, meta }) => ({
+        id: it.id,
+        userId: it.userId,
+        kind: it.kind,
+        title: it.title,
+        createdAt: it.createdAt,
+        status: meta.status,
+        jobAction: meta.jobAction,
+        error: meta.error,
+        stage: meta.stage || meta.phase || null,
+        hasResult: Boolean(it.resultUrl),
+      }));
+    const qv = await prisma.quickVideoRun.findMany({
+      where: {
+        ...(userId ? { userId } : {}),
+        status: { in: ["pending", "busy", "running", "queued"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+        status: true,
+        error: true,
+        createdAt: true,
+        engine: true,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_active_gens",
+      userId: userId || null,
+      activeJobs: jobs,
+      pendingGallery,
+      activeQuickVideo: qv,
+      recentJobs,
+      gpuVersionHint: "see /api/tg/version",
+    });
+  }
+
+  if (action === "inspect_active_gens") {
+    const userId = String(body.userId || "").trim();
+    const take = Math.min(50, Math.max(5, Number(body.take) || 25));
+    const jobWhere = userId
+      ? {
+          userId,
+          status: { in: ["pending", "queued", "running", "busy", "processing"] },
+        }
+      : { status: { in: ["pending", "queued", "running", "busy", "processing"] } };
+    const jobs = await prisma.gpuJob.findMany({
+      where: jobWhere,
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        kind: true,
+        stage: true,
+        error: true,
+        createdAt: true,
+        finishedAt: true,
+        refType: true,
+        refId: true,
+      },
+    });
+    const recentJobs = await prisma.gpuJob.findMany({
+      where: userId ? { userId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        kind: true,
+        stage: true,
+        error: true,
+        createdAt: true,
+        finishedAt: true,
+        refType: true,
+        refId: true,
+      },
+    });
+    const gallery = await prisma.galleryItem.findMany({
+      where: userId ? { userId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: userId ? 40 : 80,
+      select: {
+        id: true,
+        userId: true,
+        kind: true,
+        title: true,
+        resultUrl: true,
+        createdAt: true,
+        metaJson: true,
+      },
+    });
+    const pendingGallery = gallery
+      .map((it) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = JSON.parse(it.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          meta = {};
+        }
+        return { it, meta };
+      })
+      .filter(({ meta }) => {
+        const st = String(meta.status || "").toLowerCase();
+        return st === "pending" || st === "busy" || st === "running" || st === "queued";
+      })
+      .slice(0, take)
+      .map(({ it, meta }) => ({
+        id: it.id,
+        userId: it.userId,
+        kind: it.kind,
+        title: it.title,
+        createdAt: it.createdAt,
+        status: meta.status,
+        jobAction: meta.jobAction,
+        error: meta.error,
+        stage: meta.stage || meta.phase || null,
+        hasResult: Boolean(it.resultUrl),
+      }));
+    const qv = await prisma.quickVideoRun.findMany({
+      where: {
+        ...(userId ? { userId } : {}),
+        status: { in: ["pending", "busy", "running", "queued"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+        status: true,
+        error: true,
+        createdAt: true,
+        engine: true,
+      },
+    });
+
+    let comfy: Record<string, unknown> | null = null;
+    try {
+      const base = (process.env.COMFY_URL || "http://127.0.0.1:8188").replace(/\/$/, "");
+      const [qRes, sRes] = await Promise.all([
+        fetch(`${base}/queue`, { signal: AbortSignal.timeout(8000) }),
+        fetch(`${base}/system_stats`, { signal: AbortSignal.timeout(8000) }),
+      ]);
+      const queue = qRes.ok ? await qRes.json() : { error: qRes.status };
+      const stats = sRes.ok ? await sRes.json() : { error: sRes.status };
+      comfy = {
+        url: base,
+        queue,
+        devices: (stats as { devices?: unknown })?.devices ?? stats,
+      };
+    } catch (e) {
+      comfy = { error: e instanceof Error ? e.message : String(e) };
+    }
+
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_active_gens",
+      userId: userId || null,
+      activeJobs: jobs,
+      pendingGallery,
+      activeQuickVideo: qv,
+      recentJobs,
+      comfy,
+    });
+  }
+
   if (action === "inspect_payments") {
     const take = Math.min(50, Math.max(1, Number(body.take) || 20));
     const orders = await prisma.paymentOrder.findMany({

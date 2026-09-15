@@ -83,10 +83,25 @@ async function kickGpuTrain(opts: {
     return { ok: true };
   } catch (e) {
     console.error("[tg] lora train start failed:", e);
+    const detail = e instanceof Error ? e.message : String(e);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "lora",
+          message: detail,
+          stack: e instanceof Error ? e.stack : undefined,
+          userId: opts.userId,
+          stage: "train_start",
+          refType: "character",
+          refId: opts.characterId,
+          meta: { characterId: opts.characterId },
+        }),
+      )
+      .catch(() => undefined);
     return {
       ok: false,
       error: "train_start_failed",
-      detail: e instanceof Error ? e.message : String(e),
+      detail,
     };
   }
 }
@@ -174,10 +189,25 @@ export async function startLoraTrainingForUser(opts: {
   try {
     trigger = sanitizeTrigger(ch.triggerWord || ch.name, ch.id);
   } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "lora",
+          message: detail,
+          stack: e instanceof Error ? e.stack : undefined,
+          userId: opts.userId,
+          stage: "trigger_validate",
+          refType: "character",
+          refId: opts.characterId,
+          meta: { name: ch.name },
+        }),
+      )
+      .catch(() => undefined);
     return {
       ok: false,
       error: "train_start_failed",
-      detail: e instanceof Error ? e.message : String(e),
+      detail,
     };
   }
   if (ch.triggerWord !== trigger) {
@@ -215,7 +245,21 @@ export async function startLoraTrainingForUser(opts: {
   const paid = await debitPeaches(opts.userId, price, "tg_lora_train", {
     characterId: opts.characterId,
   });
-  if (!paid.ok) return { ok: false, error: "debit_failed", price, balance: bal };
+  if (!paid.ok) {
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "payment",
+          message: `debit_failed lora train: balance=${bal} price=${price}`,
+          userId: opts.userId,
+          stage: "lora_debit",
+          refType: "character",
+          refId: opts.characterId,
+        }),
+      )
+      .catch(() => undefined);
+    return { ok: false, error: "debit_failed", price, balance: bal };
+  }
 
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (user && loraBonusActive(user.tgLoraBonusExpiresAt)) {

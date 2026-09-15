@@ -43,6 +43,19 @@ export async function pollTgLoraTrainings(): Promise<void> {
         await notifyTgLoraTrainingComplete(row.id);
       } catch (e) {
         console.error("[tg-lora-poll]", row.id, e);
+        void import("@/lib/ops/errors")
+          .then(({ reportOpsError }) =>
+            reportOpsError({
+              kind: "lora",
+              message: e instanceof Error ? e.message : String(e),
+              stack: e instanceof Error ? e.stack : undefined,
+              userId: row.userId,
+              stage: "lora_poll",
+              refType: "character",
+              refId: row.id,
+            }),
+          )
+          .catch(() => undefined);
       }
     }
   } finally {

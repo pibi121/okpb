@@ -11,6 +11,8 @@ import {
 } from "@/lib/tg/generation-service";
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import { normalizeLocale } from "@/lib/tg/i18n";
+import { z } from "zod";
+import { limits } from "@/lib/rate-limit";
 
 async function tgPlatformUserId(userId: string): Promise<string | null> {
   const acc = await prisma.platformAccount.findFirst({
@@ -38,18 +40,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as {
-    templateId?: string;
-    characterId?: string;
-    createNew?: boolean;
-    locale?: string;
-    speechLine?: string;
-    speechFills?: Array<{ id: string; text: string; lang?: string }>;
-  };
-
-  if (!body.templateId) {
-    return NextResponse.json({ error: "templateId required" }, { status: 400 });
+  // Rate limit: 5 video generations per userId per minute (GPU-intensive)
+  if (!limits.generateVideo(userId)) {
+    return NextResponse.json(
+      { error: "too_many_requests", message: "Слишком много генераций. Подождите минуту." },
+      { status: 429 },
+    );
   }
+
+  const bodySchema = z.object({
+    templateId: z.string().min(1),
+    characterId: z.string().optional(),
+    createNew: z.boolean().optional(),
+    locale: z.string().optional(),
+    speechLine: z.string().max(500).optional(),
+    speechFills: z
+      .array(
+        z.object({
+          id: z.string(),
+          text: z.string().max(300),
+          lang: z.string().optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
+  });
+
+  const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid request", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+  const body = parsed.data;
 
   const locale = normalizeLocale(body.locale);
   const platformUserId = await tgPlatformUserId(userId);
@@ -161,6 +185,18 @@ export async function POST(req: Request) {
       );
     }
     const msg = e instanceof Error ? e.message : String(e);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "miniapp",
+          message: msg,
+          stack: e instanceof Error ? e.stack : undefined,
+          userId,
+          stage: "miniapp_video_gen",
+          meta: { templateId: body.templateId, characterId },
+        }),
+      )
+      .catch(() => undefined);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

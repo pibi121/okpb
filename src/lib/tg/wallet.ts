@@ -28,6 +28,12 @@ export async function creditPeaches(
     }),
   ]);
 
+  void import("@/lib/ops/inbox")
+    .then(({ recordSystemBalanceNotice }) =>
+      recordSystemBalanceNotice({ userId, amount, reason, meta }),
+    )
+    .catch(() => undefined);
+
   if (/topup|payment|начисл/i.test(reason)) {
     void creditPartnerCommission({
       referredUserId: userId,
@@ -69,6 +75,17 @@ export async function debitPeaches(
       },
     }),
   ]);
+
+  void import("@/lib/ops/inbox")
+    .then(({ recordSystemBalanceNotice }) =>
+      recordSystemBalanceNotice({
+        userId,
+        amount: -amount,
+        reason,
+        meta,
+      }),
+    )
+    .catch(() => undefined);
 
   return { ok: true };
 }

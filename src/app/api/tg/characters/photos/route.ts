@@ -13,6 +13,7 @@ import {
 } from "@/lib/character-dataset";
 import { prisma } from "@/lib/db";
 import { TG_PREMIUM } from "@/lib/tg-pricing";
+import { limits } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -85,6 +86,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Rate limit: 60 photos per userId per 5 minutes
+  if (!limits.charPhotos(userId)) {
+    return NextResponse.json(
+      { error: "too_many_requests", message: "Слишком много фото. Попробуйте через 5 минут." },
+      { status: 429 },
+    );
+  }
+
   const body = (await req.json().catch(() => null)) as {
     characterId?: string;
     photos?: Array<{ name?: string; dataUrl?: string }>;
@@ -151,8 +160,24 @@ export async function POST(req: Request) {
   }
 
   if (!added) {
+    const first = errors[0] || "upload failed";
+    if (!/age|возраст|minor|blocked/i.test(first)) {
+      void import("@/lib/ops/errors")
+        .then(({ reportOpsError }) =>
+          reportOpsError({
+            kind: "miniapp",
+            message: first,
+            userId,
+            stage: "photo_upload",
+            refType: "character",
+            refId: body.characterId,
+            meta: { errors },
+          }),
+        )
+        .catch(() => undefined);
+    }
     return NextResponse.json(
-      { error: errors[0] || "upload failed", errors },
+      { error: first, errors },
       { status: 400 },
     );
   }

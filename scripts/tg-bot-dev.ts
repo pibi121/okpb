@@ -11,7 +11,7 @@ import { pollTgFunnelDrips } from "../src/lib/tg/funnel-drip";
 import { tgApiWithToken } from "../src/lib/tg/telegram-api";
 import { bootOps } from "../src/lib/ops/seed";
 import { ensureCopyOverlay } from "../src/lib/ops/copy";
-import { listLiveBots, type LiveBot } from "../src/lib/tg/bot-registry";
+import { listPollableBots, type LiveBot } from "../src/lib/tg/bot-registry";
 import { runWithTgBot } from "../src/lib/tg/bot-context";
 
 type TgUpdate = {
@@ -22,7 +22,9 @@ type TgUpdate = {
 
 async function pollOneBot(bot: LiveBot) {
   let offset = 0;
-  console.log(`[tg-bot] polling @${bot.username} primary=${bot.isPrimary}…`);
+  console.log(
+    `[tg-bot] polling @${bot.username} primary=${bot.isPrimary} status=${bot.status}…`,
+  );
 
   for (;;) {
     try {
@@ -46,6 +48,17 @@ async function pollOneBot(bot: LiveBot) {
                 await handleTgCallbackQuery(u.callback_query);
               } catch (e) {
                 console.error(`[tg-bot @${bot.username}] callback error:`, e);
+                void import("../src/lib/ops/errors")
+                  .then(({ reportOpsError }) =>
+                    reportOpsError({
+                      kind: "bot",
+                      message: e instanceof Error ? e.message : String(e),
+                      stack: e instanceof Error ? e.stack : undefined,
+                      stage: "poll_callback",
+                      meta: { bot: bot.username },
+                    }),
+                  )
+                  .catch(() => undefined);
               }
             }
             if (u.message) {
@@ -53,6 +66,17 @@ async function pollOneBot(bot: LiveBot) {
                 await handleTgMessage(u.message);
               } catch (e) {
                 console.error(`[tg-bot @${bot.username}] message error:`, e);
+                void import("../src/lib/ops/errors")
+                  .then(({ reportOpsError }) =>
+                    reportOpsError({
+                      kind: "bot",
+                      message: e instanceof Error ? e.message : String(e),
+                      stack: e instanceof Error ? e.stack : undefined,
+                      stage: "poll_message",
+                      meta: { bot: bot.username },
+                    }),
+                  )
+                  .catch(() => undefined);
               }
             }
           },
@@ -78,7 +102,7 @@ async function main() {
     void ensureCopyOverlay().catch(() => undefined);
   }, 2000);
 
-  let bots = await listLiveBots();
+  let bots = await listPollableBots();
   if (!bots.length) {
     console.error("No live bots — set TELEGRAM_BOT_TOKEN or add dual bot in /ops/bot");
     process.exit(1);
@@ -87,15 +111,18 @@ async function main() {
   // Refresh bot list periodically so admin-added dual bots start without full redeploy
   // of the whole Railway box — only this poller process needs to pick them up.
   setInterval(() => {
-    void listLiveBots()
+    void listPollableBots()
       .then((next) => {
         const known = new Set(bots.map((b) => b.token));
         for (const b of next) {
           if (known.has(b.token)) continue;
-          console.log(`[tg-bot] hot-add @${b.username}`);
+          console.log(
+            `[tg-bot] hot-add @${b.username} status=${b.status}`,
+          );
           bots = next;
           void pollOneBot(b);
         }
+        bots = next;
       })
       .catch((e) => console.error("[tg-bot] refresh bots", e));
   }, 15_000);

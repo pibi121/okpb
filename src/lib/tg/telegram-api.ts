@@ -41,16 +41,27 @@ export async function tgSendMessage(
   extra: Record<string, unknown> = {},
   token?: string,
 ) {
-  return tgApi(
+  const skipInbox = Boolean(extra._peachSkipInbox);
+  const { _peachSkipInbox: _ignored, ...apiExtra } = extra;
+  const result = await tgApi(
     "sendMessage",
     {
       chat_id: chatId,
       text,
       parse_mode: "HTML",
-      ...extra,
+      ...apiExtra,
     },
     token,
   );
+  // Mirror bot → user text into ops inbox (non-blocking).
+  if (!skipInbox && text?.trim()) {
+    void import("@/lib/ops/inbox")
+      .then(({ recordOutboundFromChatId }) =>
+        recordOutboundFromChatId(chatId, text, { via: "tgSendMessage" }),
+      )
+      .catch(() => undefined);
+  }
+  return result;
 }
 
 export async function tgEditMessageText(
@@ -212,4 +223,26 @@ export async function tgDownloadFile(fileId: string, token?: string): Promise<Bu
   if (!res.ok) throw new Error(`download failed: ${res.status}`);
   const ab = await res.arrayBuffer();
   return Buffer.from(ab);
+}
+
+/** Blue chat menu button next to the attach field (replaces default "Open"). */
+export async function tgSetChatMenuButtonStudio(opts?: {
+  text?: string;
+  url?: string;
+  token?: string;
+}) {
+  const { tgMiniAppUrl } = await import("@/lib/tg/miniapp-url");
+  const text = (opts?.text || "Студия").slice(0, 16);
+  const url = opts?.url || tgMiniAppUrl();
+  return tgApi(
+    "setChatMenuButton",
+    {
+      menu_button: {
+        type: "web_app",
+        text,
+        web_app: { url },
+      },
+    },
+    opts?.token,
+  );
 }

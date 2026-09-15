@@ -169,6 +169,24 @@ export async function PATCH(req: Request) {
               ? "Already trained"
               : "Уже обучен"
             : result.error;
+    if (
+      result.error === "train_start_failed" ||
+      result.error === "debit_failed"
+    ) {
+      void import("@/lib/ops/errors")
+        .then(({ reportOpsError }) =>
+          reportOpsError({
+            kind: result.error === "debit_failed" ? "payment" : "lora",
+            message: String(msg || result.detail || result.error),
+            userId,
+            stage: "miniapp_lora_train",
+            refType: "character",
+            refId: body.characterId,
+            meta: { error: result.error, detail: result.detail },
+          }),
+        )
+        .catch(() => undefined);
+    }
     return NextResponse.json({ ...result, error: msg }, { status });
   }
 

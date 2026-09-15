@@ -65,7 +65,8 @@ export default function OpsInboxPage() {
       <div>
         <h1 className="font-display text-3xl">Входящие</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Сообщения людей в бота вне сценариев (имя/фото/меню). Непрочитанных:{" "}
+          Диалоги с людьми: их сообщения, ответы бота/оператора и системные
+          движения 🍑. Непрочитанных:{" "}
           <b className="text-peach">{unreadTotal}</b>
         </p>
       </div>
@@ -120,13 +121,19 @@ export default function OpsInboxPage() {
                     className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                       m.direction === "inbound"
                         ? "bg-white/8 text-zinc-200"
-                        : "ml-auto bg-peach/15 text-peach"
+                        : m.direction === "system"
+                          ? "mx-auto max-w-[95%] border border-amber-500/30 bg-amber-500/10 text-amber-100"
+                          : "ml-auto bg-peach/15 text-peach"
                     }`}
                   >
                     <div className="whitespace-pre-wrap">{m.text}</div>
                     <div className="mt-1 text-[10px] opacity-50">
                       {fmtTime(m.createdAt)} ·{" "}
-                      {m.direction === "inbound" ? "от человека" : "наш ответ"}
+                      {m.direction === "inbound"
+                        ? "от человека"
+                        : m.direction === "system"
+                          ? "система"
+                          : "наш ответ"}
                     </div>
                   </div>
                 ))}

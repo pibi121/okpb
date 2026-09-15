@@ -14,14 +14,25 @@ const LORA_POLL_EVERY_MS = 45_000;
 let lastFunnelPollAt = 0;
 const FUNNEL_POLL_EVERY_MS = 30_000;
 
-/** Telegram webhook (production). Same handlers as `npm run tg:bot`. */
+/** Telegram webhook (production). Same handlers as `npm run tg:bot`.
+ *
+ * NOTE: This route is available but the production bot currently uses long polling
+ * (tg-bot-dev.ts). If you switch to webhook mode, set TELEGRAM_WEBHOOK_SECRET and
+ * register the webhook URL with Telegram. The secret check below will then activate.
+ */
 export async function POST(req: Request) {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (secret) {
+    // Secret is configured — enforce it. Without the correct header Telegram
+    // (and any attacker) gets a 403, not a 200.
     const header = req.headers.get("x-telegram-bot-api-secret-token");
     if (header !== secret) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+  } else {
+    // No secret configured: block all webhook calls entirely so the endpoint
+    // can't be abused while polling mode is active.
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 403 });
   }
 
   const update = (await req.json().catch(() => null)) as {
@@ -58,6 +69,16 @@ export async function POST(req: Request) {
     }
   } catch (e) {
     console.error("[tg/webhook]", e);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "bot",
+          message: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
+          stage: "webhook",
+        }),
+      )
+      .catch(() => undefined);
   }
 
   return NextResponse.json({ ok: true });

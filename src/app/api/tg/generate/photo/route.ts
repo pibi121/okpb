@@ -8,6 +8,7 @@ import { templatePriceLabel } from "@/lib/tg/generation-flow";
 import { getPhotoTemplate } from "@/lib/photo-template";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { getBalancePeaches } from "@/lib/tg/wallet";
+import { limits } from "@/lib/rate-limit";
 
 async function tgPlatformUserId(userId: string): Promise<string | null> {
   const acc = await prisma.platformAccount.findFirst({
@@ -22,6 +23,14 @@ export async function POST(req: Request) {
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Rate limit: 10 photo generations per userId per minute
+  if (!limits.generatePhoto(userId)) {
+    return NextResponse.json(
+      { error: "too_many_requests", message: "Слишком много генераций. Подождите минуту." },
+      { status: 429 },
+    );
   }
 
   const body = (await req.json().catch(() => ({}))) as {
@@ -114,6 +123,18 @@ export async function POST(req: Request) {
       );
     }
     const msg = e instanceof Error ? e.message : String(e);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "miniapp",
+          message: msg,
+          stack: e instanceof Error ? e.stack : undefined,
+          userId,
+          stage: "miniapp_photo_gen",
+          meta: { templateId: body.templateId, characterId },
+        }),
+      )
+      .catch(() => undefined);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -1396,7 +1396,7 @@ model TgUserMessage {
   id             String    @id @default(cuid())
   userId         String
   platformUserId String
-  /// inbound | outbound
+  /// inbound | outbound | system
   direction      String
   text           String
   /// unread inbound until staff opens / replies

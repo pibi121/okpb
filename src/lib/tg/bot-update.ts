@@ -1032,6 +1032,18 @@ async function beginGeneration(
       const bal = await getBalancePeaches(userId);
       await sendInsufficientBalance(chatId, locale, charge, bal);
     } else {
+      void import("@/lib/ops/errors")
+        .then(({ reportOpsError }) =>
+          reportOpsError({
+            kind: "generation",
+            message: msg,
+            stack: e instanceof Error ? e.stack : undefined,
+            userId,
+            stage: "bot_confirm_gen",
+            meta: { templateId, characterId: character.id },
+          }),
+        )
+        .catch(() => undefined);
       await tgSendMessage(
         chatId,
         tFormat("gen_error", locale, { msg }),
@@ -2058,6 +2070,20 @@ export async function flushTgOutbox() {
       await markTgOutboxSent(row.id);
     } catch (e) {
       console.error("[tg-outbox]", row.id, e);
+      void import("@/lib/ops/errors")
+        .then(({ reportOpsError }) =>
+          reportOpsError({
+            kind: "bot",
+            message: e instanceof Error ? e.message : String(e),
+            stack: e instanceof Error ? e.stack : undefined,
+            userId: row.userId,
+            stage: "outbox_send",
+            refType: "tgOutbox",
+            refId: row.id,
+            meta: { kind: row.kind, platformUserId: row.platformUserId },
+          }),
+        )
+        .catch(() => undefined);
     }
   }
 }

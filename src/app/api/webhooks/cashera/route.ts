@@ -78,6 +78,18 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {
       console.error("[cashera] notify user failed:", e);
+      void import("@/lib/ops/errors")
+        .then(({ reportOpsError }) =>
+          reportOpsError({
+            kind: "payment",
+            message: e instanceof Error ? e.message : String(e),
+            stack: e instanceof Error ? e.stack : undefined,
+            userId: result.userId,
+            stage: "cashera_notify",
+            meta: { peaches: result.peaches, externalId },
+          }),
+        )
+        .catch(() => undefined);
     }
   }
 

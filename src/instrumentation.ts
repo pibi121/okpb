@@ -37,6 +37,11 @@ export async function register() {
     })
     .catch(() => undefined);
 
+  // Tunnel escalate alerts + stuck GpuJob recovery (Comfy idle / down).
+  void import("@/lib/gpu/tunnel-healer")
+    .then(({ startTunnelHealer }) => startTunnelHealer())
+    .catch((e) => console.error("[peach] tunnel-healer boot:", e));
+
   // Always try to pull finished Comfy outputs for busy/error runs (cheap download).
   // Delay so the Railway SSH tunnel to Comfy is up before we probe/download.
   // Full GPU re-queue only when PEACH_RESUME_QV=1 (can OOM small Railway boxes).
@@ -103,4 +108,34 @@ export async function register() {
       }
     })();
   }, 20_000);
+
+  // Uncaught errors → /ops/errors (so nothing silent in Railway logs only).
+  process.on("unhandledRejection", (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    console.error("[peach] unhandledRejection:", reason);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "other",
+          message: msg,
+          stack,
+          stage: "unhandledRejection",
+        }),
+      )
+      .catch(() => undefined);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[peach] uncaughtException:", err);
+    void import("@/lib/ops/errors")
+      .then(({ reportOpsError }) =>
+        reportOpsError({
+          kind: "other",
+          message: err.message,
+          stack: err.stack,
+          stage: "uncaughtException",
+        }),
+      )
+      .catch(() => undefined);
+  });
 }

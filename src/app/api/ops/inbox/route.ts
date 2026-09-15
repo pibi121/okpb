@@ -47,16 +47,16 @@ export async function GET(req: Request) {
       });
     }
 
-    // Thread list: latest inbound per user
+    // Thread list: latest message of any kind per user (inbound / outbound / system)
     const recent = await prisma.tgUserMessage.findMany({
-      where: { direction: "inbound" },
       orderBy: { createdAt: "desc" },
-      take: 300,
+      take: 400,
       select: {
         id: true,
         userId: true,
         platformUserId: true,
         text: true,
+        direction: true,
         createdAt: true,
         readAt: true,
         user: { select: { name: true, locale: true } },
@@ -72,6 +72,7 @@ export async function GET(req: Request) {
       lastText: string;
       lastAt: string;
       unread: boolean;
+      lastDirection: string;
     }> = [];
 
     for (const m of recent) {
@@ -83,11 +84,12 @@ export async function GET(req: Request) {
       threads.push({
         userId: m.userId,
         tgId: m.platformUserId,
-        name: m.user.name,
-        locale: m.user.locale,
+        name: m.user?.name || null,
+        locale: m.user?.locale || "ru",
         lastText: m.text.slice(0, 160),
         lastAt: m.createdAt.toISOString(),
         unread: unreadCount > 0,
+        lastDirection: m.direction,
       });
     }
 

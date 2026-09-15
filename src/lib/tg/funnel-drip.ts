@@ -13,6 +13,26 @@ const MS_6H = 6 * 60 * 60 * 1000;
 const MS_3D = 3 * 24 * 60 * 60 * 1000;
 const MS_7D = 7 * 24 * 60 * 60 * 1000;
 
+function isDeadTelegramChat(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /bot was blocked|chat not found|user is deactivated|Forbidden: bot/i.test(
+    msg,
+  );
+}
+
+/** Stop drip forever when user blocked the bot / chat gone. */
+async function silenceFunnelDrip(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      tgFunnel5mSent: true,
+      tgFunnel10mIdleSent: true,
+      tgFunnel40mSent: true,
+      tgFunnel6hSent: true,
+    },
+  });
+}
+
 /** Anchor drip timers at welcome-after-rules. Keeps old welcome_free_push intact. */
 export async function scheduleFunnelDrip(userId: string): Promise<void> {
   await prisma.user.update({
@@ -266,6 +286,7 @@ export async function maybeSendFunnelDrips(
       await sendFunnel5m(chatId);
     } catch (e) {
       console.error("[tg-funnel] 5m", userId, e);
+      if (isDeadTelegramChat(e)) await silenceFunnelDrip(userId);
       return;
     }
     await prisma.user.update({
@@ -295,6 +316,7 @@ export async function maybeSendFunnelDrips(
         await sendFunnel10mIdle(chatId, locale);
       } catch (e) {
         console.error("[tg-funnel] 10m", userId, e);
+        if (isDeadTelegramChat(e)) await silenceFunnelDrip(userId);
         return;
       }
       await prisma.user.update({
@@ -317,6 +339,7 @@ export async function maybeSendFunnelDrips(
       await sendFunnel40m(chatId);
     } catch (e) {
       console.error("[tg-funnel] 40m", userId, e);
+      if (isDeadTelegramChat(e)) await silenceFunnelDrip(userId);
       return;
     }
     await prisma.user.update({
@@ -338,6 +361,7 @@ export async function maybeSendFunnelDrips(
       await sendFunnel6h(chatId);
     } catch (e) {
       console.error("[tg-funnel] 6h", userId, e);
+      if (isDeadTelegramChat(e)) await silenceFunnelDrip(userId);
       return;
     }
     await prisma.user.update({

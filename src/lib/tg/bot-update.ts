@@ -2069,12 +2069,22 @@ export async function flushTgOutbox() {
 
       await markTgOutboxSent(row.id);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       console.error("[tg-outbox]", row.id, e);
+      // Dead recipients — drop so we don't retry forever / spam ops errors.
+      if (
+        /bot was blocked|chat not found|user is deactivated|Forbidden: bot/i.test(
+          msg,
+        )
+      ) {
+        await markTgOutboxSent(row.id).catch(() => undefined);
+        continue;
+      }
       void import("@/lib/ops/errors")
         .then(({ reportOpsError }) =>
           reportOpsError({
             kind: "bot",
-            message: e instanceof Error ? e.message : String(e),
+            message: msg,
             stack: e instanceof Error ? e.stack : undefined,
             userId: row.userId,
             stage: "outbox_send",

@@ -29,6 +29,8 @@ const KEEPALIVE = "while true; do echo k; sleep 2; done";
 const PARAMIKO_SCRIPT = path.join(ROOT, "scripts", "paramiko-comfy-tunnel.py");
 const STATUS_PATH =
   process.env.PEACH_TUNNEL_STATUS_PATH || "/tmp/peach-tunnel-status.json";
+const PID_PATH =
+  process.env.PEACH_TUNNEL_PID_PATH || "/tmp/peach-tunnel.pid";
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let tunnelProc = null;
@@ -42,6 +44,59 @@ function tunnelAlive() {
   if (ssh2Client && ssh2Server?.listening) return true;
   if (tunnelProc && !tunnelProc.killed && tunnelProc.exitCode == null) return true;
   return false;
+}
+
+function writeTunnelPid(pid) {
+  try {
+    if (!pid || pid < 2) return;
+    fs.writeFileSync(PID_PATH, String(pid));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearTunnelPid() {
+  try {
+    if (fs.existsSync(PID_PATH)) fs.unlinkSync(PID_PATH);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Kill tunnel from this process and any orphan recorded in the pid file. */
+function killRecordedTunnelPid() {
+  try {
+    if (!fs.existsSync(PID_PATH)) return;
+    const pid = Number(String(fs.readFileSync(PID_PATH, "utf8")).trim());
+    if (!Number.isFinite(pid) || pid < 2 || pid === process.pid) {
+      clearTunnelPid();
+      return;
+    }
+    // Don't kill ourselves if somehow recorded.
+    if (tunnelProc?.pid === pid) return;
+    try {
+      process.kill(pid, "SIGTERM");
+      log(`killed orphan tunnel pid=${pid}`);
+    } catch {
+      /* already dead */
+    }
+    try {
+      process.kill(pid, 0);
+      // still alive
+      setTimeout(() => {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          /* ignore */
+        }
+      }, 400);
+    } catch {
+      /* gone */
+    }
+    clearTunnelPid();
+  } catch {
+    /* ignore */
+  }
 }
 
 function writeTunnelStatus(patch) {
@@ -79,6 +134,9 @@ export function readTunnelStatus() {
 
 function classifyTunnelError(raw) {
   const s = String(raw || "");
+  if (/can't start new thread|Resource temporarily unavailable|EAGAIN/i.test(s)) {
+    return "SSH/tunnel: thread/process exhaustion — Railway container needs restart";
+  }
   if (/Permission denied \(publickey\)/i.test(s)) {
     return "SSH: Permission denied (publickey) — update METALNODE_SSH_KEY or Metalnode authorized_keys";
   }
@@ -190,12 +248,14 @@ function attachTunnelHandlers(proc, label) {
       });
     }
   });
+  if (proc.pid) writeTunnelPid(proc.pid);
   proc.on("error", (err) => {
     const msg = err instanceof Error ? err.message : String(err);
     log(`${label} spawn error: ${msg}`);
     lastTunnelError = classifyTunnelError(msg);
     writeTunnelStatus({ ok: false, reason: "spawn_error", error: lastTunnelError });
     tunnelProc = null;
+    clearTunnelPid();
   });
   proc.on("exit", (code) => {
     log(`${label} exited ${code ?? "?"}`);
@@ -208,6 +268,7 @@ function attachTunnelHandlers(proc, label) {
       });
     }
     tunnelProc = null;
+    clearTunnelPid();
   });
 }
 
@@ -429,6 +490,40 @@ exit 1
   return r.status === 0;
 }
 
+function stopTunnel() {
+  try {
+    if (tunnelProc && !tunnelProc.killed) {
+      tunnelProc.kill("SIGTERM");
+    }
+  } catch {
+    /* ignore */
+  }
+  tunnelProc = null;
+  try {
+    ssh2Server?.close();
+  } catch {
+    /* ignore */
+  }
+  try {
+    ssh2Client?.end();
+  } catch {
+    /* ignore */
+  }
+  ssh2Server = null;
+  ssh2Client = null;
+  // Cross-process: parent may own the tunnel while watchdog restarts it.
+  killRecordedTunnelPid();
+  clearTunnelPid();
+}
+
+/** Kill existing forward and bring Comfy tunnel back. */
+export async function forceRestartComfyTunnel() {
+  log("forceRestart — stopping old tunnel");
+  stopTunnel();
+  await new Promise((r) => setTimeout(r, 1200));
+  return ensureComfyTunnel();
+}
+
 export async function ensureComfyTunnel() {
   if (!gpuModeEnabled()) {
     log("GPU disabled (COMFY_FORCE_MOCK or PEACH_USE_COMFY=0) — skip tunnel");
@@ -465,6 +560,24 @@ export async function ensureComfyTunnel() {
   }
 
   writeKey(key);
+
+  // Tunnel process alive but Comfy not answering — give it a short grace, then force restart.
+  if (tunnelAlive()) {
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (await pingComfy()) {
+        writeTunnelStatus({ ok: true, reason: "already_up", error: "" });
+        return { ok: true, reason: "already_up" };
+      }
+    }
+    log("ensure: live tunnel but Comfy still down — force restart");
+    stopTunnel();
+    await new Promise((r) => setTimeout(r, 1000));
+  } else if (fs.existsSync(PID_PATH)) {
+    log("ensure: clearing orphan tunnel pid before start");
+    killRecordedTunnelPid();
+    await new Promise((r) => setTimeout(r, 600));
+  }
 
   if (!process.env.COMFY_SKIP_REMOTE_START) {
     try {

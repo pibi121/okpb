@@ -82,8 +82,38 @@ export async function findOrCreateTelegramUser(
         data: { locale: normalizeLocale(tg.language_code) },
       });
     }
-    const { trafficCode: existingTraffic } = parseStartPayload(startPayload);
-    if (existingTraffic) await recordTrafficClick(existingTraffic);
+    // First-touch partner/traffic: existing users may hit /start ref_… after an
+    // earlier create without payload (e.g. Mini App auth or pre-/start findOrCreate).
+    const {
+      affiliateCode: existingAffiliate,
+      linkSlug: existingLinkSlug,
+      trafficCode: existingTraffic,
+    } = parseStartPayload(startPayload);
+    if (existingTraffic) {
+      await recordTrafficClick(existingTraffic);
+      await attributeTrafficSignup(existing.user.id, existingTraffic).catch(
+        () => undefined,
+      );
+    }
+    if (existingAffiliate) {
+      const already = await prisma.partnerAttribution.findUnique({
+        where: { userId: existing.user.id },
+        select: { id: true },
+      });
+      if (!already) {
+        const partner = await prisma.partnerProfile.findFirst({
+          where: { code: existingAffiliate, status: "active" },
+        });
+        if (partner && partner.userId !== existing.user.id) {
+          await recordPartnerClick(existingAffiliate, existingLinkSlug);
+          await attributeUserToPartner({
+            userId: existing.user.id,
+            code: existingAffiliate,
+            linkSlug: existingLinkSlug,
+          }).catch(() => undefined);
+        }
+      }
+    }
     return prisma.user.findUniqueOrThrow({ where: { id: existing.user.id } });
   }
 

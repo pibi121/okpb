@@ -741,6 +741,32 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "inspect_partner_funnel") {
+    const { listFunnelRefPayloads } = await import("@/lib/tg/partner-backfill");
+    const take = Math.min(200, Math.max(1, Number(body.take) || 50));
+    const rows = await listFunnelRefPayloads(take);
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_partner_funnel",
+      count: rows.length,
+      rows,
+    });
+  }
+
+  if (action === "backfill_partner_refs") {
+    const { backfillPartnerRefsFromFunnel } = await import(
+      "@/lib/tg/partner-backfill"
+    );
+    const dryRun = Boolean(body.dryRun);
+    const limit = Number(body.limit) || 2000;
+    const report = await backfillPartnerRefsFromFunnel({ dryRun, limit });
+    return NextResponse.json({
+      ok: true,
+      action: "backfill_partner_refs",
+      ...report,
+    });
+  }
+
   if (action === "inspect_payments") {
     const take = Math.min(50, Math.max(1, Number(body.take) || 20));
     const orders = await prisma.paymentOrder.findMany({

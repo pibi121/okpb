@@ -123,6 +123,7 @@ declare global {
     Telegram?: {
       WebApp?: {
         initData: string;
+        initDataUnsafe?: { start_param?: string };
         platform?: string;
         ready: () => void;
         expand: () => void;
@@ -226,10 +227,16 @@ export function useTgMiniApp() {
 
       let authRes: Response;
       try {
+        const startPayload =
+          window.Telegram?.WebApp?.initDataUnsafe?.start_param?.trim() ||
+          undefined;
         authRes = await fetchWithRetry(initData, "/api/tg/auth", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData }),
+          body: JSON.stringify({
+            initData,
+            ...(startPayload ? { startPayload } : {}),
+          }),
         });
       } catch {
         setError(UI.ru.busyErr);

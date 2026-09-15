@@ -1685,8 +1685,13 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   const platformUserId = String(chatId);
   const from = msg.from || { id: chatId };
   const text = msg.text?.trim() || "";
+  // Pass /start payload on first findOrCreate — otherwise the user is created
+  // without ref_… and handleStart's second call hits the existing-user path.
+  const startPayload = text.startsWith("/start")
+    ? text.split(/\s+/)[1]
+    : undefined;
 
-  let user = await findOrCreateTelegramUserFromBot(from);
+  let user = await findOrCreateTelegramUserFromBot(from, startPayload);
   let locale = localeFromUser(user.locale);
   void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
     touchTgActivity(user.id),

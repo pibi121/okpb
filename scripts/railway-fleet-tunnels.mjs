@@ -105,8 +105,7 @@ export async function ensureFleetTunnels() {
 
   const pings = await pingFleetComfy();
   if (ready.every((n) => pings[n])) {
-    log(`fleet already up: ${ready.join(", ")}`);
-    return { ok: true, reason: "already_up", ready };
+    return { ok: true, reason: "already_up", ready, pings };
   }
 
   if (fleetTunnelAlive()) {

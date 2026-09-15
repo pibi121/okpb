@@ -236,8 +236,8 @@ export async function probeBotHealth() {
 
 export async function probeAllBotsHealth() {
   try {
-    const { listLiveBots } = await import("@/lib/tg/bot-registry");
-    const bots = await listLiveBots();
+    const { listPollableBots } = await import("@/lib/tg/bot-registry");
+    const bots = await listPollableBots();
     const out: Array<{
       id: string;
       username: string;
@@ -262,7 +262,9 @@ export async function probeAllBotsHealth() {
           isPrimary: b.isPrimary,
           ok: Boolean(json.ok),
           detail: json.ok
-            ? `@${json.result?.username || b.username} OK`
+            ? `@${json.result?.username || b.username} OK${
+                b.status === "standby" ? " · резерв" : ""
+              }`
             : json.description || "отказ",
         });
       } catch {

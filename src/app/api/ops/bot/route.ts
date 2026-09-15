@@ -7,19 +7,22 @@ import {
   addDualBot,
   retireBot,
   setPrimaryBot,
+  setBotRuntimeStatus,
   listLiveBots,
+  listPollableBots,
 } from "@/lib/tg/bot-registry";
 import { maskToken } from "@/lib/tg/bot-secrets";
 
 export async function GET() {
   return withOps("bot", async () => {
     await ensureDefaultBotInstance();
-    const [activeUrl, health, allHealth, rows, live] = await Promise.all([
+    const [activeUrl, health, allHealth, rows, live, pollable] = await Promise.all([
       getActiveBotUrl(),
       probeBotHealth(),
       probeAllBotsHealth(),
       prisma.botInstance.findMany({ orderBy: [{ isPrimary: "desc" }, { activatedAt: "desc" }] }),
       listLiveBots(),
+      listPollableBots(),
     ]);
     return jsonOk({
       activeUrl,
@@ -27,6 +30,7 @@ export async function GET() {
       botsHealth: allHealth,
       tokenSet: Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim()),
       liveCount: live.length,
+      pollableCount: pollable.length,
       siteBot: process.env.TELEGRAM_BOT_PUBLIC_URL || "",
       rows: rows.map((r) => ({
         id: r.id,
@@ -52,16 +56,22 @@ export async function POST(req: Request) {
       notes?: string;
       id?: string;
       makePrimary?: boolean;
+      status?: string;
     };
 
     const action = body.action || "set_primary_username";
 
     if (action === "add_dual") {
       try {
+        const status =
+          body.status === "standby" || body.status === "inactive"
+            ? "standby"
+            : "active";
         const result = await addDualBot({
           token: String(body.token || ""),
           notes: body.notes,
           makePrimary: body.makePrimary === true,
+          status,
         });
         await writeAudit({
           actorId: actor.id,
@@ -71,6 +81,7 @@ export async function POST(req: Request) {
           detail: {
             username: result.row.username,
             makePrimary: Boolean(body.makePrimary),
+            status,
             token: maskToken(String(body.token || "")),
           },
         });
@@ -79,7 +90,40 @@ export async function POST(req: Request) {
           message: result.message,
           username: result.row.username,
           id: result.row.id,
-          hint: "Polling подхватит нового бота за ~15 сек после деплоя (hot-reload списка). Старый primary не останавливали.",
+          hint:
+            status === "standby"
+              ? "Резерв: polling подхватит за ~15 сек. На /start только пояснение."
+              : "Polling подхватит нового бота за ~15 сек после деплоя (hot-reload списка). Старый primary не останавливали.",
+        });
+      } catch (e) {
+        return jsonErr(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    if (action === "set_status") {
+      const id = String(body.id || "");
+      const status =
+        body.status === "standby" || body.status === "inactive"
+          ? "standby"
+          : body.status === "active"
+            ? "active"
+            : null;
+      if (!id || !status) return jsonErr("Нужны id и status=active|standby");
+      try {
+        const row = await setBotRuntimeStatus(id, status);
+        await writeAudit({
+          actorId: actor.id,
+          action: "bot_set_status",
+          targetType: "botInstance",
+          targetId: row.id,
+          detail: { username: row.username, status },
+        });
+        return jsonOk({
+          ok: true,
+          message:
+            status === "standby"
+              ? `@${row.username} → неактивный резерв (только /start)`
+              : `@${row.username} → активный (полная студия)`,
         });
       } catch (e) {
         return jsonErr(e instanceof Error ? e.message : String(e));

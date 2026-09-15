@@ -27,8 +27,16 @@ type Payload = {
   }>;
   tokenSet: boolean;
   liveCount: number;
+  pollableCount?: number;
   rows: Row[];
 };
+
+function statusLabel(status: string) {
+  if (status === "active") return "активный";
+  if (status === "standby") return "неактивный (резерв)";
+  if (status === "retired") return "retired";
+  return status;
+}
 
 export default function OpsBotPage() {
   const [d, setD] = useState<Payload | null>(null);
@@ -63,8 +71,11 @@ export default function OpsBotPage() {
       <div>
         <h1 className="font-display text-3xl">Боты (dual)</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Несколько токенов на одних данных. Primary для ссылки /bot; dual — параллельно, без остановки
-          первого. Live: {d.liveCount}.
+          Несколько токенов на одних данных. Primary для ссылки /bot.{" "}
+          <b className="text-zinc-300">Активный</b> — полная студия и мини-апп.{" "}
+          <b className="text-zinc-300">Неактивный</b> — резерв: только текст на /start, без
+          рассылок. Live: {d.liveCount}
+          {typeof d.pollableCount === "number" ? ` · poll: ${d.pollableCount}` : ""}.
         </p>
       </div>
 
@@ -102,6 +113,7 @@ export default function OpsBotPage() {
             token: f.get("token"),
             notes: f.get("notes"),
             makePrimary: f.get("makePrimary") === "on",
+            status: f.get("status") || "active",
           }).then(() => {
             e.currentTarget.reset();
           });
@@ -109,8 +121,7 @@ export default function OpsBotPage() {
       >
         <div className="text-sm font-medium text-peach">Добавить dual-бота</div>
         <p className="text-xs text-zinc-500">
-          Вставьте токен из BotFather. Старый бот и текущие генерации не останавливаем. Данные
-          пользователей общие.
+          Вставьте токен из BotFather. Для перестраховки от бана выберите «Неактивный (резерв)».
         </p>
         <input
           name="token"
@@ -125,9 +136,20 @@ export default function OpsBotPage() {
           placeholder="Заметка: зеркало / перестраховка"
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
         />
+        <label className="flex flex-col gap-1 text-xs text-zinc-400">
+          Статус
+          <select
+            name="status"
+            defaultValue="standby"
+            className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-zinc-200"
+          >
+            <option value="standby">Неактивный (резерв) — только /start</option>
+            <option value="active">Активный — полная студия</option>
+          </select>
+        </label>
         <label className="flex items-center gap-2 text-xs text-zinc-400">
           <input type="checkbox" name="makePrimary" className="rounded" />
-          Сразу сделать primary для /bot (polling старого всё равно продолжается)
+          Сразу сделать primary для /bot (только для активного статуса)
         </label>
         <button className="rounded-full btn-grad px-4 py-2 text-sm">Добавить dual</button>
       </form>
@@ -176,14 +198,44 @@ export default function OpsBotPage() {
                   {r.isPrimary ? (
                     <span className="ml-2 text-xs text-peach">primary</span>
                   ) : null}
-                  <span className="ml-2 text-xs text-zinc-500">{r.status}</span>
+                  <span
+                    className={`ml-2 text-xs ${
+                      r.status === "active"
+                        ? "text-emerald-400"
+                        : r.status === "standby"
+                          ? "text-amber-300"
+                          : "text-zinc-500"
+                    }`}
+                  >
+                    {statusLabel(r.status)}
+                  </span>
                 </div>
                 <div className="text-xs text-zinc-500">
                   {r.hasToken ? "токен есть" : "без токена"} · {fmtTime(r.activatedAt)}
                   {r.notes ? ` · ${r.notes}` : ""}
                 </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
+                {r.status === "standby" ? (
+                  <button
+                    className="rounded-full border border-emerald-500/40 px-2 py-0.5 text-[11px] text-emerald-300"
+                    onClick={() =>
+                      void act({ action: "set_status", id: r.id, status: "active" })
+                    }
+                  >
+                    Активный
+                  </button>
+                ) : null}
+                {r.status === "active" && !r.isPrimary ? (
+                  <button
+                    className="rounded-full border border-amber-400/40 px-2 py-0.5 text-[11px] text-amber-200"
+                    onClick={() =>
+                      void act({ action: "set_status", id: r.id, status: "standby" })
+                    }
+                  >
+                    Неактивный
+                  </button>
+                ) : null}
                 {r.status === "active" && !r.isPrimary ? (
                   <button
                     className="rounded-full border border-white/15 px-2 py-0.5 text-[11px]"
@@ -192,7 +244,7 @@ export default function OpsBotPage() {
                     Primary
                   </button>
                 ) : null}
-                {r.status === "active" && !r.isPrimary ? (
+                {(r.status === "active" || r.status === "standby") && !r.isPrimary ? (
                   <button
                     className="rounded-full border border-coral/40 px-2 py-0.5 text-[11px] text-coral"
                     onClick={() => {

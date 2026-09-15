@@ -37,12 +37,36 @@ export async function stitchClipFilesWithFallback(opts: {
 
   const errors: string[] = [];
 
+  const isEagain = (e: unknown) =>
+    /EAGAIN|Resource temporarily unavailable|uv_thread_create/i.test(
+      e instanceof Error ? e.message : String(e),
+    );
+
+  async function withEagainRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    let last: unknown;
+    for (let i = 0; i < 3; i++) {
+      try {
+        return await fn();
+      } catch (e) {
+        last = e;
+        if (!isEagain(e) || i === 2) throw e;
+        console.warn(
+          `[peach] stitch ${label} EAGAIN — retry ${i + 1}/3 in ${1 + i}s`,
+        );
+        await new Promise((r) => setTimeout(r, 1000 + i * 1000));
+      }
+    }
+    throw last instanceof Error ? last : new Error(String(last));
+  }
+
   // 1) Lossless concat (fast, low RAM) — works when codecs match.
   try {
-    await concatMp4sLossless({
-      clipPaths: opts.clipPaths,
-      outPath: opts.outPath,
-    });
+    await withEagainRetry("lossless", () =>
+      concatMp4sLossless({
+        clipPaths: opts.clipPaths,
+        outPath: opts.outPath,
+      }),
+    );
     if (fs.existsSync(opts.outPath) && fs.statSync(opts.outPath).size >= 1000) {
       let width = 0;
       let height = 0;
@@ -69,11 +93,13 @@ export async function stitchClipFilesWithFallback(opts: {
         /* ignore */
       }
     }
-    const size = await stitchClipsFfmpeg({
-      clipPaths: opts.clipPaths,
-      outPath: opts.outPath,
-      trimStartSec: opts.trimStartSec ?? 0,
-    });
+    const size = await withEagainRetry("reencode", () =>
+      stitchClipsFfmpeg({
+        clipPaths: opts.clipPaths,
+        outPath: opts.outPath,
+        trimStartSec: opts.trimStartSec ?? 0,
+      }),
+    );
     return {
       width: size.width,
       height: size.height,

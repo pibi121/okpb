@@ -52,7 +52,7 @@ export async function ensureComfyReady(attempts = 40, delayMs = 2000): Promise<v
 
   if (await comfyPingWithRetry(attempts, delayMs)) return;
   throw new Error(
-    "Comfy GPU недоступен (туннель :8188). Подождите ~30 сек и повторите — туннель поднимается автоматически.",
+    "Comfy GPU временно недоступен. Подождите ~30 сек и повторите — связь восстанавливается автоматически.",
   );
 }
 

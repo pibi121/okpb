@@ -11,7 +11,7 @@ import { pollTgFunnelDrips } from "../src/lib/tg/funnel-drip";
 import { tgApiWithToken } from "../src/lib/tg/telegram-api";
 import { bootOps } from "../src/lib/ops/seed";
 import { ensureCopyOverlay } from "../src/lib/ops/copy";
-import { listPollableBots, type LiveBot } from "../src/lib/tg/bot-registry";
+import { listLiveBots, listPollableBots, type LiveBot } from "../src/lib/tg/bot-registry";
 import { runWithTgBot } from "../src/lib/tg/bot-context";
 
 type TgUpdate = {
@@ -19,6 +19,15 @@ type TgUpdate = {
   message?: Parameters<typeof handleTgMessage>[0];
   callback_query?: Parameters<typeof handleTgCallbackQuery>[0];
 };
+
+/** Prefer dual-bot poller; fall back if registry build is older. */
+async function loadPollableBots(): Promise<LiveBot[]> {
+  if (typeof listPollableBots === "function") {
+    return listPollableBots();
+  }
+  console.warn("[tg-bot] listPollableBots missing — using listLiveBots");
+  return listLiveBots();
+}
 
 async function pollOneBot(bot: LiveBot) {
   let offset = 0;
@@ -102,7 +111,7 @@ async function main() {
     void ensureCopyOverlay().catch(() => undefined);
   }, 2000);
 
-  let bots = await listPollableBots();
+  let bots = await loadPollableBots();
   if (!bots.length) {
     console.error("No live bots — set TELEGRAM_BOT_TOKEN or add dual bot in /ops/bot");
     process.exit(1);
@@ -111,7 +120,7 @@ async function main() {
   // Refresh bot list periodically so admin-added dual bots start without full redeploy
   // of the whole Railway box — only this poller process needs to pick them up.
   setInterval(() => {
-    void listPollableBots()
+    void loadPollableBots()
       .then((next) => {
         const known = new Set(bots.map((b) => b.token));
         for (const b of next) {

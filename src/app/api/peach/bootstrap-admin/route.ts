@@ -201,6 +201,76 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "scrub_lora_i2v_hair") {
+    const dryRun = body.dryRun === true;
+    const { scrubHairFromI2vPrompt, scrubHairChanged } = await import(
+      "@/lib/lora-i2v-scrub-hair"
+    );
+    const {
+      parseLoraI2vShotsPlan,
+      buildLoraI2vShotsPlan,
+      serializeLoraI2vShotsPlan,
+      resolveLoraI2vShots,
+    } = await import("@/lib/lora-i2v-shots");
+    const rows = await prisma.loraI2vTemplate.findMany({
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+    });
+    const changed: Array<{
+      id: string;
+      title: string;
+      shotsTouched: number[];
+    }> = [];
+    for (const row of rows) {
+      const shots = resolveLoraI2vShots({
+        shotsJson: row.shotsJson,
+        stillPrompt: row.stillPrompt,
+        i2vPrompt: row.i2vPrompt,
+        negativePrompt: row.negativePrompt,
+        durationSec: row.durationSec,
+      });
+      if (!shots.length) continue;
+      const nextShots = shots.map((s) => ({
+        ...s,
+        i2vPrompt: scrubHairFromI2vPrompt(s.i2vPrompt),
+      }));
+      const touched = nextShots
+        .map((s, i) => (scrubHairChanged(shots[i]!.i2vPrompt, s.i2vPrompt) ? i + 1 : 0))
+        .filter((n) => n > 0);
+      if (!touched.length) continue;
+
+      const prevPlan = parseLoraI2vShotsPlan(row.shotsJson);
+      const plan = buildLoraI2vShotsPlan(nextShots, {
+        billingWaiveLastShot: Boolean(prevPlan?.billingWaiveLastShot),
+      });
+      const first = plan.shots[0]!;
+      const i2vPrompt = plan.shots.map((s) => s.i2vPrompt).join("\n\n");
+      if (!dryRun) {
+        await prisma.loraI2vTemplate.update({
+          where: { id: row.id },
+          data: {
+            i2vPrompt,
+            stillPrompt: first.stillPrompt || row.stillPrompt,
+            shotsJson: serializeLoraI2vShotsPlan(plan),
+            durationSec: plan.totalDurationSec || row.durationSec,
+          },
+        });
+      }
+      changed.push({
+        id: row.id,
+        title: row.tgDisplayTitle.trim() || row.title,
+        shotsTouched: touched,
+      });
+    }
+    return NextResponse.json({
+      ok: true,
+      action: "scrub_lora_i2v_hair",
+      dryRun,
+      updated: changed.length,
+      templates: changed,
+    });
+  }
+
   if (action === "inspect_active_gens") {
     const userId = String(body.userId || "").trim();
     const take = Math.min(50, Math.max(5, Number(body.take) || 25));

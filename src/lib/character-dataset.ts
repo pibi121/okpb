@@ -106,12 +106,86 @@ export function ensureCharacterDirs(characterId: string) {
   fs.mkdirSync(characterImagesDir(characterId), { recursive: true });
 }
 
-export function sanitizeTrigger(raw: string): string {
-  const t = raw.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  if (t.length < 3 || t.length > 32) {
+/** Cyrillic → latin so RU character names become valid LoRA triggers. */
+const CYR_TO_LAT: Record<string, string> = {
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  ё: "e",
+  ж: "zh",
+  з: "z",
+  и: "i",
+  й: "y",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "h",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "sch",
+  ъ: "",
+  ы: "y",
+  ь: "",
+  э: "e",
+  ю: "yu",
+  я: "ya",
+};
+
+export function transliterateToAscii(raw: string): string {
+  let out = "";
+  for (const ch of raw) {
+    const lower = ch.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(CYR_TO_LAT, lower)) {
+      out += CYR_TO_LAT[lower];
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * LoRA trigger / remote slug: [a-z][a-z0-9_]{2,31}.
+ * Accepts Cyrillic names (transliterated). If still invalid, uses `ch_<idTail>`.
+ */
+export function sanitizeTrigger(raw: string, fallbackId?: string): string {
+  let t = transliterateToAscii(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  if (t && !/^[a-z]/.test(t)) {
+    t = `c_${t}`.replace(/_+/g, "_");
+  }
+  if (t.length > 32) {
+    t = t.slice(0, 32).replace(/_+$/g, "");
+  }
+
+  if (t.length < 3) {
+    const idTail = (fallbackId || "")
+      .replace(/[^a-z0-9]/gi, "")
+      .toLowerCase()
+      .slice(-10);
+    t = `ch_${idTail || "model"}`.slice(0, 32);
+  }
+
+  if (t.length < 3 || t.length > 32 || !/^[a-z][a-z0-9_]*$/.test(t)) {
     throw new Error("trigger: 3–32 символов [a-z0-9_]");
   }
-  if (!/^[a-z]/.test(t)) throw new Error("trigger должен начинаться с буквы");
   return t;
 }
 

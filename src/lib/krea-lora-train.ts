@@ -317,7 +317,10 @@ export async function startKreaLoraTrain(opts: {
     throw new Error(`Нужно минимум ${MIN_PHOTOS} фото (сейчас ${photos.length})`);
   }
 
-  const trigger = sanitizeTrigger(opts.triggerWord || character.triggerWord || character.name);
+  const trigger = sanitizeTrigger(
+    opts.triggerWord || character.triggerWord || character.name,
+    character.id,
+  );
   const slug = trigger;
   const epochs = Math.min(20, Math.max(4, Math.round(opts.epochs || 12)));
   const estimateTotalSec = estimateTrainTotalSec(epochs);

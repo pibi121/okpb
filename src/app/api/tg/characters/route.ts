@@ -154,7 +154,22 @@ export async function PATCH(req: Request) {
         : result.error === "not_found"
           ? 404
           : 400;
-    return NextResponse.json(result, { status });
+    const msg =
+      result.error === "train_start_failed"
+        ? result.detail ||
+          (locale === "en"
+            ? "Training failed to start — try again"
+            : "Не удалось запустить обучение — попробуй ещё раз")
+        : result.error === "need_photos"
+          ? locale === "en"
+            ? `Need more photos (have ${result.photoCount ?? 0})`
+            : `Нужно больше фото (сейчас ${result.photoCount ?? 0})`
+          : result.error === "already"
+            ? locale === "en"
+              ? "Already trained"
+              : "Уже обучен"
+            : result.error;
+    return NextResponse.json({ ...result, error: msg }, { status });
   }
 
   const ch = await prisma.character.findFirst({

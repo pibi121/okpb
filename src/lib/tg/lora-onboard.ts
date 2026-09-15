@@ -215,25 +215,6 @@ export async function startLoraTrainingForUser(opts: {
     tgNotified: false,
   });
 
-  if (opts.chatId) {
-    await tgSendMessage(
-      opts.chatId,
-      tFormat("onboard_lora_started", opts.locale, { price }),
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: t("gen_video_now_btn", opts.locale),
-                callback_data: GEN_CB.againVideo,
-              },
-            ],
-          ],
-        },
-      },
-    );
-  }
-
   const platformUserId = await resolvePlatformUserId(
     opts.userId,
     opts.platformUserId,
@@ -260,7 +241,35 @@ export async function startLoraTrainingForUser(opts: {
       where: { id: opts.characterId },
       data: { loraStatus: "lookbook_ready" },
     });
+    if (opts.chatId) {
+      const detail = (kicked.detail || "").slice(0, 180);
+      await tgSendMessage(
+        opts.chatId,
+        opts.locale === "en"
+          ? `Training failed to start${detail ? `: ${detail}` : ""}. Peaches refunded — try again.`
+          : `Не удалось запустить обучение${detail ? `: ${detail}` : ""}. 🍑 возвращены — попробуй ещё раз.`,
+      );
+    }
     return kicked;
+  }
+
+  if (opts.chatId) {
+    await tgSendMessage(
+      opts.chatId,
+      tFormat("onboard_lora_started", opts.locale, { price }),
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: t("gen_video_now_btn", opts.locale),
+                callback_data: GEN_CB.againVideo,
+              },
+            ],
+          ],
+        },
+      },
+    );
   }
 
   return { ok: true };

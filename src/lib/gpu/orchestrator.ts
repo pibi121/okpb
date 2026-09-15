@@ -12,6 +12,8 @@ import {
 type JobStore = {
   jobId: string;
   workerId: string | null;
+  /** Comfy base URL for this job's assigned worker (multi-GPU). */
+  comfyUrl: string | null;
   failed: boolean;
 };
 
@@ -46,6 +48,12 @@ async function appendTimeline(jobId: string, stage: string, detail?: string) {
 
 export function currentGpuJobId(): string | null {
   return als.getStore()?.jobId || null;
+}
+
+/** Active worker Comfy URL inside withGpuJob — used by comfy-client for multi-GPU. */
+export function currentGpuComfyBaseUrl(): string | null {
+  const u = als.getStore()?.comfyUrl?.trim();
+  return u ? u.replace(/\/$/, "") : null;
 }
 
 export async function noteGpuJobStage(stage: GpuJobStage | string, detail?: string) {
@@ -210,6 +218,7 @@ export async function runTrackedGpuJob(
   const store: JobStore = {
     jobId: job.id,
     workerId: worker.id,
+    comfyUrl: (worker.comfyUrl || "").trim() || null,
     failed: false,
   };
 

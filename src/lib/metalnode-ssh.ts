@@ -1,12 +1,40 @@
 import { spawn, spawnSync } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "fs";
 import path from "path";
-import { loadMetalnodeConfig } from "@/lib/metalnode-config";
+import { loadMetalnodeConfig, type MetalnodeConfig } from "@/lib/metalnode-config";
 
 const IS_WIN = process.platform === "win32";
 const SSH_BIN = IS_WIN ? "ssh.exe" : "ssh";
 const TAR_BIN = IS_WIN ? "tar.exe" : "tar";
 const WORKER = path.join(process.cwd(), "scripts", "metalnode-ssh2-worker.mjs");
+
+type SshTargetOverride = Partial<
+  Pick<MetalnodeConfig, "host" | "sshPort" | "sshUser" | "sshKeyPath">
+> & { sshKeyEnv?: string };
+
+const sshTargetAls = new AsyncLocalStorage<SshTargetOverride>();
+
+/** Run Metalnode SSH/SCP against a specific fleet card (e.g. bmserv1 for LoRA). */
+export function withMetalnodeSshTarget<T>(
+  override: SshTargetOverride,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return sshTargetAls.run(override, fn);
+}
+
+function activeMetalnodeConfig(): MetalnodeConfig {
+  const base = loadMetalnodeConfig();
+  const o = sshTargetAls.getStore();
+  if (!o) return base;
+  return {
+    ...base,
+    host: o.host || base.host,
+    sshPort: o.sshPort && o.sshPort > 0 ? o.sshPort : base.sshPort,
+    sshUser: o.sshUser || base.sshUser,
+    sshKeyPath: o.sshKeyPath || base.sshKeyPath,
+  };
+}
 
 let openSshCached: boolean | null = null;
 
@@ -27,8 +55,10 @@ function hasOpenSsh(): boolean {
 
 /** Materialize METALNODE_SSH_KEY onto disk (Railway has no openssh key file by default). */
 export function ensureMetalnodeKeyFile(): string {
-  const cfg = loadMetalnodeConfig();
+  const cfg = activeMetalnodeConfig();
+  const override = sshTargetAls.getStore();
   const preferred =
+    override?.sshKeyPath?.trim() ||
     process.env.METALNODE_SSH_KEY_PATH?.trim() ||
     cfg.sshKeyPath ||
     "/tmp/metalnode_ssh_key";
@@ -37,7 +67,11 @@ export function ensureMetalnodeKeyFile(): string {
     return preferred;
   }
 
-  const raw = process.env.METALNODE_SSH_KEY?.trim() || "";
+  const rawFromEnv =
+    (override?.sshKeyEnv && process.env[override.sshKeyEnv]?.trim()) ||
+    process.env.METALNODE_SSH_KEY?.trim() ||
+    "";
+  const raw = rawFromEnv;
   if (!raw) {
     if (fs.existsSync(cfg.sshKeyPath)) return cfg.sshKeyPath;
     throw new Error(
@@ -49,12 +83,14 @@ export function ensureMetalnodeKeyFile(): string {
   fs.writeFileSync(preferred, key.endsWith("\n") ? key : `${key}\n`, {
     mode: 0o600,
   });
-  process.env.METALNODE_SSH_KEY_PATH = preferred;
+  if (!override) {
+    process.env.METALNODE_SSH_KEY_PATH = preferred;
+  }
   return preferred;
 }
 
 function sshBaseArgs(extra: string[] = []) {
-  const cfg = loadMetalnodeConfig();
+  const cfg = activeMetalnodeConfig();
   const keyPath = ensureMetalnodeKeyFile();
   if (!fs.existsSync(keyPath)) {
     throw new Error(`SSH key not found: ${keyPath}`);
@@ -156,7 +192,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 10, label = "ssh"):
 }
 
 function workerEnv(): NodeJS.ProcessEnv {
-  const cfg = loadMetalnodeConfig();
+  const cfg = activeMetalnodeConfig();
   const keyPath = ensureMetalnodeKeyFile();
   return {
     ...process.env,

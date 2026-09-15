@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { comfyBaseUrl, loadMetalnodeConfig } from "@/lib/metalnode-config";
 import type { GpuPool } from "@/lib/gpu/types";
+import { FLEET_EXTRA_GPUS, fleetComfyUrl, fleetConfigured } from "@/lib/gpu/fleet";
 
 const PRIMARY_KEY = "metalnode-primary";
 
@@ -12,7 +13,7 @@ export async function ensurePrimaryWorker() {
     where: { key: PRIMARY_KEY },
     create: {
       key: PRIMARY_KEY,
-      label: "Metalnode (основная)",
+      label: "Metalnode bmserv5 (основная)",
       provider: "metalnode",
       pool: "any",
       comfyUrl: url,
@@ -23,19 +24,70 @@ export async function ensurePrimaryWorker() {
         host: cfg.host,
         sshPort: cfg.sshPort,
         role: "always_on",
+        server: "bmserv5",
       }),
     },
     update: {
       comfyUrl: url,
-      label: "Metalnode (основная)",
+      label: "Metalnode bmserv5 (основная)",
       provider: "metalnode",
+      metaJson: JSON.stringify({
+        host: cfg.host,
+        sshPort: cfg.sshPort,
+        role: "always_on",
+        server: "bmserv5",
+      }),
     },
   });
+}
+
+/** Register extra Metalnode cards when their SSH keys are present in env. */
+export async function ensureFleetWorkers() {
+  const cfg = loadMetalnodeConfig();
+  const cost = Number(process.env.GPU_COST_RUB_PER_HOUR || 55);
+  const rub = Number.isFinite(cost) && cost > 0 ? Math.round(cost) : 55;
+  for (const g of FLEET_EXTRA_GPUS) {
+    const hasKey = fleetConfigured(g);
+    const url = fleetComfyUrl(g);
+    const metaJson = JSON.stringify({
+      host: g.host || cfg.host || process.env.METALNODE_HOST || "",
+      sshPort: g.sshPort,
+      localPort: g.localPort,
+      role: g.loraPreferred ? "lora_preferred" : "fleet",
+      server: g.key,
+      keyEnv: g.keyEnv,
+    });
+    await prisma.gpuWorker.upsert({
+      where: { key: g.key },
+      create: {
+        key: g.key,
+        label: g.label,
+        provider: "metalnode",
+        pool: g.pool,
+        comfyUrl: hasKey ? url : "",
+        enabled: hasKey,
+        status: hasKey ? "unknown" : "pending_provider",
+        costRubPerHour: rub,
+        metaJson,
+      },
+      update: {
+        label: g.label,
+        provider: "metalnode",
+        pool: g.pool,
+        comfyUrl: hasKey ? url : "",
+        enabled: hasKey,
+        ...(hasKey ? {} : { status: "pending_provider" }),
+        costRubPerHour: rub,
+        metaJson,
+      },
+    });
+  }
 }
 
 /** Placeholder slots so /ops/load shows future pools before provider keys exist. */
 export async function ensurePlaceholderWorkers() {
   await ensurePrimaryWorker();
+  await ensureFleetWorkers();
   await prisma.gpuWorker.upsert({
     where: { key: "burst-video-slot" },
     create: {
@@ -188,6 +240,7 @@ function safeJson(raw: string): Record<string, unknown> {
 
 export async function pickWorker(pool: GpuPool) {
   await ensurePrimaryWorker();
+  await ensureFleetWorkers();
   const candidates = await prisma.gpuWorker.findMany({
     where: {
       enabled: true,
@@ -201,8 +254,10 @@ export async function pickWorker(pool: GpuPool) {
     // Fall back to primary even if marked dead — better than hard fail.
     return ensurePrimaryWorker();
   }
-  const free = live.find((w) => w.status === "online" || w.status === "unknown");
-  return free || live[0];
+  const free = live.filter((w) => w.status === "online" || w.status === "unknown");
+  if (free.length) return free[0];
+  // All busy — still pick least-recently-updated; Comfy will queue on that card.
+  return live[0];
 }
 
 export async function listWorkersForOps() {

@@ -495,22 +495,63 @@ async function runKreaLoraTrainBackground(opts: {
   })();
 
   try {
-    const { ensureMetalnodeKeyFile } = await import("@/lib/metalnode-ssh");
-    ensureMetalnodeKeyFile();
-    const check = await metalnodeCheck();
-    if (!check.ok) {
-      throw new Error(
-        `Metalnode SSH недоступен: ${check.detail}. Повтори через минуту или проверь METALNODE_SSH_KEY / порт.`,
-      );
+    const { ensureMetalnodeKeyFile, withMetalnodeSshTarget } = await import(
+      "@/lib/metalnode-ssh"
+    );
+    const { loraPreferredFleet, fleetConfigured } = await import("@/lib/gpu/fleet");
+    const { prisma: db } = await import("@/lib/db");
+
+    const loraNode = loraPreferredFleet();
+    const runBody = async () => {
+      ensureMetalnodeKeyFile();
+      const check = await metalnodeCheck();
+      if (!check.ok) {
+        throw new Error(
+          `Metalnode SSH недоступен: ${check.detail}. Повтори через минуту или проверь METALNODE_SSH_KEY / порт.`,
+        );
+      }
+      await runTrainPipeline({
+        characterId: opts.characterId,
+        trigger: opts.trigger,
+        slug: opts.slug,
+        epochs: opts.epochs,
+        startedAt: opts.startedAt,
+        estimateTotalSec: opts.estimateTotalSec,
+      });
+    };
+
+    if (loraNode && fleetConfigured(loraNode)) {
+      const host =
+        process.env.METALNODE_HOST?.trim() ||
+        (await import("@/lib/metalnode-config")).loadMetalnodeConfig().host;
+      // Keep gen off this card while training.
+      await db.gpuWorker
+        .updateMany({
+          where: { key: loraNode.key },
+          data: { status: "busy" },
+        })
+        .catch(() => undefined);
+      try {
+        await withMetalnodeSshTarget(
+          {
+            host,
+            sshPort: loraNode.sshPort,
+            sshKeyPath: loraNode.keyPath,
+            sshKeyEnv: loraNode.keyEnv,
+          },
+          runBody,
+        );
+      } finally {
+        await db.gpuWorker
+          .updateMany({
+            where: { key: loraNode.key },
+            data: { status: "online", currentJobId: null },
+          })
+          .catch(() => undefined);
+      }
+    } else {
+      await runBody();
     }
-    await runTrainPipeline({
-      characterId: opts.characterId,
-      trigger: opts.trigger,
-      slug: opts.slug,
-      epochs: opts.epochs,
-      startedAt: opts.startedAt,
-      estimateTotalSec: opts.estimateTotalSec,
-    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[peach] krea lora train failed:", e);

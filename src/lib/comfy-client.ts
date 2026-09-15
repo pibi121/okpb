@@ -135,6 +135,19 @@ function httpRequest(
   });
 }
 
+function activeComfyBase(): string {
+  try {
+    // Lazy import avoids circular init with orchestrator ↔ generation paths.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { currentGpuComfyBaseUrl } = require("@/lib/gpu/orchestrator") as {
+      currentGpuComfyBaseUrl: () => string | null;
+    };
+    return currentGpuComfyBaseUrl() || comfyBaseUrl();
+  } catch {
+    return comfyBaseUrl();
+  }
+}
+
 async function comfyRequest(
   path: string,
   init?: {
@@ -144,7 +157,7 @@ async function comfyRequest(
   },
   timeoutMs = 120_000,
 ) {
-  return httpRequest(`${comfyBaseUrl()}${path}`, {
+  return httpRequest(`${activeComfyBase()}${path}`, {
     method: init?.method,
     headers: init?.headers,
     body: init?.body,

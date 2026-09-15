@@ -743,7 +743,14 @@ export async function resumeStuckQuickVideoRuns(opts?: {
   let comfyBusy = false;
   try {
     const { comfyBaseUrl } = await import("@/lib/metalnode-config");
-    const res = await fetch(`${comfyBaseUrl()}/queue`, {
+    let base = comfyBaseUrl();
+    try {
+      const { currentGpuComfyBaseUrl } = await import("@/lib/gpu/orchestrator");
+      base = currentGpuComfyBaseUrl() || base;
+    } catch {
+      /* ignore */
+    }
+    const res = await fetch(`${base}/queue`, {
       signal: AbortSignal.timeout(8000),
     });
     if (res.ok) {

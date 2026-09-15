@@ -403,6 +403,198 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "inspect_user") {
+    const userId = String(body.userId || "").trim();
+    const tgId = String(body.telegramUserId || body.tgId || "").trim();
+    const username = String(body.username || "").trim().replace(/^@/, "");
+    let user: {
+      id: string;
+      email: string;
+      name: string | null;
+      balancePeaches: number;
+      credits: number;
+      source: string | null;
+      createdAt: Date;
+    } | null = null;
+    if (userId) {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          balancePeaches: true,
+          credits: true,
+          source: true,
+          createdAt: true,
+        },
+      });
+    } else if (tgId || username) {
+      const acc = await prisma.platformAccount.findFirst({
+        where: {
+          platform: "telegram",
+          ...(tgId ? { platformUserId: tgId } : {}),
+          ...(username ? { username: { equals: username } } : {}),
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              balancePeaches: true,
+              credits: true,
+              source: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+      user = acc?.user || null;
+    }
+    if (!user) {
+      return NextResponse.json({ error: "user not found" }, { status: 404 });
+    }
+    const [accounts, characters, ledgers, orders, jobs, gallery, qv] =
+      await Promise.all([
+        prisma.platformAccount.findMany({
+          where: { userId: user.id },
+          select: {
+            platform: true,
+            platformUserId: true,
+            username: true,
+            chatState: true,
+            pendingJson: true,
+            activeCharacterId: true,
+            lastSeenAt: true,
+            updatedAt: true,
+          },
+        }),
+        prisma.character.findMany({
+          where: { userId: user.id },
+          orderBy: { updatedAt: "desc" },
+          take: 20,
+          select: {
+            id: true,
+            name: true,
+            loraStatus: true,
+            triggerWord: true,
+            isStudioCast: true,
+            videoRefOnly: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        prisma.ledgerEntry.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 40,
+        }),
+        prisma.paymentOrder.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        }),
+        prisma.gpuJob.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+          select: {
+            id: true,
+            status: true,
+            kind: true,
+            stage: true,
+            error: true,
+            createdAt: true,
+            finishedAt: true,
+            refType: true,
+            refId: true,
+          },
+        }),
+        prisma.galleryItem.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+          select: {
+            id: true,
+            kind: true,
+            title: true,
+            resultUrl: true,
+            createdAt: true,
+            metaJson: true,
+            characterId: true,
+          },
+        }),
+        prisma.quickVideoRun.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 15,
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            error: true,
+            createdAt: true,
+            resultVideoUrl: true,
+          },
+        }),
+      ]);
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_user",
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        balancePeaches: user.balancePeaches,
+        credits: user.credits,
+        source: user.source,
+        createdAt: user.createdAt,
+      },
+      accounts,
+      characters,
+      ledgers: ledgers.map((l) => ({
+        id: l.id,
+        amount: l.amount,
+        reason: l.reason,
+        metaJson: l.metaJson,
+        createdAt: l.createdAt,
+      })),
+      orders: orders.map((o) => ({
+        id: o.id,
+        peaches: o.peaches,
+        amountMinor: o.amountMinor,
+        method: o.paymentMethod,
+        status: o.status,
+        creditedAt: o.creditedAt,
+        paidAt: o.paidAt,
+        createdAt: o.createdAt,
+        externalId: o.externalId,
+      })),
+      jobs,
+      gallery: gallery.map((it) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = JSON.parse(it.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          meta = {};
+        }
+        return {
+          id: it.id,
+          kind: it.kind,
+          title: it.title,
+          characterId: it.characterId,
+          createdAt: it.createdAt,
+          hasResult: Boolean(it.resultUrl),
+          status: meta.status,
+          jobAction: meta.jobAction,
+          error: meta.error,
+        };
+      }),
+      quickVideo: qv,
+    });
+  }
+
   if (action === "inspect_payments") {
     const take = Math.min(50, Math.max(1, Number(body.take) || 20));
     const orders = await prisma.paymentOrder.findMany({

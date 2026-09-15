@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import {
   ensureCharacterDirs,
   listCharacterPhotos,
+  sanitizeTrigger,
   saveCharacterPhoto,
 } from "@/lib/character-dataset";
 import { emptyLookbook } from "@/lib/lookbook";
@@ -65,10 +66,12 @@ export async function setActiveTgCharacter(
 }
 
 export async function createTgCharacter(userId: string, name: string) {
+  const displayName = name.trim().slice(0, 40) || "Model";
+  // Pre-create with placeholder id for trigger — set after create.
   const character = await prisma.character.create({
     data: {
       userId,
-      name: name.trim().slice(0, 40) || "Model",
+      name: displayName,
       gender: "female",
       consentGiven: true,
       photoCount: 0,
@@ -77,16 +80,22 @@ export async function createTgCharacter(userId: string, name: string) {
       lookbookJson: JSON.stringify(emptyLookbook("female")),
     },
   });
+  const triggerWord = sanitizeTrigger(displayName, character.id);
+  const updated = await prisma.character.update({
+    where: { id: character.id },
+    data: { triggerWord },
+  });
   ensureCharacterDirs(character.id);
-  return character;
+  return updated;
 }
 
 /** Ref2V video identity — saved refs with 🎬, no LoRA training. */
 export async function createVideoRefCharacter(userId: string, name: string) {
+  const displayName = name.trim().slice(0, 40) || "Модель";
   const character = await prisma.character.create({
     data: {
       userId,
-      name: name.trim().slice(0, 40) || "Модель",
+      name: displayName,
       gender: "female",
       consentGiven: true,
       photoCount: 0,
@@ -96,8 +105,13 @@ export async function createVideoRefCharacter(userId: string, name: string) {
       lookbookJson: JSON.stringify(emptyLookbook("female")),
     },
   });
+  const triggerWord = sanitizeTrigger(displayName, character.id);
+  const updated = await prisma.character.update({
+    where: { id: character.id },
+    data: { triggerWord },
+  });
   ensureCharacterDirs(character.id);
-  return character;
+  return updated;
 }
 
 export async function listVideoRefCharacters(userId: string) {

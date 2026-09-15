@@ -1007,6 +1007,97 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (action === "prepare_character_train") {
+    const characterId = String(body.characterId || body.q || "").trim();
+    if (!characterId) {
+      return NextResponse.json({ error: "characterId required" }, { status: 400 });
+    }
+    const row = await prisma.character.findUnique({ where: { id: characterId } });
+    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const {
+      restoreTrainingPhotos,
+      listCharacterPhotos,
+      sanitizeTrigger,
+      writeTrainMeta,
+      readTrainMeta,
+      characterImagesDir,
+      characterTrainingArchiveDir,
+      trainingPhotosArchived,
+    } = await import("@/lib/character-dataset");
+    const restored = restoreTrainingPhotos(characterId);
+    const triggerWord = sanitizeTrigger(row.triggerWord || row.name, row.id);
+    await prisma.character.update({
+      where: { id: characterId },
+      data: {
+        triggerWord,
+        loraStatus: "lookbook_ready",
+        loraPath: null,
+        photoCount: listCharacterPhotos(characterId).length,
+      },
+    });
+    writeTrainMeta(characterId, {
+      ...readTrainMeta(characterId),
+      status: "idle",
+      error: undefined,
+      phase: undefined,
+      finishedAt: undefined,
+      tgNotify: true,
+      tgNotified: false,
+      trigger: triggerWord,
+    });
+    let archiveFiles: string[] = [];
+    let imageFiles: string[] = [];
+    try {
+      const imgDir = characterImagesDir(characterId);
+      if (fs.existsSync(imgDir)) imageFiles = fs.readdirSync(imgDir).slice(0, 40);
+      const archDir = characterTrainingArchiveDir(characterId);
+      if (fs.existsSync(archDir)) archiveFiles = fs.readdirSync(archDir).slice(0, 40);
+    } catch {
+      /* ignore */
+    }
+    return NextResponse.json({
+      ok: true,
+      action: "prepare_character_train",
+      characterId,
+      name: row.name,
+      triggerWord,
+      restored,
+      photoCount: listCharacterPhotos(characterId).length,
+      archivedFlag: trainingPhotosArchived(characterId),
+      imageFiles,
+      archiveFiles,
+    });
+  }
+
+  if (action === "send_tg_text") {
+    const tgId = String(body.telegramUserId || body.tgId || "").trim();
+    const text = String(body.text || "").trim();
+    if (!tgId || !text) {
+      return NextResponse.json(
+        { error: "telegramUserId and text required" },
+        { status: 400 },
+      );
+    }
+    const acc = await prisma.platformAccount.findFirst({
+      where: { platform: "telegram", platformUserId: tgId },
+      select: { userId: true, platformUserId: true },
+    });
+    if (!acc) return NextResponse.json({ error: "account not found" }, { status: 404 });
+    const { enqueueTgOutbox } = await import("@/lib/tg/session");
+    await enqueueTgOutbox({
+      platformUserId: acc.platformUserId,
+      userId: acc.userId,
+      kind: "text",
+      payload: { text: text.slice(0, 3500) },
+    });
+    return NextResponse.json({
+      ok: true,
+      action: "send_tg_text",
+      telegramUserId: tgId,
+      queued: true,
+    });
+  }
+
   if (action === "disk_stats" || action === "free_disk" || action === "purge_videos") {
     const { freeGalleryDisk, getDiskStats } = await import("@/lib/disk-hygiene");
     const { dataRoot } = await import("@/lib/paths");

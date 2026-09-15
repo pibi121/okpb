@@ -3,6 +3,7 @@ import {
   listCharacterPhotos,
   readTrainMeta,
   restoreTrainingPhotos,
+  sanitizeTrigger,
   writeTrainMeta,
 } from "@/lib/character-dataset";
 import { useComfy } from "@/lib/metalnode-config";
@@ -168,6 +169,24 @@ export async function startLoraTrainingForUser(opts: {
     };
   }
 
+  // Persist ASCII trigger before debit — Cyrillic names used to fail after charge.
+  let trigger: string;
+  try {
+    trigger = sanitizeTrigger(ch.triggerWord || ch.name, ch.id);
+  } catch (e) {
+    return {
+      ok: false,
+      error: "train_start_failed",
+      detail: e instanceof Error ? e.message : String(e),
+    };
+  }
+  if (ch.triggerWord !== trigger) {
+    await prisma.character.update({
+      where: { id: opts.characterId },
+      data: { triggerWord: trigger },
+    });
+  }
+
   const price = loraTrainPeaches();
   const bal = await getBalancePeaches(opts.userId);
   if (bal < price) {
@@ -205,7 +224,7 @@ export async function startLoraTrainingForUser(opts: {
 
   await prisma.character.update({
     where: { id: opts.characterId },
-    data: { loraStatus: "lora_training" },
+    data: { loraStatus: "lora_training", triggerWord: trigger },
   });
 
   const prevMeta = readTrainMeta(opts.characterId);
@@ -241,14 +260,21 @@ export async function startLoraTrainingForUser(opts: {
       where: { id: opts.characterId },
       data: { loraStatus: "lookbook_ready" },
     });
+    const detail = (kicked.detail || "").slice(0, 180);
+    const failText =
+      opts.locale === "en"
+        ? `Training failed to start${detail ? `: ${detail}` : ""}. Peaches refunded — try again.`
+        : `Не удалось запустить обучение${detail ? `: ${detail}` : ""}. 🍑 возвращены — попробуй ещё раз.`;
     if (opts.chatId) {
-      const detail = (kicked.detail || "").slice(0, 180);
-      await tgSendMessage(
-        opts.chatId,
-        opts.locale === "en"
-          ? `Training failed to start${detail ? `: ${detail}` : ""}. Peaches refunded — try again.`
-          : `Не удалось запустить обучение${detail ? `: ${detail}` : ""}. 🍑 возвращены — попробуй ещё раз.`,
-      );
+      await tgSendMessage(opts.chatId, failText);
+    } else if (platformUserId) {
+      // Mini App has no chatId — still tell the user (was silent refund before).
+      await enqueueTgOutbox({
+        platformUserId,
+        userId: opts.userId,
+        kind: "text",
+        payload: { text: failText },
+      });
     }
     return kicked;
   }

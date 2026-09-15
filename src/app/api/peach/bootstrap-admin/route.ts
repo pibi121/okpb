@@ -152,6 +152,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, users });
   }
 
+  if (action === "list_lora_i2v_prompts") {
+    const all = body.all === true;
+    const rows = await prisma.loraI2vTemplate.findMany({
+      where: all ? undefined : { tgPublished: true },
+      orderBy: { updatedAt: "desc" },
+      take: 120,
+      select: {
+        id: true,
+        title: true,
+        tgDisplayTitle: true,
+        tgPublished: true,
+        i2vPrompt: true,
+        stillPrompt: true,
+        shotsJson: true,
+        durationSec: true,
+      },
+    });
+    const { parseLoraI2vShotsPlan, resolveLoraI2vShots } = await import(
+      "@/lib/lora-i2v-shots"
+    );
+    return NextResponse.json({
+      ok: true,
+      action: "list_lora_i2v_prompts",
+      count: rows.length,
+      templates: rows.map((r) => {
+        const plan = parseLoraI2vShotsPlan(r.shotsJson);
+        const shots = resolveLoraI2vShots({
+          shotsJson: r.shotsJson,
+          stillPrompt: r.stillPrompt,
+          i2vPrompt: r.i2vPrompt,
+          durationSec: r.durationSec,
+        });
+        return {
+          id: r.id,
+          title: r.tgDisplayTitle.trim() || r.title,
+          tgPublished: r.tgPublished,
+          multi: Boolean(plan && plan.shots.length > 1),
+          i2vPrompt: r.i2vPrompt || "",
+          shots: shots.map((s, i) => ({
+            index: i + 1,
+            id: s.id,
+            durationSec: s.durationSec,
+            i2vPrompt: s.i2vPrompt,
+          })),
+        };
+      }),
+    });
+  }
+
   if (action === "inspect_active_gens") {
     const userId = String(body.userId || "").trim();
     const take = Math.min(50, Math.max(5, Number(body.take) || 25));

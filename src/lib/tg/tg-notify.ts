@@ -77,3 +77,23 @@ export async function notifyTelegramGenerationError(
     },
   });
 }
+
+/** Notify partner when referral top-up commission is credited. */
+export async function notifyPartnerCommission(opts: {
+  partnerUserId: string;
+  amountPeaches: number;
+}) {
+  if (opts.amountPeaches <= 0) return;
+  const acc = await hasTelegramAccount(opts.partnerUserId);
+  if (!acc) return;
+  const { tFormat } = await import("@/lib/tg/i18n");
+  const text = tFormat("partner_commission_notice", acc.locale, {
+    n: String(opts.amountPeaches),
+  });
+  await enqueueTgOutbox({
+    platformUserId: acc.platformUserId,
+    userId: opts.partnerUserId,
+    kind: "text",
+    payload: { text, locale: acc.locale },
+  });
+}

@@ -831,6 +831,11 @@ Not sure how to use the bot? Tap the guide button below!`,
     en: "📊 Open partner program in Mini App",
   },
 
+  partner_commission_notice: {
+    ru: "Поздравляю! Тебе пришли комиссионные <b>+{n} 🍑</b> от пополнения реферала",
+    en: "Congrats! You earned <b>+{n} 🍑</b> commission from a referral top-up",
+  },
+
   gen_pick_kind: {
     ru: "Что сгенерировать?",
     en: "What to generate?",

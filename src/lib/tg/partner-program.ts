@@ -185,6 +185,18 @@ export async function creditPartnerCommission(opts: {
       });
     }
   });
+
+  // Don't spam on historical backfill; live top-ups use kind "topup".
+  if ((opts.kind || "topup") === "topup") {
+    void import("@/lib/tg/tg-notify")
+      .then(({ notifyPartnerCommission }) =>
+        notifyPartnerCommission({
+          partnerUserId: attr.partner.userId,
+          amountPeaches: amount,
+        }),
+      )
+      .catch((e) => console.error("[partner] notify commission:", e));
+  }
 }
 
 export async function getPartnerDashboard(userId: string) {

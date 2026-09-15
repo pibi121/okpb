@@ -595,6 +595,152 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "inspect_partner") {
+    const tgId = String(body.telegramUserId || body.tgId || "").trim();
+    const username = String(body.username || "").trim().replace(/^@/, "");
+    const userId = String(body.userId || "").trim();
+    const code = String(body.code || "").trim().toLowerCase();
+    const take = Math.min(50, Math.max(1, Number(body.take) || 20));
+
+    let resolvedUserId = userId;
+    if (!resolvedUserId && (tgId || username)) {
+      const acc = await prisma.platformAccount.findFirst({
+        where: {
+          platform: "telegram",
+          ...(tgId ? { platformUserId: tgId } : {}),
+          ...(username ? { username: { equals: username } } : {}),
+        },
+        select: { userId: true },
+      });
+      resolvedUserId = acc?.userId || "";
+    }
+
+    const [asReferred, asPartner, recentAttrs, recentCommissions, recentClicks] =
+      await Promise.all([
+        resolvedUserId
+          ? prisma.partnerAttribution.findUnique({
+              where: { userId: resolvedUserId },
+              include: {
+                partner: {
+                  select: {
+                    id: true,
+                    code: true,
+                    userId: true,
+                    status: true,
+                    commissionPct: true,
+                    balancePeaches: true,
+                    totalEarnedPeaches: true,
+                  },
+                },
+                link: { select: { id: true, slug: true, label: true, clicks: true, signups: true, purchases: true } },
+              },
+            })
+          : Promise.resolve(null),
+        resolvedUserId
+          ? prisma.partnerProfile.findUnique({
+              where: { userId: resolvedUserId },
+              include: {
+                links: true,
+                _count: { select: { attributions: true, commissions: true } },
+              },
+            })
+          : code
+            ? prisma.partnerProfile.findFirst({
+                where: { code },
+                include: {
+                  links: true,
+                  _count: { select: { attributions: true, commissions: true } },
+                },
+              })
+            : Promise.resolve(null),
+        prisma.partnerAttribution.findMany({
+          orderBy: { createdAt: "desc" },
+          take,
+          include: {
+            partner: { select: { code: true, userId: true } },
+            user: {
+              select: {
+                id: true,
+                name: true,
+                createdAt: true,
+                platformAccounts: {
+                  where: { platform: "telegram" },
+                  select: { platformUserId: true, username: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        }),
+        prisma.partnerCommission.findMany({
+          orderBy: { createdAt: "desc" },
+          take,
+          include: {
+            partner: { select: { code: true } },
+          },
+        }),
+        prisma.partnerLink.findMany({
+          orderBy: { createdAt: "desc" },
+          take,
+          select: {
+            id: true,
+            slug: true,
+            label: true,
+            clicks: true,
+            signups: true,
+            purchases: true,
+            purchaseGrossPeaches: true,
+            commissionPeaches: true,
+            createdAt: true,
+            partner: { select: { code: true, userId: true } },
+          },
+        }),
+      ]);
+
+    let partnerOwnerTg: { platformUserId: string; username: string | null } | null =
+      null;
+    if (asPartner?.userId) {
+      const acc = await prisma.platformAccount.findFirst({
+        where: { userId: asPartner.userId, platform: "telegram" },
+        select: { platformUserId: true, username: true },
+      });
+      partnerOwnerTg = acc || null;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      action: "inspect_partner",
+      resolvedUserId: resolvedUserId || null,
+      asReferred,
+      asPartner: asPartner
+        ? {
+            ...asPartner,
+            ownerTg: partnerOwnerTg,
+          }
+        : null,
+      recentAttrs: recentAttrs.map((a) => ({
+        id: a.id,
+        createdAt: a.createdAt,
+        partnerCode: a.partner.code,
+        partnerUserId: a.partner.userId,
+        userId: a.userId,
+        userName: a.user.name,
+        userCreatedAt: a.user.createdAt,
+        tg: a.user.platformAccounts[0] || null,
+      })),
+      recentCommissions: recentCommissions.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt,
+        partnerCode: c.partner.code,
+        referredUserId: c.referredUserId,
+        grossPeaches: c.grossPeaches,
+        amountPeaches: c.amountPeaches,
+        kind: c.kind,
+      })),
+      recentLinks: recentClicks,
+    });
+  }
+
   if (action === "inspect_payments") {
     const take = Math.min(50, Math.max(1, Number(body.take) || 20));
     const orders = await prisma.paymentOrder.findMany({

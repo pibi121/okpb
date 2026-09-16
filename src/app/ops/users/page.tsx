@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fmtTime, opsFetch } from "@/lib/ops/ops-fetch";
 
+const PAGE_SIZE = 40;
+
 type Row = {
   id: string;
   name: string | null;
@@ -19,17 +21,19 @@ type Row = {
 
 export default function OpsUsersPage() {
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [err, setErr] = useState("");
 
-  async function load(query = q) {
+  async function load(query = q, pageNum = page) {
     try {
-      const d = await opsFetch<{ rows: Row[]; total: number }>(
-        `/api/ops/users?q=${encodeURIComponent(query)}`,
+      const d = await opsFetch<{ rows: Row[]; total: number; page: number }>(
+        `/api/ops/users?q=${encodeURIComponent(query)}&page=${pageNum}`,
       );
       setRows(d.rows);
       setTotal(d.total);
+      setPage(d.page || pageNum);
       setErr("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ошибка");
@@ -37,8 +41,12 @@ export default function OpsUsersPage() {
   }
 
   useEffect(() => {
-    void load("");
+    void load("", 1);
   }, []);
+
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(total, page * PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-5">
@@ -47,7 +55,8 @@ export default function OpsUsersPage() {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          void load();
+          setPage(1);
+          void load(q, 1);
         }}
       >
         <input
@@ -58,7 +67,11 @@ export default function OpsUsersPage() {
         />
         <button className="rounded-full btn-grad px-4 py-2 text-sm">Найти</button>
       </form>
-      <p className="text-xs text-zinc-500">Всего {total}</p>
+      <p className="text-xs text-zinc-500">
+        Всего {total}
+        {total > 0 ? ` · на экране ${from}–${to}` : ""}
+        {total > PAGE_SIZE ? " · сначала новые" : ""}
+      </p>
       {err ? <p className="text-coral">{err}</p> : null}
       <div className="overflow-x-auto rounded-2xl border border-white/10">
         <table className="w-full text-left text-sm">
@@ -92,6 +105,37 @@ export default function OpsUsersPage() {
           </tbody>
         </table>
       </div>
+      {pages > 1 ? (
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => {
+              const next = Math.max(1, page - 1);
+              setPage(next);
+              void load(q, next);
+            }}
+            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-300 disabled:opacity-40"
+          >
+            ← Раньше
+          </button>
+          <span className="text-xs text-zinc-500">
+            стр. {page} / {pages}
+          </span>
+          <button
+            type="button"
+            disabled={page >= pages}
+            onClick={() => {
+              const next = Math.min(pages, page + 1);
+              setPage(next);
+              void load(q, next);
+            }}
+            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-300 disabled:opacity-40"
+          >
+            Ещё раньше →
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

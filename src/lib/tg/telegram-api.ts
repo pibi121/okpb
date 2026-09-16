@@ -41,9 +41,9 @@ export async function tgSendMessage(
   extra: Record<string, unknown> = {},
   token?: string,
 ) {
-  const skipInbox = Boolean(extra._peachSkipInbox);
+  // _peachSkipInbox kept for callers; ops inbox no longer mirrors auto bot texts.
   const { _peachSkipInbox: _ignored, ...apiExtra } = extra;
-  const result = await tgApi(
+  return tgApi(
     "sendMessage",
     {
       chat_id: chatId,
@@ -53,15 +53,6 @@ export async function tgSendMessage(
     },
     token,
   );
-  // Mirror bot → user text into ops inbox (non-blocking).
-  if (!skipInbox && text?.trim()) {
-    void import("@/lib/ops/inbox")
-      .then(({ recordOutboundFromChatId }) =>
-        recordOutboundFromChatId(chatId, text, { via: "tgSendMessage" }),
-      )
-      .catch(() => undefined);
-  }
-  return result;
 }
 
 export async function tgEditMessageText(

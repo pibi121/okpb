@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
-import { replyToUserFromOps } from "@/lib/ops/inbox";
+import { inboxHumanThreadWhere, replyToUserFromOps } from "@/lib/ops/inbox";
 import { writeAudit } from "@/lib/ops/audit";
 
 export async function GET(req: Request) {
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
 
     if (userId) {
       const messages = await prisma.tgUserMessage.findMany({
-        where: { userId },
+        where: { userId, ...inboxHumanThreadWhere },
         orderBy: { createdAt: "asc" },
         take: 200,
       });
@@ -47,8 +47,9 @@ export async function GET(req: Request) {
       });
     }
 
-    // Thread list: latest message of any kind per user (inbound / outbound / system)
+    // Thread list: latest human message per user (inbound or ops reply)
     const recent = await prisma.tgUserMessage.findMany({
+      where: inboxHumanThreadWhere,
       orderBy: { createdAt: "desc" },
       take: 400,
       select: {

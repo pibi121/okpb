@@ -57,39 +57,31 @@ export async function recordOutboundBotMessage(opts: {
   return row;
 }
 
-/** Balance / token movements shown in ops inbox thread. */
-export async function recordSystemBalanceNotice(opts: {
+/**
+ * Formerly wrote balance moves into the ops message thread.
+ * Inbox is human↔ops only now — kept as a no-op for existing callers.
+ */
+export async function recordSystemBalanceNotice(_opts: {
   userId: string;
   amount: number;
   reason: string;
   meta?: Record<string, unknown>;
 }) {
-  const acc = await prisma.platformAccount.findFirst({
-    where: { userId: opts.userId, platform: "telegram" },
-    select: { platformUserId: true },
-  });
-  if (!acc) return null;
-
-  const sign = opts.amount >= 0 ? "+" : "";
-  const label = peachReasonLabel(opts.reason);
-  const text = `🍑 ${sign}${opts.amount} · ${label}`;
-
-  return prisma.tgUserMessage.create({
-    data: {
-      userId: opts.userId,
-      platformUserId: acc.platformUserId,
-      direction: "system",
-      text: text.slice(0, 4000),
-      readAt: new Date(),
-      metaJson: JSON.stringify({
-        kind: "balance",
-        reason: opts.reason,
-        amount: opts.amount,
-        ...(opts.meta || {}),
-      }),
-    },
-  });
+  return null;
 }
+
+/** Prisma where: user free-text + manual ops replies (not auto bot / system). */
+export const inboxHumanThreadWhere = {
+  OR: [
+    { direction: "inbound" as const },
+    {
+      AND: [
+        { direction: "outbound" as const },
+        { metaJson: { contains: '"source":"ops"' } },
+      ],
+    },
+  ],
+};
 
 export function peachReasonLabel(reason: string): string {
   const r = reason.toLowerCase();

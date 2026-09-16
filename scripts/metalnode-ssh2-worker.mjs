@@ -150,74 +150,146 @@ async function cmdUpload(timeoutMs, localPath, remotePath) {
   }
 }
 
-async function cmdUploadDir(timeoutMs, localDir, remoteDir) {
-  const client = await connect(Math.min(timeoutMs, 90_000));
-  try {
-    await new Promise((resolve, reject) => {
-      const remoteCmd = `mkdir -p ${JSON.stringify(remoteDir)} && tar -xf - -C ${JSON.stringify(remoteDir)}`;
-      const t = setTimeout(() => {
+function dirByteSize(dir) {
+  let total = 0;
+  const walk = (p) => {
+    for (const name of fs.readdirSync(p)) {
+      const full = path.join(p, name);
+      const st = fs.statSync(full);
+      if (st.isDirectory()) walk(full);
+      else total += st.size;
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+function makeLocalTarGz(localDir) {
+  const tmp = path.join(
+    process.env.TEMP || process.env.TMPDIR || "/tmp",
+    `peach-upload-${Date.now()}-${Math.random().toString(36).slice(2)}.tar.gz`,
+  );
+  return new Promise((resolve, reject) => {
+    const tar = spawn("tar", ["-czf", tmp, "-C", localDir, "."], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    tar.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+    tar.on("error", reject);
+    tar.on("close", (code) => {
+      if (code !== 0) {
         try {
-          tar.kill();
+          fs.unlinkSync(tmp);
         } catch {
           /* ignore */
         }
-        reject(new Error(`upload-dir timeout ${timeoutMs}ms`));
-      }, timeoutMs);
+        reject(new Error(`local tar.gz failed (${code}): ${stderr.slice(0, 300)}`));
+        return;
+      }
+      resolve(tmp);
+    });
+  });
+}
 
-      let tar;
-      client.exec(remoteCmd, (err, stream) => {
-        if (err || !stream) {
-          clearTimeout(t);
-          reject(err || new Error("exec failed"));
+/**
+ * Reliable dir upload: local tar.gz → SFTP fastPut → remote extract.
+ * Avoids fragile tar|ssh pipe that hung until 900s timeout on Railway.
+ */
+async function cmdUploadDir(timeoutMs, localDir, remoteDir) {
+  const bytes = dirByteSize(localDir);
+  const archive = await makeLocalTarGz(localDir);
+  const remoteArchive = `/tmp/peach-up-${Date.now()}-${Math.random().toString(36).slice(2)}.tar.gz`;
+  const client = await connect(Math.min(timeoutMs, 90_000));
+  const started = Date.now();
+  try {
+    process.stderr.write(
+      `[ssh2-upload-dir] bytes≈${bytes} archive=${fs.statSync(archive).size} timeoutMs=${timeoutMs}\n`,
+    );
+    await exec(
+      client,
+      `mkdir -p ${JSON.stringify(remoteDir)} ${JSON.stringify(path.posix.dirname(remoteArchive))}`,
+      Math.min(timeoutMs, 60_000),
+    );
+
+    await new Promise((resolve, reject) => {
+      client.sftp((err, sftp) => {
+        if (err || !sftp) {
+          reject(err || new Error("no sftp"));
           return;
         }
-        tar = spawn("tar", ["-cf", "-", "-C", localDir, "."], {
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-        let stderr = "";
-        tar.stderr.on("data", (d) => {
-          stderr += d.toString();
-        });
-        stream.stderr.on("data", (d) => {
-          stderr += d.toString();
-        });
-        tar.stdout.pipe(stream);
-        let tarCode = null;
-        let sshCode = null;
-        const done = () => {
-          if (tarCode == null || sshCode == null) return;
-          clearTimeout(t);
-          if (tarCode || sshCode) {
-            reject(new Error(`upload-dir failed tar=${tarCode} ssh=${sshCode}: ${stderr.slice(0, 400)}`));
-          } else resolve();
-        };
-        tar.on("error", (e) => {
-          clearTimeout(t);
-          reject(e);
-        });
-        stream.on("error", (e) => {
-          clearTimeout(t);
-          reject(e);
-        });
-        tar.on("close", (code) => {
-          tarCode = code ?? 1;
+        let lastProgress = Date.now();
+        const stallMs = Math.min(120_000, Math.max(45_000, Math.floor(timeoutMs / 4)));
+        const t = setTimeout(() => {
           try {
-            stream.end();
+            sftp.end();
           } catch {
             /* ignore */
           }
-          done();
-        });
-        stream.on("close", (code) => {
-          sshCode = code ?? 1;
-          done();
-        });
+          reject(new Error(`sftp fastPut timeout ${timeoutMs}ms`));
+        }, timeoutMs);
+        const stallWatch = setInterval(() => {
+          if (Date.now() - lastProgress > stallMs) {
+            clearInterval(stallWatch);
+            clearTimeout(t);
+            try {
+              sftp.end();
+            } catch {
+              /* ignore */
+            }
+            reject(new Error(`sftp stall ${stallMs}ms (no progress)`));
+          }
+        }, 5_000);
+
+        sftp.fastPut(
+          archive,
+          remoteArchive,
+          {
+            step: (_transferred, _chunk, _total) => {
+              lastProgress = Date.now();
+            },
+          },
+          (e) => {
+            clearInterval(stallWatch);
+            clearTimeout(t);
+            if (e) reject(e);
+            else resolve();
+          },
+        );
       });
     });
-    process.stdout.write("OK\n");
+
+    const extract = await exec(
+      client,
+      [
+        `mkdir -p ${JSON.stringify(remoteDir)}`,
+        `tar -xzf ${JSON.stringify(remoteArchive)} -C ${JSON.stringify(remoteDir)}`,
+        `rm -f ${JSON.stringify(remoteArchive)}`,
+        `echo EXTRACT_OK`,
+      ].join(" && "),
+      Math.min(timeoutMs, 180_000),
+    );
+    if (extract.code !== 0 || !extract.stdout.includes("EXTRACT_OK")) {
+      throw new Error(
+        `remote extract failed (${extract.code}): ${(extract.stderr || extract.stdout).slice(0, 400)}`,
+      );
+    }
+    process.stdout.write(
+      `OK bytes=${bytes} elapsedMs=${Date.now() - started}\n`,
+    );
     process.exitCode = 0;
   } finally {
-    client.end();
+    try {
+      client.end();
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.unlinkSync(archive);
+    } catch {
+      /* ignore */
+    }
   }
 }
 

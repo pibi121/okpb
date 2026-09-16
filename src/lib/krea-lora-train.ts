@@ -668,7 +668,32 @@ async function runTrainPipeline(opts: {
       `mkdir -p /work/bin /work/loras_out /work/datasets/${opts.slug} && rm -rf ${JSON.stringify(remoteImg)} && mkdir -p ${JSON.stringify(remoteImg)}`,
       60_000,
     );
-    await metalnodeScpDirTo(imgDir, remoteImg, 900_000);
+    writeTrainMeta(
+      opts.characterId,
+      stampProgress(
+        {
+          status: "uploading",
+          trigger: opts.trigger,
+          slug: opts.slug,
+          epochs: opts.epochs,
+          startedAt: opts.startedAt,
+          estimateTotalSec: opts.estimateTotalSec,
+          lastLine: `загрузка ${localCount} фото на GPU…`,
+        },
+        "IMAGES",
+      ),
+    );
+    try {
+      await metalnodeScpDirTo(imgDir, remoteImg);
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      const stalled = /timeout|stall|ECONN|timed out/i.test(raw);
+      throw new Error(
+        stalled
+          ? "Не удалось загрузить фото для обучения (связь с GPU оборвалась). Подожди минуту и запусти обучение снова — повтор безопасен."
+          : `Не удалось загрузить фото для обучения. Попробуй ещё раз через минуту.`,
+      );
+    }
 
     const countOut = await metalnodeSsh(
       `find ${JSON.stringify(remoteImg)} -maxdepth 1 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) | wc -l`,

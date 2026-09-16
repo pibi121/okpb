@@ -181,7 +181,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 10, label = "ssh"):
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`[peach] ${label} attempt ${i + 1}/${attempts} failed:`, msg.slice(0, 240));
       if (i < attempts - 1) {
-        const reset = /reset|timed out|timeout|refused|banner exchange|ENOENT|handshake/i.test(
+        const reset = /reset|timed out|timeout|stall|refused|banner exchange|ENOENT|handshake|ECONN/i.test(
           msg,
         );
         await new Promise((r) => setTimeout(r, reset ? 4000 * (i + 1) : 2000 * (i + 1)));
@@ -309,10 +309,43 @@ export async function metalnodeScpTo(localPath: string, remotePath: string, time
   );
 }
 
-/** Upload directory as one tar stream over a single SSH connection. */
-export async function metalnodeScpDirTo(localDir: string, remoteDir: string, timeoutMs = 900_000) {
+function dirByteSizeSync(dir: string): number {
+  let total = 0;
+  const walk = (p: string) => {
+    for (const name of fs.readdirSync(p)) {
+      const full = path.join(p, name);
+      const st = fs.statSync(full);
+      if (st.isDirectory()) walk(full);
+      else total += st.size;
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+/** Timeout scales with payload; stall-prone pipes used to burn a fixed 15 min. */
+export function uploadDirTimeoutMs(localDir: string, overrideMs?: number): number {
+  if (overrideMs && overrideMs > 0) return overrideMs;
+  const bytes = dirByteSizeSync(localDir);
+  // Assume worst ~50 KB/s over SSH tunnel + 2 min floor, 12 min ceiling for normal LoRA sets.
+  const bySize = Math.ceil(bytes / 50_000) * 1000 + 120_000;
+  return Math.min(720_000, Math.max(180_000, bySize));
+}
+
+/** Upload directory as one compressed archive over SSH/SFTP (Railway-safe). */
+export async function metalnodeScpDirTo(
+  localDir: string,
+  remoteDir: string,
+  timeoutMs?: number,
+) {
   const files = fs.readdirSync(localDir);
   if (!files.length) throw new Error("local dataset empty");
+
+  const ms = uploadDirTimeoutMs(localDir, timeoutMs);
+  const bytes = dirByteSizeSync(localDir);
+  console.warn(
+    `[peach] upload-dir start bytes≈${bytes} timeoutSec=${Math.round(ms / 1000)} → ${remoteDir}`,
+  );
 
   await metalnodeSsh(`mkdir -p ${JSON.stringify(remoteDir)}`, 90_000);
 
@@ -321,7 +354,7 @@ export async function metalnodeScpDirTo(localDir: string, remoteDir: string, tim
       if (hasOpenSsh()) {
         try {
           const { args, target } = sshBaseArgs();
-          const remoteCmd = `mkdir -p ${JSON.stringify(remoteDir)} && tar -xf - -C ${JSON.stringify(remoteDir)}`;
+          const remoteCmd = `mkdir -p ${JSON.stringify(remoteDir)} && tar -xzf - -C ${JSON.stringify(remoteDir)}`;
           const r = await new Promise<{ code: number; stdout: string; stderr: string }>(
             (resolve, reject) => {
               const ssh = spawn(SSH_BIN, [...args, target, remoteCmd], {
@@ -329,7 +362,7 @@ export async function metalnodeScpDirTo(localDir: string, remoteDir: string, tim
                 stdio: ["pipe", "pipe", "pipe"],
                 env: process.env,
               });
-              const tar = spawn(TAR_BIN, ["-cf", "-", "-C", localDir, "."], {
+              const tar = spawn(TAR_BIN, ["-czf", "-", "-C", localDir, "."], {
                 windowsHide: true,
                 stdio: ["ignore", "pipe", "pipe"],
               });
@@ -339,8 +372,8 @@ export async function metalnodeScpDirTo(localDir: string, remoteDir: string, tim
               const t = setTimeout(() => {
                 tar.kill();
                 ssh.kill();
-                reject(new Error(`tar|ssh timeout after ${Math.round(timeoutMs / 1000)}s`));
-              }, timeoutMs);
+                reject(new Error(`tar|ssh timeout after ${Math.round(ms / 1000)}s`));
+              }, ms);
 
               tar.stdout.pipe(ssh.stdin);
               tar.stderr.on("data", (d) => {
@@ -397,7 +430,7 @@ export async function metalnodeScpDirTo(localDir: string, remoteDir: string, tim
           console.warn("[peach] openssh missing for upload — falling back to ssh2 worker");
         }
       }
-      const r = await ssh2Worker("upload-dir", timeoutMs, localDir, remoteDir);
+      const r = await ssh2Worker("upload-dir", ms, localDir, remoteDir);
       if (r.code !== 0) {
         throw new Error(
           `ssh2 upload-dir failed (${r.code}): ${(r.stderr || r.stdout).slice(0, 600)}`,

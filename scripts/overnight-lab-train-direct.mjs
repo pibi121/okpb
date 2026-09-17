@@ -31,11 +31,10 @@ const IMG_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const EPOCHS = 12;
 
 const TRAIN_FOLDERS = [
-  { folder: "Дошик", name: "Doshik", trigger: "doshik" },
-  { folder: "Инстасамка", name: "Instasamka", trigger: "instasamka" },
-  { folder: "МашМилаш", name: "MashMilash", trigger: "mashmilash" },
-  { folder: "Сабина", name: "Sabina", trigger: "sabina" },
-  { folder: "СедиСинк", name: "SediSink", trigger: "sedisink" },
+  { folder: "Бибси", name: "Bibsi", trigger: "bibsi" },
+  { folder: "Дилара", name: "Dilara", trigger: "dilara" },
+  { folder: "Лиза Васи", name: "LisaVasi", trigger: "lisavasi" },
+  { folder: "Федалка", name: "Fedalka", trigger: "fedalka" },
 ];
 
 function log(...a) {
@@ -182,6 +181,82 @@ async function markReady(spec, state) {
   };
   saveState(state);
   log(`READY ${spec.name} -> ${loraPath}`);
+  try {
+    await syncTrainedLoraToBmserv4(spec.trigger);
+  } catch (e) {
+    log(`bmserv4 sync warn ${spec.trigger}:`, e);
+  }
+}
+
+/** Download trained LoRA from bmserv5 and push to bmserv4 for user gens. */
+async function syncTrainedLoraToBmserv4(trigger) {
+  const key4 = path.join(
+    process.env.USERPROFILE || process.env.HOME || "",
+    ".ssh",
+    "metalnode_id_ed25519_22031",
+  );
+  if (!fs.existsSync(key4)) {
+    log("no bmserv4 key — skip sync");
+    return;
+  }
+  const remote = `/work/ComfyUI/models/loras/krea2/${trigger}_krea2.safetensors`;
+  const local = path.join(ROOT, "data", "train-staging", `${trigger}_krea2.safetensors`);
+  fs.mkdirSync(path.dirname(local), { recursive: true });
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      "scp",
+      [
+        "-i",
+        KEY,
+        "-P",
+        "22034",
+        "-o",
+        "StrictHostKeyChecking=no",
+        `root@77.94.203.13:${remote}`,
+        local,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let out = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("close", (code) =>
+      code === 0 ? resolve(out) : reject(new Error(`scp down ${code}: ${out.slice(0, 300)}`)),
+    );
+  });
+
+  // upload via worker with bmserv4 env
+  await new Promise((resolve, reject) => {
+    const worker = path.join(ROOT, "scripts", "metalnode-ssh2-worker.mjs");
+    const env = {
+      ...process.env,
+      METALNODE_HOST: "77.94.203.13",
+      METALNODE_SSH_PORT: "22031",
+      METALNODE_SSH_USER: "root",
+      METALNODE_SSH_KEY_PATH: key4,
+    };
+    const mkdir = spawn(
+      process.execPath,
+      [worker, "exec", "60000", "mkdir -p /work/ComfyUI/models/loras/krea2"],
+      { env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    mkdir.on("close", () => {
+      const up = spawn(
+        process.execPath,
+        [worker, "upload", String(30 * 60_000), local, remote],
+        { env, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let out = "";
+      up.stdout.on("data", (d) => (out += d));
+      up.stderr.on("data", (d) => (out += d));
+      up.on("close", (code) => {
+        if (code === 0) {
+          log(`bmserv4 has ${trigger}_krea2.safetensors`);
+          resolve(out);
+        } else reject(new Error(`bmserv4 upload ${code}: ${out.slice(0, 300)}`));
+      });
+    });
+  });
 }
 
 async function remoteHasLora(trigger) {

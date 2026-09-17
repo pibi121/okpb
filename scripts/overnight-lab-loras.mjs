@@ -35,11 +35,10 @@ const STATE_PATH = path.join(ROOT, "data", "overnight-lab-loras-state.json");
 const IMG_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 const TRAIN_FOLDERS = [
-  { folder: "Дошик", name: "Doshik", trigger: "doshik" },
-  { folder: "Инстасамка", name: "Instasamka", trigger: "instasamka" },
-  { folder: "МашМилаш", name: "MashMilash", trigger: "mashmilash" },
-  { folder: "Сабина", name: "Sabina", trigger: "sabina" },
-  { folder: "СедиСинк", name: "SediSink", trigger: "sedisink" },
+  { folder: "Бибси", name: "Bibsi", trigger: "bibsi" },
+  { folder: "Дилара", name: "Dilara", trigger: "dilara" },
+  { folder: "Лиза Васи", name: "LisaVasi", trigger: "lisavasi" },
+  { folder: "Федалка", name: "Fedalka", trigger: "fedalka" },
 ];
 
 function log(...args) {
@@ -145,6 +144,11 @@ function readyMeta(fileName) {
   const base = fileName.replace(/\.safetensors$/i, "");
   let trigger = slugify(base);
   let name = base.replace(/[_-]+/g, " ").trim();
+  const triggerHint = base.match(/trigger[-_]?([a-z0-9_]+)/i);
+  if (triggerHint?.[1]) {
+    trigger = slugify(triggerHint[1]);
+    name = trigger.replace(/_/g, " ");
+  }
   if (/my\s*stars/i.test(base)) {
     const m = base.match(/My Stars\s*-\s*(.+)$/i);
     name = m ? m[1].trim() : base;
@@ -153,6 +157,12 @@ function readyMeta(fileName) {
     const m = base.match(/BeMyHero_-_(.+?)(?:_epoch_\d+)?$/i);
     name = (m ? m[1] : base).replace(/_/g, " ");
     trigger = slugify(name);
+  } else if (/rlyfarrah/i.test(base)) {
+    name = "Farrah";
+    trigger = "rlyfarrah";
+  } else if (/rlysloan/i.test(base)) {
+    name = "Sloan";
+    trigger = "rlysloan";
   } else if (/rlyhelga/i.test(base)) {
     name = "Helga";
     trigger = "rlyhelga";
@@ -168,6 +178,18 @@ function readyMeta(fileName) {
   } else if (/savannah/i.test(base)) {
     name = "Savannah";
     trigger = "savannah";
+  } else if (/^ananta$/i.test(base)) {
+    name = "Ananta";
+    trigger = "ananta";
+  } else if (/^evilen$/i.test(base)) {
+    name = "Evilen";
+    trigger = "evilen";
+  } else if (/^yasmine$/i.test(base)) {
+    name = "Yasmine";
+    trigger = "yasmine";
+  } else if (/short.?hair.?korean/i.test(base)) {
+    name = "Korean Short Hair";
+    trigger = "koreansh";
   }
   const remoteName = `${trigger}_krea2.safetensors`;
   return { name, trigger, remoteName, loraPath: `krea2/${remoteName}` };
@@ -194,6 +216,59 @@ function sshUpload(localPath, remotePath) {
     child.on("close", (code) => {
       if (code === 0) resolve(out);
       else reject(new Error(`upload failed ${code}: ${out.slice(0, 500)}`));
+    });
+  });
+}
+
+/** Push LoRA weights to bmserv4 so user gens (preferred fleet) can load them. */
+async function syncLoraToGenGpu(localPath, remotePath) {
+  const key4 =
+    process.env.METALNODE_SSH_KEY_PATH_BMSERV4 ||
+    path.join(
+      process.env.USERPROFILE || process.env.HOME || "",
+      ".ssh",
+      "metalnode_id_ed25519_22031",
+    );
+  if (!fs.existsSync(key4) || !localPath || !fs.existsSync(localPath)) {
+    log("skip bmserv4 sync", { key4: fs.existsSync(key4), local: localPath });
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const worker = path.join(ROOT, "scripts", "metalnode-ssh2-worker.mjs");
+    const env = {
+      ...process.env,
+      METALNODE_HOST: "77.94.203.13",
+      METALNODE_SSH_PORT: "22031",
+      METALNODE_SSH_USER: "root",
+      METALNODE_SSH_KEY_PATH: key4,
+    };
+    const child = spawn(
+      process.execPath,
+      [
+        worker,
+        "exec",
+        "60000",
+        "mkdir -p /work/ComfyUI/models/loras/krea2",
+      ],
+      { env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    child.on("close", () => {
+      const up = spawn(
+        process.execPath,
+        [worker, "upload", String(30 * 60_000), localPath, remotePath],
+        { env, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let out = "";
+      up.stdout.on("data", (d) => (out += d));
+      up.stderr.on("data", (d) => (out += d));
+      up.on("close", (code) => {
+        if (code === 0) {
+          log(`bmserv4 synced ${path.basename(remotePath)}`);
+          resolve(out);
+        } else {
+          reject(new Error(`bmserv4 sync fail ${code}: ${out.slice(0, 400)}`));
+        }
+      });
     });
   });
 }
@@ -249,6 +324,11 @@ async function importReadyLoras(state) {
         log(`already on GPU: ${meta.loraPath}`);
       } else {
         await sshUpload(local, remote);
+      }
+      try {
+        await syncLoraToGenGpu(local, remote);
+      } catch (e) {
+        log(`bmserv4 sync warn ${meta.trigger}:`, e);
       }
       const row = await apiJson({
         action: "lab_set_ready_lora",
@@ -463,7 +543,11 @@ async function main() {
   saveState(state);
 
   await importReadyLoras(state);
-  await seedAndTrain(state);
+  if (process.env.READY_ONLY === "1") {
+    log("READY_ONLY=1 — skip train folders");
+  } else {
+    await seedAndTrain(state);
+  }
 
   log("DONE summary");
   log(JSON.stringify({ ready: state.ready, train: state.train }, null, 2));

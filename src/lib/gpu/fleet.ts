@@ -1,6 +1,10 @@
 /**
  * Extra Metalnode GPUs alongside primary (bmserv5 → :8188).
  * Keys live in Railway env; tunnels map to local :8189 / :8190.
+ *
+ * Policy (2026-09-17):
+ * - User gens → prefer bmserv4 (fleet :8189) when online
+ * - LoRA train SSH → primary bmserv5 (no loraPreferred extra = fall back to metalnode.local.json)
  */
 export type FleetGpu = {
   key: string;
@@ -13,6 +17,8 @@ export type FleetGpu = {
   pool: "any" | "photo" | "video" | "lora";
   /** Prefer this node for LoRA train SSH. */
   loraPreferred?: boolean;
+  /** Prefer this node for user photo/video gens when online. */
+  genPreferred?: boolean;
 };
 
 export const FLEET_EXTRA_GPUS: FleetGpu[] = [
@@ -24,6 +30,7 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     keyEnv: "METALNODE_SSH_KEY_BMSERV4",
     keyPath: "/tmp/metalnode_key_bmserv4",
     pool: "any",
+    genPreferred: true,
   },
   {
     key: "bmserv1",
@@ -33,7 +40,6 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     keyEnv: "METALNODE_SSH_KEY_BMSERV1",
     keyPath: "/tmp/metalnode_key_bmserv1",
     pool: "any",
-    loraPreferred: true,
   },
 ];
 
@@ -47,5 +53,10 @@ export function fleetConfigured(g: FleetGpu): boolean {
 
 export function loraPreferredFleet(): FleetGpu | null {
   const hit = FLEET_EXTRA_GPUS.find((g) => g.loraPreferred && fleetConfigured(g));
+  return hit || null;
+}
+
+export function genPreferredFleet(): FleetGpu | null {
+  const hit = FLEET_EXTRA_GPUS.find((g) => g.genPreferred && fleetConfigured(g));
   return hit || null;
 }

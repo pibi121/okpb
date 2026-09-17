@@ -53,7 +53,11 @@ export async function ensureFleetWorkers() {
       host: g.host || cfg.host || process.env.METALNODE_HOST || "",
       sshPort: g.sshPort,
       localPort: g.localPort,
-      role: g.loraPreferred ? "lora_preferred" : "fleet",
+      role: g.loraPreferred
+        ? "lora_preferred"
+        : g.genPreferred
+          ? "gen_preferred"
+          : "fleet",
       server: g.key,
       keyEnv: g.keyEnv,
     });
@@ -255,9 +259,18 @@ export async function pickWorker(pool: GpuPool) {
     return ensurePrimaryWorker();
   }
   const free = live.filter((w) => w.status === "online" || w.status === "unknown");
-  if (free.length) return free[0];
-  // All busy — still pick least-recently-updated; Comfy will queue on that card.
-  return live[0];
+  const pool_ = free.length ? free : live;
+
+  // Prefer genPreferred fleet card (bmserv4) for user photo/video when up.
+  if (pool === "photo" || pool === "video" || pool === "any") {
+    const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(
+      (g) => g.key,
+    );
+    const prefer = pool_.find((w) => preferredKeys.includes(w.key));
+    if (prefer) return prefer;
+  }
+
+  return pool_[0];
 }
 
 export async function listWorkersForOps() {

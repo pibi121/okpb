@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveGalleryFile } from "@/lib/local-store";
+import { getSessionUserId } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -42,10 +43,42 @@ function parseRange(
   return { start, end };
 }
 
+async function sessionIsOps(userId: string): Promise<boolean> {
+  try {
+    const { prisma } = await import("@/lib/db");
+    const { isOpsRole } = await import("@/lib/ops/roles");
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { adminRole: true },
+    });
+    return isOpsRole(u?.adminRole);
+  } catch {
+    return false;
+  }
+}
+
 /** Stream gallery files with Range support (required for TG/WebKit video). */
 export async function GET(req: NextRequest, ctx: Ctx) {
+  const session = await getSessionUserId();
+
   const parts = (await ctx.params).path || [];
   const relKey = parts.join("/");
+
+  // TG-catalog assets (preview thumbnails, cast covers) are public by design —
+  // they are already served from /public/tg/catalog and are not user-specific.
+  const isTgCatalog = relKey.startsWith("tg-catalog/");
+
+  if (!isTgCatalog) {
+    // Private gallery: owner session, or ops staff (admin jobs / user pages).
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const ownerSegment = parts[0] ?? "";
+    if (ownerSegment !== session && !(await sessionIsOps(session))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   const abs = resolveGalleryFile(relKey);
   if (!abs) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -55,7 +88,12 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const size = stat.size;
   const ext = path.extname(abs).toLowerCase();
   const contentType = MIME[ext] || "application/octet-stream";
-  const cache = "public, max-age=31536000, immutable";
+  // TG-catalog assets are public thumbnails; user gallery is private — never cache
+  // in shared/CDN stores. "immutable" is dropped to prevent stale cached versions
+  // from leaking between sessions.
+  const cache = isTgCatalog
+    ? "public, max-age=31536000, immutable"
+    : "private, max-age=3600";
 
   const range = parseRange(req.headers.get("range"), size);
   if (range) {

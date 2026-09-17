@@ -69,23 +69,45 @@ export default function OpsJobsPage() {
               </Link>
               <div className="text-[11px] text-zinc-500">{fmtTime(r.createdAt)}</div>
               {r.error ? <div className="mt-1 text-xs text-coral">{r.error}</div> : null}
-              {r.runId && r.status === "error" ? (
-                <button
-                  className="mt-2 text-xs text-peach"
-                  onClick={() =>
-                    opsFetch("/api/ops/jobs", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        action: "retry",
-                        runId: r.runId,
-                        userId: r.user.id,
-                      }),
-                    }).then(() => load())
-                  }
-                >
-                  Повторить видео
-                </button>
-              ) : null}
+              <div className="mt-2 flex flex-wrap gap-3">
+                {r.runId && r.status === "error" ? (
+                  <button
+                    className="text-xs text-peach"
+                    onClick={() =>
+                      opsFetch("/api/ops/jobs", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: "retry",
+                          runId: r.runId,
+                          userId: r.user.id,
+                        }),
+                      }).then(() => load())
+                    }
+                  >
+                    Повторить видео
+                  </button>
+                ) : null}
+                {r.status === "ready" && r.resultUrl ? (
+                  <button
+                    className="text-xs text-peach"
+                    onClick={() =>
+                      opsFetch("/api/ops/jobs", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: "resend_tg",
+                          itemId: r.id,
+                        }),
+                      })
+                        .then(() => setMsg("Отправлено в Telegram-очередь"))
+                        .catch((e) =>
+                          setMsg(e instanceof Error ? e.message : "ошибка"),
+                        )
+                    }
+                  >
+                    Снова в Telegram
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         ))}

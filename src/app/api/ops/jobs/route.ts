@@ -90,6 +90,48 @@ export async function POST(req: Request) {
       });
       return jsonOk({ ok: true });
     }
+    if (body.action === "resend_tg" && body.itemId) {
+      const item = await prisma.galleryItem.findUnique({
+        where: { id: body.itemId },
+        select: {
+          id: true,
+          userId: true,
+          kind: true,
+          title: true,
+          resultUrl: true,
+          characterId: true,
+        },
+      });
+      if (!item?.resultUrl?.trim()) return jsonErr("Нет файла результата");
+      if (item.kind === "video") {
+        const { notifyTgVideoReady } = await import(
+          "@/lib/tg/generation-service"
+        );
+        await notifyTgVideoReady(
+          item.userId,
+          item.resultUrl,
+          item.title || "Видео",
+          item.characterId || undefined,
+        );
+      } else {
+        const { notifyTgPhotoReady } = await import(
+          "@/lib/tg/generation-service"
+        );
+        await notifyTgPhotoReady(
+          item.userId,
+          item.resultUrl,
+          item.title || "Фото",
+        );
+      }
+      await writeAudit({
+        actorId: actor.id,
+        action: "resend_tg",
+        targetType: "galleryItem",
+        targetId: item.id,
+        detail: { kind: item.kind, userId: item.userId },
+      });
+      return jsonOk({ ok: true, queued: true, itemId: item.id });
+    }
     return jsonErr("Неизвестное действие");
   });
 }

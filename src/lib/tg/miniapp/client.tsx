@@ -47,7 +47,7 @@ export type TgMiniAppProfile = {
 };
 
 /** Filled from /api/tg/me so TgShell footer picks up Railway TG_SUPPORT_CONTACT. */
-let cachedSupportUrl = "https://t.me/peachbitch_support";
+let cachedSupportUrl = "https://t.me/peabit1";
 let cachedBalancePeaches = 0;
 let cachedTopupHandler: (() => void) | null = null;
 const shellListeners = new Set<() => void>();

@@ -2,7 +2,7 @@ import type { TgLocale } from "@/lib/tg/i18n";
 
 /** Support handle or URL from env (Help + Mini App footer). */
 export function tgSupportContact(): string {
-  return process.env.TG_SUPPORT_CONTACT?.trim() || "@peachbitch_support";
+  return process.env.TG_SUPPORT_CONTACT?.trim() || "@peabit1";
 }
 
 /** Openable Telegram URL for support chat. */

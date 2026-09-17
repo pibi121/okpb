@@ -92,17 +92,34 @@ export async function tgSendMediaMessage(
   extra: Record<string, unknown> = {},
 ) {
   const media = tgMediaAsset(slot);
+  // Telegram file_id (not a path/URL) — send as-is.
+  if (!/^https?:\/\//i.test(media) && !media.startsWith("/")) {
+    if (isVideoMedia(media)) {
+      return tgSendVideo(chatId, media, text, extra);
+    }
+    if (isGifMedia(media)) {
+      return tgSendAnimation(chatId, media, {
+        caption: text,
+        parse_mode: "HTML",
+        ...extra,
+      });
+    }
+    return tgSendPhoto(chatId, media, text, extra);
+  }
+  const { tgDeliverPhoto, tgDeliverVideo } = await import(
+    "@/lib/tg/deliver-media"
+  );
   if (isVideoMedia(media)) {
-    return tgSendVideo(chatId, media, text, extra);
+    return tgDeliverVideo({ chatId, url: media, caption: text, extra });
   }
   if (isGifMedia(media)) {
-    return tgSendAnimation(chatId, media, {
+    return tgSendAnimation(chatId, tgAbsoluteUrl(media), {
       caption: text,
       parse_mode: "HTML",
       ...extra,
     });
   }
-  return tgSendPhoto(chatId, media, text, extra);
+  return tgDeliverPhoto({ chatId, url: media, caption: text, extra });
 }
 
 /** Photo/video preview with caption (e.g. template confirm). */
@@ -115,10 +132,13 @@ export async function tgSendPreviewMessage(
   if (!previewUrl) {
     return tgSendMessage(chatId, text, extra);
   }
+  const { tgDeliverPhoto, tgDeliverVideo } = await import(
+    "@/lib/tg/deliver-media"
+  );
   const url = tgAbsoluteUrl(previewUrl);
   if (isVideoMedia(url)) {
-    await tgSendVideo(chatId, url, text, extra);
+    await tgDeliverVideo({ chatId, url, caption: text, extra });
     return;
   }
-  return tgSendPhoto(chatId, url, text, extra);
+  return tgDeliverPhoto({ chatId, url, caption: text, extra });
 }

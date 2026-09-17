@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/db";
-import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
-import { normalizeLocale } from "@/lib/tg/i18n";
 import { enqueueTgOutbox } from "@/lib/tg/session";
+import { mediaRelativePath } from "@/lib/tg/deliver-media";
 
 export async function hasTelegramAccount(userId: string): Promise<{
   platformUserId: string;
@@ -28,13 +27,15 @@ export async function notifyTelegramMediaReady(opts: {
   const acc = await hasTelegramAccount(opts.userId);
   if (!acc) return;
 
-  const url = tgAbsoluteUrl(opts.mediaUrl);
+  // Prefer relative /api/media/… so outbox can upload bytes (private gallery
+  // URLs return 401 to Telegram's HTTP fetch).
+  const rel = mediaRelativePath(opts.mediaUrl) || opts.mediaUrl.trim();
   await enqueueTgOutbox({
     platformUserId: acc.platformUserId,
     userId: opts.userId,
     kind: opts.kind,
     payload: {
-      url,
+      url: rel,
       caption: opts.caption,
       successKind: opts.kind,
       locale: acc.locale,

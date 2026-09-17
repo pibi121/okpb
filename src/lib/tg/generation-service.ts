@@ -1018,7 +1018,7 @@ export async function startTgPhotoGeneration(opts: {
       userId: opts.userId,
       kind: "photo",
       payload: {
-        url: (await import("@/lib/tg/media-assets")).tgAbsoluteUrl(saved.publicUrl),
+        url: saved.publicUrl,
         caption: row.title,
         successKind: "photo",
         locale: user.locale?.startsWith("en") ? "en" : "ru",

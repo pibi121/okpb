@@ -36,6 +36,45 @@ export async function POST(req: Request) {
     if (body.action === "auto_retry") {
       const row = await prisma.opsError.findUnique({ where: { id: body.id } });
       if (!row) return jsonErr("Не найдено");
+      if (row.lastRefType === "tgOutbox" && row.lastRefId) {
+        const out = await prisma.tgOutbox.findUnique({
+          where: { id: row.lastRefId },
+        });
+        if (!out) return jsonErr("Outbox не найден");
+        // Re-queue: clear sentAt and attempts so flush uploads bytes / retries.
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = JSON.parse(out.payloadJson || "{}") as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          payload = {};
+        }
+        delete payload.attempts;
+        await prisma.tgOutbox.update({
+          where: { id: out.id },
+          data: {
+            sentAt: null,
+            payloadJson: JSON.stringify(payload),
+          },
+        });
+        await prisma.opsError.update({
+          where: { id: row.id },
+          data: { autoRetryCount: { increment: 1 }, status: "fixing" },
+        });
+        await writeAudit({
+          actorId: actor.id,
+          action: "error_auto_retry",
+          targetType: "opsError",
+          targetId: row.id,
+          detail: { refType: row.lastRefType, refId: row.lastRefId },
+        });
+        return jsonOk({
+          message:
+            "Outbox снова в очереди — бот отправит файлом (без HTTP URL)",
+        });
+      }
       if (row.lastRefType === "quickVideoRun" && row.lastRefId) {
         const run = await prisma.quickVideoRun.findUnique({
           where: { id: row.lastRefId },

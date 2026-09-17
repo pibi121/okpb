@@ -112,6 +112,25 @@ export async function tgEditMessageReplyMarkup(
   );
 }
 
+export async function tgApiForm<T = unknown>(
+  method: string,
+  form: FormData,
+  token?: string,
+): Promise<T> {
+  const tok = resolveToken(token);
+  const res = await fetch(`${API}${tok}/${method}`, {
+    method: "POST",
+    body: form,
+  });
+  const json = (await res.json()) as {
+    ok: boolean;
+    result?: T;
+    description?: string;
+  };
+  if (!json.ok) throw new Error(json.description || method);
+  return json.result as T;
+}
+
 export async function tgSendPhoto(
   chatId: number | string,
   photoUrl: string,
@@ -130,6 +149,31 @@ export async function tgSendPhoto(
     },
     token,
   );
+}
+
+/** Upload photo bytes (private /api/media gallery is not fetchable by Telegram). */
+export async function tgSendPhotoFile(
+  chatId: number | string,
+  bytes: Buffer,
+  filename = "photo.jpg",
+  caption?: string,
+  extra: Record<string, unknown> = {},
+  token?: string,
+) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append(
+    "photo",
+    new Blob([new Uint8Array(bytes)], { type: mimeFromName(filename) }),
+    filename,
+  );
+  if (caption) form.append("caption", caption);
+  form.append("parse_mode", "HTML");
+  for (const [k, v] of Object.entries(extra)) {
+    if (v == null) continue;
+    form.append(k, typeof v === "string" ? v : JSON.stringify(v));
+  }
+  return tgApiForm("sendPhoto", form, token);
 }
 
 export async function tgSendVideo(
@@ -151,6 +195,44 @@ export async function tgSendVideo(
     },
     token,
   );
+}
+
+/** Upload video bytes — same reason as tgSendPhotoFile. */
+export async function tgSendVideoFile(
+  chatId: number | string,
+  bytes: Buffer,
+  filename = "video.mp4",
+  caption?: string,
+  extra: Record<string, unknown> = {},
+  token?: string,
+) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append(
+    "video",
+    new Blob([new Uint8Array(bytes)], { type: mimeFromName(filename) }),
+    filename,
+  );
+  if (caption) form.append("caption", caption);
+  form.append("parse_mode", "HTML");
+  form.append("supports_streaming", "true");
+  for (const [k, v] of Object.entries(extra)) {
+    if (v == null) continue;
+    form.append(k, typeof v === "string" ? v : JSON.stringify(v));
+  }
+  return tgApiForm("sendVideo", form, token);
+}
+
+function mimeFromName(name: string): string {
+  const n = name.toLowerCase();
+  if (n.endsWith(".png")) return "image/png";
+  if (n.endsWith(".webp")) return "image/webp";
+  if (n.endsWith(".gif")) return "image/gif";
+  if (n.endsWith(".webm")) return "video/webm";
+  if (n.endsWith(".mov")) return "video/quicktime";
+  if (n.endsWith(".mp4")) return "video/mp4";
+  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+  return "application/octet-stream";
 }
 
 export async function tgSendAnimation(

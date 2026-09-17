@@ -67,7 +67,6 @@ import {
 import { mainMenuExtra, sendMainMenuHub, genStartingExtra } from "@/lib/tg/menu";
 import { recordInboundUserMessage } from "@/lib/ops/inbox";
 import { getTemplatePreviewUrl } from "@/lib/tg/template-preview";
-import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
   normalizeLocale,
   t,
@@ -1988,9 +1987,12 @@ export async function flushTgOutbox() {
   const { resolveBotTokenByInstanceId, listLiveBots } = await import(
     "@/lib/tg/bot-registry"
   );
-  const { tgSendMessage, tgSendPhoto, tgSendVideo } = await import(
-    "@/lib/tg/telegram-api"
-  );
+  const { tgSendMessage } = await import("@/lib/tg/telegram-api");
+  const {
+    tgDeliverPhoto,
+    tgDeliverVideo,
+    isPermanentOutboxMediaError,
+  } = await import("@/lib/tg/deliver-media");
   const rows = await listPendingTgOutbox(15);
   for (const row of rows) {
     try {
@@ -2003,6 +2005,7 @@ export async function flushTgOutbox() {
         locale?: TgLocale;
         reply_markup?: unknown;
         botInstanceId?: string;
+        attempts?: number;
       };
       const chatId = Number(row.platformUserId);
       const locale = payload.locale || "ru";
@@ -2020,15 +2023,21 @@ export async function flushTgOutbox() {
         text: string,
         extra?: Record<string, unknown>,
       ) => tgSendMessage(chatId, text, extra || {}, token);
-      const sendPhoto = (url: string, caption?: string) =>
-        tgSendPhoto(chatId, url, caption, {}, token);
-      const sendVideo = (url: string, caption?: string) =>
-        tgSendVideo(chatId, url, caption, {}, token);
 
       if (row.kind === "video" && payload.url) {
-        await sendVideo(tgAbsoluteUrl(payload.url), payload.caption);
+        await tgDeliverVideo({
+          chatId,
+          url: payload.url,
+          caption: payload.caption,
+          token,
+        });
       } else if (row.kind === "photo" && payload.url) {
-        await sendPhoto(tgAbsoluteUrl(payload.url), payload.caption);
+        await tgDeliverPhoto({
+          chatId,
+          url: payload.url,
+          caption: payload.caption,
+          token,
+        });
       } else if (row.kind === "text" && payload.text) {
         const extra = payload.reply_markup
           ? { reply_markup: payload.reply_markup as Record<string, unknown> }
@@ -2085,6 +2094,81 @@ export async function flushTgOutbox() {
         await markTgOutboxSent(row.id).catch(() => undefined);
         continue;
       }
+
+      // Private gallery URLs are not fetchable by Telegram; after file-upload
+      // path still fails, stop the poison loop and tell the user gently.
+      if (isPermanentOutboxMediaError(msg)) {
+        try {
+          const payload = JSON.parse(row.payloadJson || "{}") as {
+            locale?: TgLocale;
+            botInstanceId?: string;
+          };
+          const locale = payload.locale || "ru";
+          let softToken =
+            (await resolveBotTokenByInstanceId(payload.botInstanceId || null)) ||
+            "";
+          if (!softToken) {
+            const live = await listLiveBots();
+            softToken =
+              live.find((b) => b.isPrimary)?.token || live[0]?.token || "";
+          }
+          const soft =
+            locale === "en"
+              ? "Ready in the Studio gallery — open the Mini App to view it."
+              : "Готово в галерее Студии — открой мини-приложение, чтобы посмотреть.";
+          if (softToken) {
+            await tgSendMessage(
+              Number(row.platformUserId),
+              soft,
+              {},
+              softToken,
+            ).catch(() => undefined);
+          }
+        } catch {
+          /* ignore */
+        }
+        await markTgOutboxSent(row.id).catch(() => undefined);
+        void import("@/lib/ops/errors")
+          .then(({ reportOpsError }) =>
+            reportOpsError({
+              kind: "bot",
+              message: msg,
+              stack: e instanceof Error ? e.stack : undefined,
+              userId: row.userId,
+              stage: "outbox_send_recovered",
+              refType: "tgOutbox",
+              refId: row.id,
+              meta: {
+                kind: row.kind,
+                platformUserId: row.platformUserId,
+                recovered: true,
+              },
+            }),
+          )
+          .catch(() => undefined);
+        continue;
+      }
+
+      // Soft retry budget for transient errors (stored in payload).
+      try {
+        const payload = JSON.parse(row.payloadJson || "{}") as Record<
+          string,
+          unknown
+        >;
+        const attempts = Number(payload.attempts || 0) + 1;
+        await prisma.tgOutbox.update({
+          where: { id: row.id },
+          data: {
+            payloadJson: JSON.stringify({ ...payload, attempts }),
+          },
+        });
+        if (attempts >= 8) {
+          await markTgOutboxSent(row.id).catch(() => undefined);
+        }
+      } catch {
+        /* ignore */
+      }
+
       void import("@/lib/ops/errors")
         .then(({ reportOpsError }) =>
           reportOpsError({

@@ -161,7 +161,7 @@ export async function POST(req: Request) {
 
   if (!added) {
     const first = errors[0] || "upload failed";
-    if (!/age|возраст|minor|blocked/i.test(first)) {
+    if (!/age|возраст|несовершеннолетн|minor|blocked|18\+/i.test(first)) {
       void import("@/lib/ops/errors")
         .then(({ reportOpsError }) =>
           reportOpsError({

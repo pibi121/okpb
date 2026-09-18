@@ -50,6 +50,40 @@ export async function getActiveTgCharacter(
   return getPrimaryTgCharacter(userId);
 }
 
+/** Owned draft for photo uploads / LoRA training — never studio cast. */
+export async function getOwnedPhotoUploadCharacter(
+  userId: string,
+  platformUserId: string,
+  preferredId?: string | null,
+) {
+  if (preferredId) {
+    const preferred = await prisma.character.findFirst({
+      where: {
+        id: preferredId,
+        userId,
+        videoRefOnly: false,
+        isStudioCast: false,
+      },
+    });
+    if (preferred) return preferred;
+  }
+  const active = await getActiveTgCharacter(userId, platformUserId);
+  if (
+    active &&
+    active.userId === userId &&
+    !active.isStudioCast &&
+    !active.videoRefOnly
+  ) {
+    return active;
+  }
+  const primary = await prisma.character.findFirst({
+    where: { userId, videoRefOnly: false, isStudioCast: false },
+    orderBy: { createdAt: "asc" },
+  });
+  if (primary) return primary;
+  return createTgCharacter(userId);
+}
+
 export async function setActiveTgCharacter(
   platformUserId: string,
   characterId: string,
@@ -146,7 +180,12 @@ export async function addCharacterPhotoFromBuffer(
   opts?: { maxPhotos?: number; locale?: "ru" | "en"; skipAgeGate?: boolean },
 ) {
   const ch = await prisma.character.findFirst({
-    where: { id: characterId, userId },
+    where: {
+      id: characterId,
+      userId,
+      isStudioCast: false,
+      videoRefOnly: false,
+    },
   });
   if (!ch) throw new Error("character not found");
 

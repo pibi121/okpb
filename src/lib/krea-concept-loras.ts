@@ -5,6 +5,17 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 
+/** Case / naming aliases when fleet nodes diverge (Linux FS is case-sensitive). */
+const LORA_FILE_ALIASES: Record<string, string> = {
+  "krea2/RealisticSnapshotKrea2.safetensors":
+    "krea2/realistic_snapshot_krea2.safetensors",
+};
+
+function canonicalizeLoraFile(file: string): string {
+  const trimmed = file.trim().replace(/\\/g, "/");
+  return LORA_FILE_ALIASES[trimmed] || trimmed;
+}
+
 export type KreaConceptLoraSpec = {
   name: string;
   strength: number;
@@ -202,7 +213,7 @@ export function resolveKreaConceptLoras(opts: {
   const loras: KreaConceptLoraSpec[] = picked.map((h) => ({
     id: h.entry.id,
     label: h.variantKey ? `${h.entry.label}:${h.variantKey}` : h.entry.label,
-    name: h.entry.file,
+    name: canonicalizeLoraFile(h.entry.file),
     strength: h.strength,
     strengthClip: h.strengthClip,
   }));

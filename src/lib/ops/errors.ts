@@ -27,6 +27,13 @@ export function errorFingerprint(kind: string, message: string): string {
   return createHash("sha1").update(`${kind}|${n}`).digest("hex").slice(0, 24);
 }
 
+/** Expected UX / safety messages — do not spam Owner ops chat. */
+export function isExpectedClientError(message: string): boolean {
+  return /age_gate|возраст|несовершеннолетн|minor|18\+|завершить обучение|finish training|шаблон не найден|max photos|already_training|недостаточно (средств|кредит)|insufficient|баланс|оплат|payment required|need_photos|нужно фото/i.test(
+    message || "",
+  );
+}
+
 function parseTimeline(raw: string): TimelineEvent[] {
   try {
     const v = JSON.parse(raw || "[]");
@@ -114,6 +121,7 @@ export async function reportOpsError(opts: {
   autoRetry?: boolean;
 }): Promise<void> {
   const message = (opts.message || "unknown").slice(0, 2000);
+  if (isExpectedClientError(message)) return;
   const title = normalizeMessage(message) || opts.kind;
   const fingerprint = errorFingerprint(opts.kind, message);
   const now = new Date();
@@ -173,6 +181,21 @@ export async function reportOpsError(opts: {
         },
       });
     }
+    const count = existing ? existing.count + 1 : 1;
+    void import("@/lib/ops/ops-telegram")
+      .then(({ notifyOpsErrorBg }) =>
+        notifyOpsErrorBg({
+          kind: opts.kind,
+          title,
+          message,
+          count,
+          fingerprint,
+          userId: opts.userId,
+          stage: opts.stage,
+          jobId: opts.jobId,
+        }),
+      )
+      .catch(() => undefined);
   } catch (e) {
     console.error("[ops] report error failed:", e);
   }

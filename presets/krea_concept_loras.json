@@ -479,7 +479,7 @@
     },
     {
       "id": "old_camera_realistic_snapshot",
-      "file": "krea2/RealisticSnapshotKrea2.safetensors",
+      "file": "krea2/realistic_snapshot_krea2.safetensors",
       "label": "Realistic Snapshot Z",
       "civitai": "https://civitai.red/models/2268008/realistic-snapshot-z-image-turbo-krea-2?modelVersionId=3084537",
       "defaultStrength": 0.8,

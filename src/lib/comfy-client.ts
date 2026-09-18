@@ -31,6 +31,119 @@ export function isTransientComfyError(err: unknown): boolean {
   );
 }
 
+const LORA_NAME_ALIASES: Record<string, string> = {
+  "krea2/RealisticSnapshotKrea2.safetensors":
+    "krea2/realistic_snapshot_krea2.safetensors",
+};
+
+/** Extract missing lora_name from Comfy validation error JSON. */
+export function extractMissingLoraName(err: unknown): string | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const m = msg.match(/lora_name:\s*'([^']+)'\s*not in/i);
+  return m?.[1] || null;
+}
+
+/**
+ * Remap aliased LoRA filenames, or strip the LoraLoader node and rewire the chain.
+ * Returns true if graph was mutated.
+ */
+export function recoverMissingLoraInGraph(
+  graph: Record<string, unknown>,
+  missingName: string,
+): boolean {
+  const alias = LORA_NAME_ALIASES[missingName];
+  let changed = false;
+  for (const node of Object.values(graph)) {
+    if (!node || typeof node !== "object") continue;
+    const n = node as {
+      class_type?: string;
+      inputs?: Record<string, unknown>;
+    };
+    if (
+      (n.class_type === "LoraLoader" ||
+        n.class_type === "LoraLoaderModelOnly") &&
+      n.inputs?.lora_name === missingName
+    ) {
+      if (alias) {
+        n.inputs.lora_name = alias;
+        changed = true;
+      }
+    }
+  }
+  if (changed) return true;
+
+  // Strip node(s) and rewire model/clip refs that pointed at them.
+  const dropIds = new Set<string>();
+  for (const [id, node] of Object.entries(graph)) {
+    if (!node || typeof node !== "object") continue;
+    const n = node as {
+      class_type?: string;
+      inputs?: Record<string, unknown>;
+    };
+    if (
+      (n.class_type === "LoraLoader" ||
+        n.class_type === "LoraLoaderModelOnly") &&
+      n.inputs?.lora_name === missingName
+    ) {
+      dropIds.add(id);
+    }
+  }
+  if (!dropIds.size) return false;
+
+  const redirectModel = new Map<string, [string, number]>();
+  const redirectClip = new Map<string, [string, number]>();
+  for (const id of dropIds) {
+    const n = graph[id] as { inputs?: Record<string, unknown> };
+    const model = n.inputs?.model;
+    const clip = n.inputs?.clip;
+    if (Array.isArray(model) && typeof model[0] === "string") {
+      redirectModel.set(id, [
+        model[0],
+        typeof model[1] === "number" ? model[1] : 0,
+      ]);
+    }
+    if (Array.isArray(clip) && typeof clip[0] === "string") {
+      redirectClip.set(id, [
+        clip[0],
+        typeof clip[1] === "number" ? clip[1] : 0,
+      ]);
+    }
+  }
+
+  const rewriteRef = (ref: unknown): unknown => {
+    if (!Array.isArray(ref) || typeof ref[0] !== "string") return ref;
+    let cur: [string, number] = [
+      ref[0],
+      typeof ref[1] === "number" ? ref[1] : 0,
+    ];
+    const seen = new Set<string>();
+    while (dropIds.has(cur[0]) && !seen.has(cur[0])) {
+      seen.add(cur[0]);
+      const map = cur[1] === 1 ? redirectClip : redirectModel;
+      const next = map.get(cur[0]) || redirectModel.get(cur[0]);
+      if (!next) break;
+      cur = next;
+    }
+    return cur;
+  };
+
+  for (const [id, node] of Object.entries(graph)) {
+    if (dropIds.has(id) || !node || typeof node !== "object") continue;
+    const inputs = (node as { inputs?: Record<string, unknown> }).inputs;
+    if (!inputs) continue;
+    for (const [k, v] of Object.entries(inputs)) {
+      if (Array.isArray(v) && typeof v[0] === "string" && dropIds.has(v[0])) {
+        inputs[k] = rewriteRef(v);
+      }
+    }
+  }
+  for (const id of dropIds) delete graph[id];
+  console.warn(
+    `[peach] stripped missing LoRA from graph: ${missingName} (nodes ${[...dropIds].join(",")})`,
+  );
+  return true;
+}
+
 async function sleep(ms: number) {
   await new Promise((r) => setTimeout(r, ms));
 }
@@ -430,6 +543,7 @@ export async function runComfyAndDownload(
   await ensureComfyReady();
   let promptId: string | null = null;
   let lastErr: unknown;
+  let loraRecoveries = 0;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       if (!promptId) {
@@ -448,6 +562,12 @@ export async function runComfyAndDownload(
         await comfyInterrupt().catch(() => undefined);
         promptId = null;
         throw e;
+      }
+      const missing = extractMissingLoraName(e);
+      if (missing && loraRecoveries < 2 && recoverMissingLoraInGraph(graph, missing)) {
+        loraRecoveries += 1;
+        promptId = null;
+        continue;
       }
       if (!isTransientComfyError(e) || attempt === 2) throw e;
       console.warn(

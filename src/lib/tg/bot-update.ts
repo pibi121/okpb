@@ -7,6 +7,7 @@ import {
   characterReadyForVideo,
   createVideoRefCharacter,
   getActiveTgCharacter,
+  getOwnedPhotoUploadCharacter,
   listTgCharacters,
   listVideoRefCharacters,
   renameTgCharacter,
@@ -248,16 +249,11 @@ async function handlePhoto(
   chatState: string,
   pending: TgPending,
 ) {
-  let character = pending.videoUploadCharacterId
-    ? await prisma.character.findFirst({
-        where: { id: pending.videoUploadCharacterId, userId },
-      })
-    : await getActiveTgCharacter(userId, platformUserId);
-  if (!character && pending.onboardingCharacterId) {
-    character = await prisma.character.findFirst({
-      where: { id: pending.onboardingCharacterId, userId },
-    });
-  }
+  let character = await getOwnedPhotoUploadCharacter(
+    userId,
+    platformUserId,
+    pending.videoUploadCharacterId || pending.onboardingCharacterId || null,
+  );
   if (!character) {
     await tgSendMessage(chatId, t("need_photos", locale));
     return;

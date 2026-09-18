@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import { comfyBaseUrl } from "@/lib/metalnode-config";
+import { FLEET_EXTRA_GPUS, fleetComfyUrl, fleetConfigured } from "@/lib/gpu/fleet";
 
 const STATUS_PATH =
   process.env.PEACH_TUNNEL_STATUS_PATH || "/tmp/peach-tunnel-status.json";
@@ -28,8 +29,19 @@ let started = false;
 let lastEscalateAlertAt = 0;
 let idleComfyStreak = 0;
 
-function pingComfy(timeoutMs = 4000): Promise<boolean> {
-  const url = `${comfyBaseUrl()}/system_stats`;
+function allComfyBases(): string[] {
+  const bases = new Set<string>();
+  const primary = (comfyBaseUrl() || "http://127.0.0.1:8188").replace(/\/$/, "");
+  bases.add(primary);
+  for (const g of FLEET_EXTRA_GPUS) {
+    if (!fleetConfigured(g)) continue;
+    bases.add(fleetComfyUrl(g).replace(/\/$/, ""));
+  }
+  return [...bases];
+}
+
+function pingComfyUrl(base: string, timeoutMs = 4000): Promise<boolean> {
+  const url = `${base}/system_stats`;
   return new Promise((resolve) => {
     const req = http.get(url, { timeout: timeoutMs }, (res) => {
       res.resume();
@@ -43,10 +55,16 @@ function pingComfy(timeoutMs = 4000): Promise<boolean> {
   });
 }
 
-async function comfyQueueEmpty(): Promise<boolean | null> {
-  const url = `${comfyBaseUrl()}/queue`;
+/** True if any reachable Comfy is up (primary or fleet). */
+async function anyComfyUp(): Promise<boolean> {
+  const results = await Promise.all(allComfyBases().map((b) => pingComfyUrl(b)));
+  return results.some(Boolean);
+}
+
+function queueBusy(base: string, timeoutMs = 5000): Promise<boolean | null> {
+  const url = `${base}/queue`;
   return new Promise((resolve) => {
-    const req = http.get(url, { timeout: 5000 }, (res) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
@@ -57,7 +75,7 @@ async function comfyQueueEmpty(): Promise<boolean | null> {
           };
           const running = body.queue_running?.length || 0;
           const pending = body.queue_pending?.length || 0;
-          resolve(running + pending === 0);
+          resolve(running + pending > 0);
         } catch {
           resolve(null);
         }
@@ -69,6 +87,21 @@ async function comfyQueueEmpty(): Promise<boolean | null> {
       resolve(null);
     });
   });
+}
+
+/**
+ * Fleet-aware idle check:
+ * - true  → at least one Comfy reachable AND every reachable queue is empty
+ * - false → some reachable Comfy still has work (do NOT fail jobs)
+ * - null  → no queue could be read
+ */
+async function allReachableQueuesIdle(): Promise<boolean | null> {
+  const bases = allComfyBases();
+  const results = await Promise.all(bases.map((b) => queueBusy(b)));
+  const known = results.filter((v): v is boolean => v !== null);
+  if (!known.length) return null;
+  if (known.some((busy) => busy)) return false;
+  return true;
 }
 
 function readStatus(): {
@@ -110,7 +143,9 @@ async function alertEscalate(status: {
 }
 
 async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
-  // Only fail early when we can see Comfy is idle (or completely down for a while).
+  // Only fail early when we can see ALL reachable Comfy queues are idle
+  // (or completely down for a while). Fleet gens run on :8189 — checking only
+  // primary :8188 caused false "stuck" kills while bmserv4 was busy.
   if (comfyUp && queueIdle === false) {
     idleComfyStreak = 0;
     return 0;
@@ -217,8 +252,8 @@ async function tick() {
     const status = readStatus();
     if (status) await alertEscalate(status);
 
-    const comfyUp = await pingComfy();
-    const queueIdle = comfyUp ? await comfyQueueEmpty() : null;
+    const comfyUp = await anyComfyUp();
+    const queueIdle = comfyUp ? await allReachableQueuesIdle() : null;
 
     // Soft wait for tunnel — never spawn on Railway from here.
     if (!comfyUp) {

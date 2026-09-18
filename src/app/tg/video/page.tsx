@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { TgCatalogVideo } from "@/lib/tg/miniapp/catalog-video";
@@ -14,6 +14,7 @@ import {
   countSpeechSignificantChars,
 } from "@/lib/speech-slots";
 import { shuffleInPlace } from "@/lib/tg/feed-order";
+import { MODE_LABELS, modeBadgeForTemplate } from "@/lib/tg/gen-modes";
 
 type SpeechSlotDto = {
   id: string;
@@ -71,6 +72,7 @@ const UI = {
     line: "Реплика",
     topup: "Пополнить баланс",
     needPeaches: "Недостаточно персиков",
+    emptyMode: "Нет шаблонов в этом режиме",
   },
   en: {
     title: "Make video",
@@ -97,8 +99,15 @@ const UI = {
     line: "Line",
     topup: "Top up balance",
     needPeaches: "Not enough peaches",
+    emptyMode: "No templates in this mode",
   },
 } as const;
+
+type VideoModeTab = "all" | "video_one" | "video_look";
+
+function isLookVideo(t: { templateKind?: string; requiresLora?: boolean }) {
+  return t.templateKind === "lora_i2v" || Boolean(t.requiresLora);
+}
 
 function togglePreview(el: HTMLVideoElement) {
   if (el.paused) void el.play().catch(() => undefined);
@@ -114,9 +123,11 @@ function VideoPageInner() {
   const { status, error, locale, apiFetch, refresh, profile, sendAction } =
     useTgMiniApp();
   const u = UI[locale];
+  const modeLabels = MODE_LABELS[locale];
   const banners = useHorizontalBanners(apiFetch);
 
   const [templates, setTemplates] = useState<VideoTpl[]>([]);
+  const [modeTab, setModeTab] = useState<VideoModeTab>("all");
   const [templateId, setTemplateId] = useState(presetId);
   const [refs, setRefs] = useState<VideoRef[]>([]);
   const [loraChars, setLoraChars] = useState<LoraChar[]>([]);
@@ -196,6 +207,13 @@ function VideoPageInner() {
     if (status !== "ready") return;
     void load();
   }, [status, load]);
+
+  const visibleTemplates = useMemo(() => {
+    if (modeTab === "all") return templates;
+    return templates.filter((t) =>
+      modeTab === "video_look" ? isLookVideo(t) : !isLookVideo(t),
+    );
+  }, [templates, modeTab]);
 
   const tpl = templates.find((t) => t.id === templateId) || null;
   const isLoraI2v = tpl?.templateKind === "lora_i2v" || !!tpl?.requiresLora;
@@ -349,8 +367,37 @@ function VideoPageInner() {
                 : "Previews play muted. Tap to pause, tap again to play."}
             </p>
           </div>
+          <nav className="tg-tabs tg-tabs--modes" style={{ padding: "0 0.75rem 0.5rem" }}>
+            {(
+              [
+                ["all", modeLabels.tabAll],
+                ["video_one", modeLabels.video_one],
+                ["video_look", modeLabels.video_look],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={modeTab === id ? "active" : ""}
+                onClick={() => setModeTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {visibleTemplates.length === 0 && (
+            <p className="tg-muted" style={{ padding: "0 0.75rem" }}>
+              {u.emptyMode}
+            </p>
+          )}
           <div className="tg-portrait-grid" style={{ padding: "0 0.75rem 1rem" }}>
-            {templates.map((t) => (
+            {visibleTemplates.map((t) => {
+              const mode = modeBadgeForTemplate({
+                kind: "video",
+                requiresLora: Boolean(t.requiresLora) || t.templateKind === "lora_i2v",
+                bestQuality: isLookVideo(t),
+              });
+              return (
               <div key={t.id} className="tg-portrait-card">
                 <div className="tg-portrait-media">
                   {t.previewVideoUrl ? (
@@ -366,6 +413,14 @@ function VideoPageInner() {
                 </div>
                 <div className="tg-portrait-meta">
                   <strong>{t.title}</strong>
+                  <div className="tg-mode-badges">
+                    <span className={`tg-mode-badge tg-mode-badge--${mode}`}>
+                      {modeLabels[mode]}
+                    </span>
+                    {mode === "video_look" ? (
+                      <span className="tg-best-badge">{modeLabels.maxQuality}</span>
+                    ) : null}
+                  </div>
                   <small>
                     {t.pricePeaches} 🍑
                     {t.durationSec ? ` · ~${t.durationSec}с` : ""}
@@ -381,7 +436,8 @@ function VideoPageInner() {
                   {u.choose}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       ) : (

@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
-import { PHOTO_SCENE_CATEGORIES, photoMatchesSceneCategory, shuffleInPlace } from "@/lib/tg/feed-order";
+import { shuffleInPlace } from "@/lib/tg/feed-order";
 import {
   TgBannerCarousel,
   useHorizontalBanners,
@@ -16,7 +16,6 @@ type PhotoTpl = {
   notes: string;
   pricePeaches: number;
   previewImageUrl: string;
-  sceneCategory?: string;
 };
 
 const UI = {
@@ -24,14 +23,12 @@ const UI = {
     title: "Сделать фото",
     pickTpl: "1. Выбери шаблон",
     pickChar: "2. Выбери персонажа",
-    filter: "Фильтр",
-    all: "Всё",
     generate: "Сделать фото",
     starting: "…",
     back: "← К шаблонам",
     showcase: "Каталог студии",
     personal: "Твои модели",
-    emptyTpl: "Нет шаблонов в этой категории",
+    emptyTpl: "Нет шаблонов",
     emptyChar: "Нет обученных моделей — создай свою",
     create: "🚀 Создать модель",
     err: "Ошибка",
@@ -42,14 +39,12 @@ const UI = {
     title: "Make photo",
     pickTpl: "1. Pick a template",
     pickChar: "2. Pick a character",
-    filter: "Filter",
-    all: "All",
     generate: "Make photo",
     starting: "…",
     back: "← Templates",
     showcase: "Studio catalog",
     personal: "Your models",
-    emptyTpl: "No templates in this category",
+    emptyTpl: "No templates",
     emptyChar: "No trained models — create yours",
     create: "🚀 Create model",
     err: "Error",
@@ -71,8 +66,6 @@ function PhotoPageInner() {
 
   const [templates, setTemplates] = useState<PhotoTpl[]>([]);
   const [templateId, setTemplateId] = useState(presetTpl);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [category, setCategory] = useState<string>("");
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
 
@@ -88,9 +81,6 @@ function PhotoPageInner() {
     void load();
   }, [status, load]);
 
-  const visible = templates.filter((t) =>
-    photoMatchesSceneCategory(t.sceneCategory, category),
-  );
   const castIdsKey = (profile?.casts || []).map((c) => c.id).join(",");
   const showcaseCasts = useMemo(() => {
     return shuffleInPlace([...(profile?.casts || [])]);
@@ -169,45 +159,10 @@ function PhotoPageInner() {
                 ? ` · ${lockedCharacter.name}`
                 : ""}
             </h2>
-            <button
-              type="button"
-              className="tg-filter-btn"
-              onClick={() => setFilterOpen((v) => !v)}
-              aria-label={u.filter}
-            >
-              ⚙ {u.filter}
-            </button>
           </div>
-          {filterOpen && (
-            <div className="tg-filter-sheet">
-              <button
-                type="button"
-                className={!category ? "active" : ""}
-                onClick={() => {
-                  setCategory("");
-                  setFilterOpen(false);
-                }}
-              >
-                {u.all}
-              </button>
-              {PHOTO_SCENE_CATEGORIES.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={category === c.id ? "active" : ""}
-                  onClick={() => {
-                    setCategory(c.id);
-                    setFilterOpen(false);
-                  }}
-                >
-                  {locale === "en" ? c.en : c.ru}
-                </button>
-              ))}
-            </div>
-          )}
-          {visible.length === 0 && <p className="tg-muted">{u.emptyTpl}</p>}
+          {templates.length === 0 && <p className="tg-muted">{u.emptyTpl}</p>}
           <div className="tg-portrait-grid" style={{ padding: "0 0.75rem 1rem" }}>
-            {visible.map((t) => (
+            {templates.map((t) => (
               <button
                 key={t.id}
                 type="button"

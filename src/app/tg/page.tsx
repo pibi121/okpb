@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
-import { orderFeedMixed, orderFeedNewest } from "@/lib/tg/feed-order";
+import { orderFeedMixed } from "@/lib/tg/feed-order";
 import {
   MODE_LABELS,
   matchesFeedModeTab,
@@ -89,21 +89,15 @@ type FeedRow =
 const UI = {
   ru: {
     title: "Лента",
-    shootVideo: "Снять видео",
-    makePhoto: "Сделать фото",
     empty: "Шаблоны скоро появятся",
     speech: "🗣 речь",
-    newest: "Новое",
     soundOn: "Звук вкл",
     soundOff: "Звук выкл",
   },
   en: {
     title: "Feed",
-    shootVideo: "Shoot video",
-    makePhoto: "Make photo",
     empty: "Templates coming soon",
     speech: "🗣 speech",
-    newest: "New",
     soundOn: "Sound on",
     soundOff: "Sound off",
   },
@@ -134,7 +128,6 @@ export default function TgFeedPage() {
   const [tab, setTab] = useState<FeedModeTab>("all");
   const [items, setItems] = useState<FeedRow[]>([]);
   const [pool, setPool] = useState<FeedItem[]>([]);
-  const [newest, setNewest] = useState(false);
   const [loadErr, setLoadErr] = useState("");
   const [vBanners, setVBanners] = useState<BannerDto[]>([]);
   /** Prefer unmuted like Reels; may fall back if autoplay blocks. */
@@ -249,7 +242,7 @@ export default function TgFeedPage() {
         bestQuality: item.kind === "video" ? item.bestQuality : false,
       }),
     );
-    const ordered = newest ? orderFeedNewest(filtered) : orderFeedMixed(filtered);
+    const ordered = orderFeedMixed(filtered);
     const due = filterVerticalBannersDue(vBanners);
     const mixed = injectVerticalBanners(ordered, due);
     setItems(mixed);
@@ -257,13 +250,13 @@ export default function TgFeedPage() {
       .filter((row): row is Extract<FeedRow, { kind: "banner" }> => row.kind === "banner")
       .map((row) => row.id);
     if (shown.length) markVerticalBannersShown(shown);
-  }, [pool, newest, vBanners, tab]);
+  }, [pool, vBanners, tab]);
 
   useEffect(() => {
     const root = reelRef.current;
     if (!root) return;
     root.scrollTo({ top: 0, behavior: "auto" });
-  }, [newest, items]);
+  }, [tab, items]);
 
   useEffect(() => {
     const root = reelRef.current;
@@ -323,14 +316,6 @@ export default function TgFeedPage() {
             {modeTabLabel(t, locale)}
           </button>
         ))}
-        <label className={`tg-new-toggle${newest ? " is-on" : ""}`}>
-          {u.newest}
-          <input
-            type="checkbox"
-            checked={newest}
-            onChange={(e) => setNewest(e.target.checked)}
-          />
-        </label>
       </nav>
 
       {loadErr && <p className="tg-error">Не удалось загрузить</p>}

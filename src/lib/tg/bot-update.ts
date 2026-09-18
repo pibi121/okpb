@@ -114,7 +114,7 @@ import {
   tryCaptureFunnelVideoNote,
 } from "@/lib/tg/funnel-note-capture";
 import { tryRedeemPromoMessage } from "@/lib/tg/promo-codes";
-import { goToMainMenu, routeMenuText } from "@/lib/tg/menu-routing";
+import { goToMainMenu, routeMenuText, handleHubCallback } from "@/lib/tg/menu-routing";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import {
   isStudioCastCharacter,
@@ -1208,6 +1208,7 @@ async function handleGenerationCallback(
       page,
       {
         ...(messageId ? { editMessageId: messageId } : {}),
+        ...(messageId ? { showBack: true } : {}),
         templateIds: pending.templateIds,
         reshuffle: false,
         videoMode: kind === "video" ? pending.videoMode : undefined,
@@ -1490,7 +1491,10 @@ async function handleGenerationCallback(
   }
 
   if (data === GEN_CB.toHub) {
-    await goToMainMenu(chatId, platformUserId, userId, locale);
+    await goToMainMenu(chatId, platformUserId, userId, locale, {
+      editMessageId: messageId,
+      editHasMedia: hasMedia,
+    });
     return true;
   }
 
@@ -1692,6 +1696,26 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     );
     await maybeSendFunnelDrips(chatId, user.id);
 
+    const cqMsgId = cq.message?.message_id;
+    const cqHasMedia = Boolean(
+      cq.message?.photo || cq.message?.video || cq.message?.animation,
+    );
+
+    if (
+      await handleHubCallback(
+        chatId,
+        platformUserId,
+        user.id,
+        locale,
+        data,
+        cqMsgId,
+        cqHasMedia,
+      )
+    ) {
+      await tgAnswerCallbackQuery(cq.id);
+      return;
+    }
+
     if (await handleGenerationCallback(
       chatId,
       platformUserId,
@@ -1699,8 +1723,8 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       locale,
       data,
       pending,
-      cq.message?.message_id,
-      Boolean(cq.message?.photo || cq.message?.video || cq.message?.animation),
+      cqMsgId,
+      cqHasMedia,
     )) {
       await tgAnswerCallbackQuery(cq.id);
       return;

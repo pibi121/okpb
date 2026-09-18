@@ -158,6 +158,7 @@ async function listTgPublishedVideoRows(userId: string): Promise<PublicQuickVide
         : "",
       orientation: r.orientation,
       durationSec: r.durationSec,
+      hasSpeech: r.hasSpeech,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
       identityKey: r.previewIdentityKey || r.userId || r.id,

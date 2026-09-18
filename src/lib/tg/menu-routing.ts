@@ -1,13 +1,24 @@
 import type { TgLocale } from "@/lib/tg/i18n";
 import { isMenuText, t, tFormat } from "@/lib/tg/i18n";
-import { sendMainMenuHub, TG_COMMUNITY_URL } from "@/lib/tg/menu";
+import {
+  HUB_CB,
+  editOrSendNavMessage,
+  sendMainMenuHub,
+  withBackRow,
+  TG_COMMUNITY_URL,
+} from "@/lib/tg/menu";
 import { sendGenerationKindPicker } from "@/lib/tg/onboarding-flow";
 import { sendCharactersList } from "@/lib/tg/character-bot";
 import { sendHelp } from "@/lib/tg/help-flow";
-import { sendTopupPrompt } from "@/lib/tg/topup-flow";
+import { sendTopupPrompt, topupInlineKeyboard } from "@/lib/tg/topup-flow";
 import { setTgSession } from "@/lib/tg/session";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { getBalancePeaches } from "@/lib/tg/wallet";
+import { TG_MIN_TOPUP_PEACHES, peachesToUsdt } from "@/lib/tg-pricing";
+import { sendTemplatePicker } from "@/lib/tg/generation-flow";
+import { tgRulesArticleUrl } from "@/lib/tg/rules";
+import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
+import { tgSupportContact, tgSupportUrl } from "@/lib/tg/support";
 
 /** Leave input states (topup, speech, etc.) and open hub. */
 export async function goToMainMenu(
@@ -15,9 +26,194 @@ export async function goToMainMenu(
   platformUserId: string,
   userId: string,
   locale: TgLocale,
+  opts?: { editMessageId?: number; editHasMedia?: boolean },
 ) {
   await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
-  await sendMainMenuHub(chatId, userId, locale);
+  await sendMainMenuHub(chatId, userId, locale, {
+    attachReplyKeyboard: !opts?.editMessageId,
+    editMessageId: opts?.editMessageId,
+    editHasMedia: opts?.editHasMedia,
+  });
+}
+
+async function showHelpInPlace(
+  chatId: number,
+  locale: TgLocale,
+  messageId?: number,
+  hasMedia?: boolean,
+) {
+  const rows = withBackRow(locale, [
+    [
+      {
+        text: t("help_guide_btn", locale),
+        web_app: { url: tgMiniAppUrl("guide") },
+      },
+    ],
+    [
+      {
+        text: t("help_rules_btn", locale),
+        url: tgRulesArticleUrl(locale),
+      },
+    ],
+    [
+      {
+        text: t("help_support_btn", locale),
+        url: tgSupportUrl(),
+      },
+    ],
+    [{ text: t("help_lang_btn", locale), callback_data: "help:lang" }],
+  ]);
+  await editOrSendNavMessage({
+    chatId,
+    text: tFormat("help_title", locale, { support: tgSupportContact() }),
+    reply_markup: { inline_keyboard: rows },
+    messageId,
+    hasMedia,
+  });
+}
+
+async function showTopupInPlace(
+  chatId: number,
+  locale: TgLocale,
+  messageId?: number,
+  hasMedia?: boolean,
+) {
+  const usdt = peachesToUsdt(TG_MIN_TOPUP_PEACHES);
+  await setTgSession(String(chatId), {
+    chatState: "awaiting_topup_amount",
+    clearPending: true,
+  });
+  const kb = topupInlineKeyboard(locale);
+  const rows = withBackRow(locale, kb.inline_keyboard as Array<
+    Array<Record<string, unknown>>
+  >);
+  await editOrSendNavMessage({
+    chatId,
+    text: tFormat("topup_prompt", locale, { usdt }),
+    reply_markup: { inline_keyboard: rows },
+    messageId,
+    hasMedia,
+  });
+}
+
+async function showEarnInPlace(
+  chatId: number,
+  userId: string,
+  locale: TgLocale,
+  messageId?: number,
+  hasMedia?: boolean,
+) {
+  const { getPartnerDashboard, partnerStartLink } = await import(
+    "@/lib/tg/partner-program"
+  );
+  const { TG_AFFILIATE_ATTRIBUTION_NOTE } = await import("@/lib/tg/rules");
+  const dash = await getPartnerDashboard(userId);
+  const mainUrl = partnerStartLink(dash.botUsername, dash.profile.code);
+  const body = [
+    tFormat("earn_dash", locale, {
+      referrals: String(dash.referrals),
+      purchases: String(dash.purchases),
+      gross: String(dash.purchaseGrossPeaches),
+      earned: String(dash.commissionPeaches),
+      balance: String(dash.profile.balancePeaches),
+      link: mainUrl,
+    }),
+    "",
+    TG_AFFILIATE_ATTRIBUTION_NOTE[locale],
+  ].join("\n");
+  const rows = withBackRow(locale, [
+    [
+      {
+        text: t("earn_open_partner_btn", locale),
+        web_app: { url: tgMiniAppUrl("/tg/partner") },
+      },
+    ],
+  ]);
+  await editOrSendNavMessage({
+    chatId,
+    text: body,
+    reply_markup: { inline_keyboard: rows },
+    messageId,
+    hasMedia,
+  });
+}
+
+/** Hub inline buttons — edit the same message when possible. */
+export async function handleHubCallback(
+  chatId: number,
+  platformUserId: string,
+  userId: string,
+  locale: TgLocale,
+  data: string,
+  messageId?: number,
+  hasMedia?: boolean,
+): Promise<boolean> {
+  if (!data.startsWith("hub:")) return false;
+
+  if (data === HUB_CB.back) {
+    await goToMainMenu(chatId, platformUserId, userId, locale, {
+      editMessageId: messageId,
+      editHasMedia: hasMedia,
+    });
+    return true;
+  }
+
+  if (data === HUB_CB.topup) {
+    await showTopupInPlace(chatId, locale, messageId, hasMedia);
+    return true;
+  }
+
+  if (data === HUB_CB.help) {
+    await showHelpInPlace(chatId, locale, messageId, hasMedia);
+    return true;
+  }
+
+  if (data === HUB_CB.earn) {
+    await showEarnInPlace(chatId, userId, locale, messageId, hasMedia);
+    return true;
+  }
+
+  if (
+    data === HUB_CB.videoOne ||
+    data === HUB_CB.photoLook ||
+    data === HUB_CB.videoLook
+  ) {
+    const kind = data === HUB_CB.photoLook ? "photo" : "video";
+    const videoMode =
+      data === HUB_CB.videoLook
+        ? ("look" as const)
+        : data === HUB_CB.videoOne
+          ? ("one_photo" as const)
+          : undefined;
+    const { templates } = await sendTemplatePicker(
+      chatId,
+      userId,
+      locale,
+      kind,
+      0,
+      {
+        editMessageId: messageId,
+        editHasMedia: hasMedia,
+        replaceText: true,
+        showBack: true,
+        reshuffle: true,
+        videoMode,
+      },
+    );
+    await setTgSession(platformUserId, {
+      chatState: "idle",
+      clearPending: true,
+      pending: {
+        templateKind: kind,
+        ...(videoMode ? { videoMode } : {}),
+        templatePage: 0,
+        templateIds: templates.map((x) => x.id),
+      },
+    });
+    return true;
+  }
+
+  return false;
 }
 
 /** Bottom keyboard navigation — always wins over state handlers. */
@@ -39,6 +235,7 @@ export async function routeMenuText(
     await goToMainMenu(chatId, platformUserId, userId, locale);
     return true;
   }
+  // Legacy reply-keyboard labels (kept until clients refresh keyboard).
   if (isMenuText(text, "menu_generation")) {
     trackMenu("bot.menu.generation");
     await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
@@ -65,37 +262,7 @@ export async function routeMenuText(
   if (isMenuText(text, "menu_earn")) {
     trackMenu("bot.menu.earn");
     await setTgSession(platformUserId, { chatState: "idle" });
-    const { getPartnerDashboard, partnerStartLink } = await import(
-      "@/lib/tg/partner-program"
-    );
-    const { tgMiniAppUrl } = await import("@/lib/tg/miniapp-url");
-    const { TG_AFFILIATE_ATTRIBUTION_NOTE } = await import("@/lib/tg/rules");
-    const dash = await getPartnerDashboard(userId);
-    const mainUrl = partnerStartLink(dash.botUsername, dash.profile.code);
-    const body = [
-      tFormat("earn_dash", locale, {
-        referrals: String(dash.referrals),
-        purchases: String(dash.purchases),
-        gross: String(dash.purchaseGrossPeaches),
-        earned: String(dash.commissionPeaches),
-        balance: String(dash.profile.balancePeaches),
-        link: mainUrl,
-      }),
-      "",
-      TG_AFFILIATE_ATTRIBUTION_NOTE[locale],
-    ].join("\n");
-    await tgSendMessage(chatId, body, {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: t("earn_open_partner_btn", locale),
-              web_app: { url: tgMiniAppUrl("/tg/partner") },
-            },
-          ],
-        ],
-      },
-    });
+    await showEarnInPlace(chatId, userId, locale);
     return true;
   }
   if (isMenuText(text, "menu_community")) {
@@ -116,7 +283,7 @@ export async function routeMenuText(
     await sendHelp(chatId, locale);
     return true;
   }
-  if (isMenuText(text, "topup_btn")) {
+  if (isMenuText(text, "topup_btn") || isMenuText(text, "hub_btn_topup")) {
     trackMenu("bot.menu.topup");
     await sendTopupPrompt(chatId, locale);
     return true;

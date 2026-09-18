@@ -2,7 +2,7 @@ import { listTgFeaturedPhotoTemplates, listTgFeaturedVideoTemplates } from "@/li
 import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
 import { resolveTemplatePricePeaches } from "@/lib/tg/generation-service";
-import { tgSendMessage, tgEditMessageReplyMarkup } from "@/lib/tg/telegram-api";
+import { tgSendMessage, tgEditMessageReplyMarkup, tgEditMessageText, tgEditMessageCaption } from "@/lib/tg/telegram-api";
 import { isStudioCastCharacter, characterUsesLoraPhoto } from "@/lib/tg/studio-cast";
 import {
   canUseStudioDailyFree,
@@ -10,6 +10,7 @@ import {
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { shuffleInPlace } from "@/lib/tg/feed-order";
 import type { VideoPickMode } from "@/lib/tg/gen-modes";
+import { HUB_CB } from "@/lib/tg/menu";
 
 export const GEN_CB = {
   kindPhoto: "g:k:p",
@@ -195,6 +196,7 @@ export function templatePickerKeyboard(
   page: number,
   locale: TgLocale,
   kind: "photo" | "video",
+  opts?: { showBack?: boolean },
 ) {
   const totalPages = Math.max(1, Math.ceil(templates.length / PAGE_SIZE));
   const safePage = Math.min(Math.max(0, page), totalPages - 1);
@@ -245,6 +247,12 @@ export function templatePickerKeyboard(
       web_app: { url: miniAppUrl() },
     },
   ]);
+
+  if (opts?.showBack) {
+    rows.push([
+      { text: t("hub_btn_back", locale), callback_data: HUB_CB.back },
+    ]);
+  }
 
   return { keyboard: rows, page: safePage, totalPages };
 }
@@ -418,6 +426,10 @@ export async function sendTemplatePicker(
   page = 0,
   opts?: {
     editMessageId?: number;
+    editHasMedia?: boolean;
+    /** Replace caption/text (not only buttons). */
+    replaceText?: boolean;
+    showBack?: boolean;
     /** Keep this order while paging (no reshuffle). */
     templateIds?: string[];
     /** Fresh shuffle when opening the list (default true if no templateIds). */
@@ -429,16 +441,42 @@ export async function sendTemplatePicker(
     videoMode: opts?.videoMode,
   });
   if (!templates.length) {
-    const emptyMarkup = {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: t("marketplace_btn", locale), web_app: { url: miniAppUrl() } }],
-        ],
-      },
-    };
+    const emptyRows: Array<
+      Array<{ text: string; callback_data?: string; web_app?: { url: string } }>
+    > = [
+      [{ text: t("marketplace_btn", locale), web_app: { url: miniAppUrl() } }],
+    ];
+    if (opts?.showBack) {
+      emptyRows.push([
+        { text: t("hub_btn_back", locale), callback_data: HUB_CB.back },
+      ]);
+    }
+    const emptyMarkup = { reply_markup: { inline_keyboard: emptyRows } };
     if (opts?.editMessageId) {
       try {
-        await tgEditMessageReplyMarkup(chatId, opts.editMessageId, emptyMarkup.reply_markup);
+        if (opts.replaceText) {
+          if (opts.editHasMedia) {
+            await tgEditMessageCaption(
+              chatId,
+              opts.editMessageId,
+              t("templates_empty", locale),
+              emptyMarkup,
+            );
+          } else {
+            await tgEditMessageText(
+              chatId,
+              opts.editMessageId,
+              t("templates_empty", locale),
+              emptyMarkup,
+            );
+          }
+        } else {
+          await tgEditMessageReplyMarkup(
+            chatId,
+            opts.editMessageId,
+            emptyMarkup.reply_markup,
+          );
+        }
         return { templates: [], page: 0 };
       } catch {
         /* fall through to send */
@@ -462,6 +500,7 @@ export async function sendTemplatePicker(
     page,
     locale,
     kind,
+    { showBack: opts?.showBack },
   );
   const kindLabel =
     kind === "photo"
@@ -476,8 +515,20 @@ export async function sendTemplatePicker(
 
   if (opts?.editMessageId) {
     try {
-      // Same caption on every page — only swap buttons in-place.
-      await tgEditMessageReplyMarkup(chatId, opts.editMessageId, replyMarkup);
+      if (opts.replaceText) {
+        if (opts.editHasMedia) {
+          await tgEditMessageCaption(chatId, opts.editMessageId, text, {
+            reply_markup: replyMarkup,
+          });
+        } else {
+          await tgEditMessageText(chatId, opts.editMessageId, text, {
+            reply_markup: replyMarkup,
+          });
+        }
+      } else {
+        // Same caption on every page — only swap buttons in-place.
+        await tgEditMessageReplyMarkup(chatId, opts.editMessageId, replyMarkup);
+      }
       return { templates, page: safePage };
     } catch {
       /* message gone / too old — send a fresh one */

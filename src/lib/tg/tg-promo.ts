@@ -94,7 +94,7 @@ export async function consumeLoraWelcomePhoto(
 }
 
 export async function scheduleWelcomePush(userId: string): Promise<void> {
-  const due = new Date(Date.now() + 30_000);
+  const due = new Date(Date.now() + 60_000);
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -114,23 +114,25 @@ export async function maybeSendWelcomePush(
   if (!user || user.tgWelcomePushSent || !user.tgWelcomePushDueAt) return;
   if (user.tgWelcomePushDueAt.getTime() > Date.now()) return;
 
+  const { shouldShowWelcomeFreeOffer } = await import("@/lib/tg/menu");
+  if (!(await shouldShowWelcomeFreeOffer(userId))) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { tgWelcomePushSent: true },
+    });
+    return;
+  }
+
   const { t } = await import("@/lib/tg/i18n");
   const { castsMiniAppUrl } = await import("@/lib/tg/studio-cast");
-  const { tgLoraTrainMiniAppUrl } = await import("@/lib/tg/miniapp-url");
 
   await send(t("welcome_free_push", locale), {
     reply_markup: {
       inline_keyboard: [
         [
           {
-            text: t("onboard_pick_studio_btn", locale),
+            text: t("welcome_free_push_catalog_btn", locale),
             web_app: { url: castsMiniAppUrl() },
-          },
-        ],
-        [
-          {
-            text: t("onboard_create_char_btn", locale),
-            web_app: { url: tgLoraTrainMiniAppUrl() },
           },
         ],
       ],

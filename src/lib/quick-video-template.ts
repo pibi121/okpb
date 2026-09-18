@@ -36,6 +36,8 @@ export type PublicQuickVideoTemplate = {
   previewPhotoUrl: string;
   orientation: string;
   durationSec: number;
+  /** From DB column; feed list uses this without resolving speech slots. */
+  hasSpeech?: boolean;
   owned: boolean;
   isAuthor: boolean;
   tgPublished?: boolean;

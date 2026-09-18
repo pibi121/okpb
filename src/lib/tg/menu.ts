@@ -1,31 +1,41 @@
 import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
 import { tgSendMediaMessage } from "@/lib/tg/media-assets";
-import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
+import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { getBalancePeaches } from "@/lib/tg/wallet";
-import { tgSendMessage } from "@/lib/tg/telegram-api";
+import {
+  tgEditMessageCaption,
+  tgEditMessageText,
+  tgSendMessage,
+} from "@/lib/tg/telegram-api";
+import { prisma } from "@/lib/db";
 
 /** TG invite / community chat (same for RU and EN). */
 export const TG_COMMUNITY_URL = "https://t.me/+6aVo5HU0Yrc4NjYy";
 
-/** Bottom reply keyboard: sections + hub. */
+/** Inline hub navigation callbacks. */
+export const HUB_CB = {
+  videoOne: "hub:v1",
+  photoLook: "hub:ph",
+  videoLook: "hub:vl",
+  topup: "hub:tu",
+  help: "hub:hp",
+  earn: "hub:earn",
+  back: "hub:back",
+} as const;
+
+/** Bottom reply keyboard: main menu + open studio Mini App. */
 export function mainMenuKeyboard(locale: TgLocale) {
   return {
     reply_markup: {
       keyboard: [
         [
-          { text: t("menu_generation", locale) },
-          { text: t("menu_characters", locale) },
+          { text: t("menu_main", locale) },
+          {
+            text: t("menu_open_studio", locale),
+            web_app: { url: tgMiniAppUrl() },
+          },
         ],
-        [
-          { text: t("menu_balance", locale) },
-          { text: t("menu_earn", locale) },
-        ],
-        [
-          { text: t("menu_community", locale) },
-          { text: t("menu_help", locale) },
-        ],
-        [{ text: t("menu_main", locale) }],
       ],
       resize_keyboard: true,
     },
@@ -36,24 +46,93 @@ export function mainMenuExtra(locale: TgLocale) {
   return mainMenuKeyboard(locale);
 }
 
-/** Inline CTAs under hub message (web_app). */
+/** Inline CTAs under hub message. */
 export function hubInlineKeyboard(locale: TgLocale) {
   return {
     inline_keyboard: [
       [
+        { text: t("hub_btn_video_one", locale), callback_data: HUB_CB.videoOne },
         {
-          text: t("hub_open_studio_btn", locale),
-          web_app: { url: tgMiniAppUrl() },
+          text: t("hub_btn_photo_look", locale),
+          callback_data: HUB_CB.photoLook,
         },
       ],
       [
         {
-          text: t("hub_guide_btn", locale),
-          web_app: { url: tgMiniAppUrl("guide") },
+          text: t("hub_btn_video_look", locale),
+          callback_data: HUB_CB.videoLook,
+        },
+        {
+          text: t("hub_btn_create_look", locale),
+          web_app: { url: tgLoraTrainMiniAppUrl() },
         },
       ],
+      [
+        { text: t("hub_btn_topup", locale), callback_data: HUB_CB.topup },
+        { text: t("hub_btn_help", locale), callback_data: HUB_CB.help },
+      ],
+      [{ text: t("hub_btn_earn", locale), callback_data: HUB_CB.earn }],
     ],
   };
+}
+
+/** User still has unused welcome/studio free photo offer. */
+export async function shouldShowWelcomeFreeOffer(
+  userId: string,
+): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tgStudioDailyUsedAt: true, tgFreePhotoUsed: true },
+  });
+  if (!user) return false;
+  // First free studio look photo not consumed yet.
+  return !user.tgStudioDailyUsedAt && !user.tgFreePhotoUsed;
+}
+
+export async function buildHubCaption(
+  userId: string,
+  locale: TgLocale,
+): Promise<string> {
+  const bal = await getBalancePeaches(userId);
+  let text = tFormat("hub_main", locale, { balance: bal });
+  if (await shouldShowWelcomeFreeOffer(userId)) {
+    text += t("hub_main_free_offer", locale);
+  }
+  return text;
+}
+
+/** Edit existing bot message in-place, or send a new text message. */
+export async function editOrSendNavMessage(opts: {
+  chatId: number;
+  text: string;
+  reply_markup: Record<string, unknown>;
+  messageId?: number;
+  hasMedia?: boolean;
+}): Promise<void> {
+  const { chatId, text, reply_markup, messageId, hasMedia } = opts;
+  if (messageId) {
+    try {
+      if (hasMedia) {
+        await tgEditMessageCaption(chatId, messageId, text, { reply_markup });
+      } else {
+        await tgEditMessageText(chatId, messageId, text, { reply_markup });
+      }
+      return;
+    } catch {
+      /* message gone / not editable — fall through */
+    }
+  }
+  await tgSendMessage(chatId, text, { reply_markup });
+}
+
+export function withBackRow(
+  locale: TgLocale,
+  rows: Array<Array<Record<string, unknown>>>,
+): Array<Array<Record<string, unknown>>> {
+  return [
+    ...rows,
+    [{ text: t("hub_btn_back", locale), callback_data: HUB_CB.back }],
+  ];
 }
 
 /** After generation starts — open Mini App feed. */
@@ -76,18 +155,31 @@ export async function sendMainMenuHub(
   chatId: number,
   userId: string,
   locale: TgLocale,
-  opts?: { attachReplyKeyboard?: boolean },
+  opts?: {
+    attachReplyKeyboard?: boolean;
+    /** Edit this message back to hub (in-place nav). */
+    editMessageId?: number;
+    editHasMedia?: boolean;
+  },
 ) {
-  const bal = await getBalancePeaches(userId);
+  const caption = await buildHubCaption(userId, locale);
+  const markup = hubInlineKeyboard(locale);
+
+  if (opts?.editMessageId) {
+    await editOrSendNavMessage({
+      chatId,
+      text: caption,
+      reply_markup: markup,
+      messageId: opts.editMessageId,
+      hasMedia: opts.editHasMedia,
+    });
+    return;
+  }
+
   const attachKb = opts?.attachReplyKeyboard !== false;
-  await tgSendMediaMessage(
-    chatId,
-    "welcome",
-    tFormat("hub_main", locale, { balance: bal }),
-    {
-      reply_markup: hubInlineKeyboard(locale),
-    },
-  );
+  await tgSendMediaMessage(chatId, "welcome", caption, {
+    reply_markup: markup,
+  });
   // Telegram: one message can't mix inline + reply keyboard.
   if (attachKb) {
     await tgSendMessage(chatId, t("menu_ready_hint", locale), mainMenuExtra(locale));

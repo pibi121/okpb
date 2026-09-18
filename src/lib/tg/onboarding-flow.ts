@@ -306,7 +306,7 @@ export async function confirmRulesAndWelcome(
 ) {
   await prisma.user.update({
     where: { id: userId },
-    data: { ageConfirmed: true, locale },
+    data: { ageConfirmed: true, locale, tgStudioFreeReady: true },
   });
   await sendWelcomeAfterRules(chatId, platformUserId, locale, userId);
 }

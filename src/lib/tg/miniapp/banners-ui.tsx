@@ -145,14 +145,19 @@ export function TgFeedBannerCard({
   imageUrl,
   href,
   label,
+  feedIndex,
 }: {
   imageUrl: string;
   href: string;
   label?: string;
+  feedIndex?: number;
 }) {
   const router = useRouter();
   return (
-    <article className="tg-reel tg-reel--banner">
+    <article
+      className="tg-reel tg-reel--banner"
+      data-feed-index={feedIndex}
+    >
       <button
         type="button"
         className="tg-feed-banner"

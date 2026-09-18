@@ -23,23 +23,18 @@ type Dict = Record<string, { ru: string; en: string }>;
 export const M: Dict = {
   bot_name: { ru: "PeachBitch", en: "PeachBitch" },
 
-  /** Start pitch — always shown in Russian first (PDF). */
-  /** Start pitch — always shown in Russian first (no language picker). */
+  /** Start pitch — always shown in Russian first (no language picker). Video kept. */
   start_pitch: {
-    ru: `🍑<b>С Peachbitch ты воплотишь все свои фантазии</b>. Без ограничений, без цензуры, с тотальной защитой конфиденциальности!
+    ru: `🍑<b>С Peachbitch ты воплотишь все свои фантазии.</b> Если ты устал от размазанных пластиковых фото и видео в других ботах-раздеваторах, то добро пожаловать в настоящую порно-студию с самыми реалистичными кадрами, как будто смотришь вживую.
 
-Просто загружаешь фотографию своего персонажа и творишь с ним всё, на что хватит фантазии и смелости 🤯💦
+Раздеть подругу, коллегу, блогершу, актрису? Изи!
 
-— Реалистичные фото и видео 18+
-— Маркетплейс готовых шаблонов на любой вкус
-— Высочайшее качество, как будто сняли вживую`,
-    en: `🍑<b>With Peachbitch you can bring every fantasy to life</b>. No limits, no censorship, total privacy!
+Здесь ты сможешь создавать настоящие порно фильмы, фотосессии и сцены с сюжетами, разговорами. Здесь есть всё, чтобы воплощать твои самые грязные фантазии без цензуры и ограничений`,
+    en: `🍑<b>With Peachbitch you can bring every fantasy to life.</b> Tired of blurry plastic shots from other undress bots? Welcome to a real porn studio with the most realistic frames — as if you're watching live.
 
-Just upload a photo of your character and create anything your imagination dares 🤯💦
+Undress a girlfriend, colleague, blogger, actress? Easy!
 
-— Realistic 18+ photos & videos
-— Marketplace of ready-made templates
-— Top quality, as if shot live`,
+Here you can create real porn films, photoshoots and scenes with plots and dialogue. Everything you need for your dirtiest fantasies — no censorship, no limits`,
   },
 
   rules_step: {
@@ -82,22 +77,21 @@ What you can do:
   },
 
   welcome_free_push: {
-    ru: `<b>Просто попробуй бесплатно!</b> Фото с актрисами студии 👇
+    ru: `Не тяни. Попробуй наш фото-генератор в деле!
 
-1. Перейди в маркетплейс моделей
-2. Выбери понравившуюся актрису
-3. Выбери позу или действие из шаблона
-4. Получи готовое фото за ~30 секунд
+🎁 1 бесплатная генерация фото по образу с нашими актрисами. Убедись в качестве и реалистичности, а потом создавай образы со своей подругой, коллегой, блогершей, актрисой.
 
-Так ты поймёшь уровень качества PeachBitch — и потом сможешь настроить <b>своего</b> персонажа без ограничений и цензуры.`,
-    en: `<b>Try it free!</b> Photos with studio actresses 👇
+Выбери актрису из нашего каталога и сделай фото. Кстати, некоторых актрис из нашего каталога ты точно знаешь`,
+    en: `Don't wait — try our photo generator!
 
-1. Open the models marketplace
-2. Pick an actress you like
-3. Choose a pose or scene template
-4. Get your photo in ~30 seconds
+🎁 1 free look-based photo with our actresses. Check the quality and realism, then create looks with your girlfriend, colleague, blogger, or actress.
 
-See PeachBitch quality first — then set up <b>your own</b> character with no limits.`,
+Pick an actress from the catalog and make a photo. You'll recognize some of them 😉`,
+  },
+
+  welcome_free_push_catalog_btn: {
+    ru: "Перейти в каталог",
+    en: "Open catalog",
   },
 
   /** Funnel drip #1 — 5 min after welcome (RU first; EN mirrors RU for now). */
@@ -738,22 +732,85 @@ Tap below to open the Cashera form. Peaches credit automatically after payment.`
   hub_main: {
     ru: `Ну что, пофантазируем? 😏💦
 
-У тебя на балансе: {balance}🍑
+У тебя на балансе: {balance} 🍑
 
-📹 <b>Нажми на кнопку "Генерация",</b> чтобы сгенерировать фото или видео
+Порно-студия готова к работе. Сейчас тебе доступно 3 режима:
 
-🟠 <b>Нажми на кнопку "Персонажи",</b> чтобы выбрать из списка того персонажа, с которым хочешь сделать следующее фото или обучить PeachBitch новой модели для фото. Для видео персонажа не нужно создавать — просто перед генерацией отправь фото того человека, с которым хочешь сделать видео.
+1) <b>Фотография по образу</b>
 
-💳 <b>Нажми на кнопку "Баланс", </b>чтобы проверить или пополнить удобным способом`,
+Образ создаётся на основе фотографий нужной тебе девушки. Загружаешь минимум 5 фото 🡺 система обучается создавать фото с ней 🡺 генерируешь с ней любые фотки максимального качества и реалистичности
+
+2) <b>Видео по образу</b>
+
+Принцип тот же. Когда образ будет готов, ты сможешь создавать супер-реалистичные видео и порно-фильмы со своей актрисой.
+
+3) <b>Видео по 1 фото</b>
+
+Это быстрый режим. Видео до 12 секунд по готовым шаблонам создаются на основе 1 фотографии, которую ты отправишь
+
+Примеры работы и шаблоны ты можешь посмотреть, выбрав нужный режим по кнопкам ниже или открыв «Студию».`,
     en: `Ready to fantasize? 😏💦
 
-Your balance: {balance}🍑
+Your balance: {balance} 🍑
 
-📹 <b>Tap "Generation"</b> to create a photo or video
+The porn studio is ready. You have 3 modes:
 
-🟠 <b>Tap "Characters"</b> to pick who to use for photos or create a new model. For video you don't need a trained character — just send reference photos before generating.
+1) <b>Photo by look</b>
 
-💳 <b>Tap "Balance"</b> to check or top up`,
+A look is built from photos of the girl you want. Upload at least 5 photos → the system learns her → generate any photos at max quality and realism
+
+2) <b>Video by look</b>
+
+Same idea. When the look is ready, you can make ultra-realistic videos and porn films with your actress.
+
+3) <b>Video from 1 photo</b>
+
+Fast mode. Up to 12s videos from templates using one photo you send
+
+Browse examples and templates via the buttons below or open the Studio.`,
+  },
+
+  /** Appended to hub only if user still has unused studio free photo. */
+  hub_main_free_offer: {
+    ru: `
+
+🎁 Сейчас тебе доступна 1 бесплатная генерация фото по образу с нашими актрисами, готовыми образами. Просто попробуй, убедись насколько реалистичные кадры получаются`,
+    en: `
+
+🎁 You have 1 free look-based photo with our actresses. Try it and see how realistic the frames are`,
+  },
+
+  hub_btn_video_one: {
+    ru: "💦 Видео по 1 фото",
+    en: "💦 Video from 1 photo",
+  },
+  hub_btn_photo_look: {
+    ru: "🔥 Фото по образу",
+    en: "🔥 Photo by look",
+  },
+  hub_btn_video_look: {
+    ru: "❤️ Видео по образу",
+    en: "❤️ Video by look",
+  },
+  hub_btn_create_look: {
+    ru: "Создать свой образ",
+    en: "Create your look",
+  },
+  hub_btn_topup: {
+    ru: "Пополнить баланс",
+    en: "Top up balance",
+  },
+  hub_btn_help: {
+    ru: "Помощь",
+    en: "Help",
+  },
+  hub_btn_earn: {
+    ru: "Зарабатывать",
+    en: "Earn",
+  },
+  hub_btn_back: {
+    ru: "⬅️ Назад",
+    en: "⬅️ Back",
   },
 
   hub_open_studio_btn: {
@@ -778,6 +835,7 @@ Your balance: {balance}🍑
   menu_community: { ru: "👥 Наше коммьюнити", en: "👥 Our community" },
   menu_help: { ru: "❓ Помощь", en: "❓ Help" },
   menu_main: { ru: "🏠 Главное меню", en: "🏠 Main menu" },
+  menu_open_studio: { ru: "🍑 Открыть студию", en: "🍑 Open studio" },
 
   community_text: {
     ru: "👥 Залетай в наше коммьюнити — чат, новости и общение:",

@@ -110,6 +110,9 @@ const MODE_TABS: FeedModeTab[] = [
   "video_look",
 ];
 
+/** Only current slide ±1 attach full video src (poster for the rest). */
+const MEDIA_WINDOW = 1;
+
 function modeTabLabel(tab: FeedModeTab, locale: "ru" | "en"): string {
   const m = MODE_LABELS[locale];
   if (tab === "all") return m.tabAll;
@@ -133,6 +136,8 @@ export default function TgFeedPage() {
   /** Prefer unmuted like Reels; may fall back if autoplay blocks. */
   const [muted, setMuted] = useState(false);
   const [soundFlash, setSoundFlash] = useState<"on" | "off" | null>(null);
+  /** Index of the most-visible feed row (for windowed media). */
+  const [activeIdx, setActiveIdx] = useState(0);
   const reelRef = useRef<HTMLDivElement>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutedRef = useRef(muted);
@@ -256,8 +261,41 @@ export default function TgFeedPage() {
     const root = reelRef.current;
     if (!root) return;
     root.scrollTo({ top: 0, behavior: "auto" });
+    setActiveIdx(0);
   }, [tab, items]);
 
+  // Track which feed row is in view → only that ±1 get video src.
+  useEffect(() => {
+    const root = reelRef.current;
+    if (!root || !items.length) return;
+    const slides = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-feed-index]"),
+    );
+    if (!slides.length) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        let bestIdx = -1;
+        let bestRatio = 0;
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const raw = (e.target as HTMLElement).dataset.feedIndex;
+          const idx = raw != null ? Number(raw) : -1;
+          if (idx < 0 || Number.isNaN(idx)) continue;
+          if (e.intersectionRatio >= bestRatio) {
+            bestRatio = e.intersectionRatio;
+            bestIdx = idx;
+          }
+        }
+        if (bestIdx >= 0) setActiveIdx(bestIdx);
+      },
+      { root, threshold: [0.55, 0.7, 0.85] },
+    );
+    slides.forEach((s) => io.observe(s));
+    return () => io.disconnect();
+  }, [items]);
+
+  // Play/pause only videos that currently have src (hot window).
   useEffect(() => {
     const root = reelRef.current;
     if (!root) return;
@@ -266,6 +304,7 @@ export default function TgFeedPage() {
       (entries) => {
         for (const e of entries) {
           const v = e.target as HTMLVideoElement;
+          if (!v.getAttribute("src") && !v.currentSrc) continue;
           v.muted = mutedRef.current;
           if (e.isIntersecting) {
             const p = v.play();
@@ -285,14 +324,14 @@ export default function TgFeedPage() {
           }
         }
       },
-      { threshold: 0.6 },
+      { root, threshold: 0.6 },
     );
     videos.forEach((v) => {
       (v as HTMLVideoElement).muted = mutedRef.current;
       io.observe(v);
     });
     return () => io.disconnect();
-  }, [items]);
+  }, [items, activeIdx]);
 
   useEffect(() => {
     return () => {
@@ -322,16 +361,25 @@ export default function TgFeedPage() {
       {!loadErr && items.length === 0 && <p className="tg-muted">{u.empty}</p>}
 
       <div className="tg-reels" ref={reelRef}>
-        {items.map((item) =>
-          item.kind === "banner" ? (
-            <TgFeedBannerCard
-              key={item.id}
-              imageUrl={item.imageUrl}
-              href={item.href}
-              label={item.label}
-            />
-          ) : (
-          <article key={`${item.kind}-${item.id}`} className="tg-reel">
+        {items.map((item, index) => {
+          const hot = Math.abs(index - activeIdx) <= MEDIA_WINDOW;
+          if (item.kind === "banner") {
+            return (
+              <TgFeedBannerCard
+                key={item.id}
+                imageUrl={item.imageUrl}
+                href={item.href}
+                label={item.label}
+                feedIndex={index}
+              />
+            );
+          }
+          return (
+          <article
+            key={`${item.kind}-${item.id}`}
+            className="tg-reel"
+            data-feed-index={index}
+          >
             <div
               className="tg-reel-stage"
               onClick={item.isVideo ? toggleSound : undefined}
@@ -350,17 +398,24 @@ export default function TgFeedPage() {
             >
               {item.isVideo ? (
                 <video
-                  src={item.preview}
+                  // Only hot slides attach mp4; others show poster only.
+                  src={hot && item.preview ? item.preview : undefined}
                   poster={item.poster || undefined}
                   className="tg-reel-media"
                   loop
                   muted={muted}
                   playsInline
-                  preload="metadata"
+                  preload={hot ? "metadata" : "none"}
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.preview} alt="" className="tg-reel-media" />
+                <img
+                  src={item.preview}
+                  alt=""
+                  className="tg-reel-media"
+                  loading={hot ? "eager" : "lazy"}
+                  decoding="async"
+                />
               )}
               {item.isVideo && soundFlash ? (
                 <span
@@ -427,8 +482,8 @@ export default function TgFeedPage() {
               </div>
             </div>
           </article>
-          ),
-        )}
+          );
+        })}
       </div>
     </TgShell>
   );

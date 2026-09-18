@@ -15,7 +15,7 @@ import {
   resolveVideoTemplateSpeech,
   speechSlotsPublicDto,
 } from "@/lib/tg/template-speech";
-import { extractSpeechSlots } from "@/lib/speech-slots";
+import { extractSpeechSlots, templateHasSpeech } from "@/lib/speech-slots";
 import { resolveTgCatalogAssetUrl } from "@/lib/tg/catalog-asset-url";
 import { shuffleInPlace } from "@/lib/tg/feed-order";
 
@@ -30,14 +30,22 @@ function looksLikeVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov)(\?|$)/i.test(url) || /preview/i.test(url);
 }
 
-/** Templates feed for TG Mini App. */
-export async function GET(req: Request) {
+/** Fire migrate/repair at most once per process — not on every feed open. */
+let previewHygieneKickoff = false;
+function kickPreviewHygieneOnce() {
+  if (previewHygieneKickoff) return;
+  previewHygieneKickoff = true;
   void import("@/lib/tg/migrate-video-preview")
     .then((m) => m.migrateVideoTemplatePreviewHygiene())
     .catch((e) => console.error("[peach] video preview migrate:", e));
   void import("@/lib/tg/repair-tg-video-previews")
     .then((m) => m.repairMissingTgVideoPreviews())
     .catch((e) => console.error("[peach] video preview repair:", e));
+}
+
+/** Templates feed for TG Mini App. */
+export async function GET(req: Request) {
+  kickPreviewHygieneOnce();
 
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
@@ -50,6 +58,9 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind") || "all";
+  const includeSpeech =
+    url.searchParams.get("include") === "speech" ||
+    url.searchParams.get("includeSpeech") === "1";
   const localeParam = url.searchParams.get("locale");
   const user = await prisma.user.findUnique({ where: { id: userId } });
   const locale = normalizeLocale(localeParam || user?.locale);
@@ -64,7 +75,7 @@ export async function GET(req: Request) {
 
   const video = await Promise.all(
     videoRaw.map(async (t, i) => {
-      const row = t as typeof t & { titleEn?: string };
+      const row = t as typeof t & { titleEn?: string; hasSpeech?: boolean };
       const seedPrev = seedPreviewForVideo(row.title, i);
       const rawVideo = t.previewVideoUrl?.trim() || "";
       const previewVideo = resolveTgCatalogAssetUrl(
@@ -80,14 +91,21 @@ export async function GET(req: Request) {
             ? seedPrev!.previewPhotoUrl
             : "",
       );
-      const speech = await resolveVideoTemplateSpeech(t.id);
-      const slots = speechSlotsPublicDto(speech.slots, locale);
+
+      let hasSpeech = Boolean(row.hasSpeech);
+      let speechSlots: ReturnType<typeof speechSlotsPublicDto> | undefined;
+      if (includeSpeech) {
+        const speech = await resolveVideoTemplateSpeech(t.id);
+        hasSpeech = speech.hasSpeech;
+        speechSlots = speechSlotsPublicDto(speech.slots, locale);
+      }
+
       return {
         ...t,
         title: videoTitle(row, locale),
         pricePeaches: videoTemplatePricePeaches(t),
-        hasSpeech: speech.hasSpeech,
-        speechSlots: slots,
+        hasSpeech,
+        ...(speechSlots ? { speechSlots } : {}),
         previewVideoUrl: previewVideo,
         previewPhotoUrl: previewPhoto,
         templateKind: "quick_video" as const,
@@ -103,44 +121,59 @@ export async function GET(req: Request) {
     }),
   );
 
-  const loraI2v = await Promise.all(
-    loraI2vRaw.map(async (t) => {
-      const rawVideo = t.previewVideoUrl?.trim() || "";
-      const previewVideo = resolveTgCatalogAssetUrl(
-        rawVideo && looksLikeVideoUrl(rawVideo) ? rawVideo : "",
-      );
-      const previewPhoto = resolveTgCatalogAssetUrl(
-        t.previewImageUrl?.trim() || "",
-      );
-      const full = await prisma.loraI2vTemplate.findFirst({
-        where: { id: t.id },
-        select: { i2vPrompt: true, stillPrompt: true, shotsJson: true },
-      });
-      const slotsRaw = extractSpeechSlots(
-        full?.i2vPrompt || "",
-        full?.stillPrompt || "",
-      );
-      const slots = speechSlotsPublicDto(slotsRaw, locale);
-      return {
-        id: t.id,
-        title: t.title,
-        notes: t.notes,
-        pricePeaches: priceForLoraI2vTemplate(t.durationSec, {
-          shotsJson: full?.shotsJson || "",
-        }),
-        durationSec: t.durationSec,
-        previewVideoUrl: previewVideo,
-        previewPhotoUrl: previewPhoto,
-        hasSpeech: slots.length > 0,
-        speechSlots: slots,
-        templateKind: "lora_i2v" as const,
-        requiresLora: true,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-        identityKey: t.identityKey || t.id,
-      };
-    }),
-  );
+  /** One batch query for lora speech/pricing extras instead of N+1. */
+  const loraIds = loraI2vRaw.map((t) => t.id);
+  const loraFullRows =
+    loraIds.length === 0
+      ? []
+      : await prisma.loraI2vTemplate.findMany({
+          where: { id: { in: loraIds } },
+          select: {
+            id: true,
+            i2vPrompt: true,
+            stillPrompt: true,
+            shotsJson: true,
+          },
+        });
+  const loraFullById = new Map(loraFullRows.map((r) => [r.id, r]));
+
+  const loraI2v = loraI2vRaw.map((t) => {
+    const rawVideo = t.previewVideoUrl?.trim() || "";
+    const previewVideo = resolveTgCatalogAssetUrl(
+      rawVideo && looksLikeVideoUrl(rawVideo) ? rawVideo : "",
+    );
+    const previewPhoto = resolveTgCatalogAssetUrl(
+      t.previewImageUrl?.trim() || "",
+    );
+    const full = loraFullById.get(t.id);
+    const slotsRaw = extractSpeechSlots(
+      full?.i2vPrompt || "",
+      full?.stillPrompt || "",
+    );
+    const hasSpeech = templateHasSpeech(slotsRaw);
+    const speechSlots = includeSpeech
+      ? speechSlotsPublicDto(slotsRaw, locale)
+      : undefined;
+
+    return {
+      id: t.id,
+      title: t.title,
+      notes: t.notes,
+      pricePeaches: priceForLoraI2vTemplate(t.durationSec, {
+        shotsJson: full?.shotsJson || "",
+      }),
+      durationSec: t.durationSec,
+      previewVideoUrl: previewVideo,
+      previewPhotoUrl: previewPhoto,
+      hasSpeech,
+      ...(speechSlots ? { speechSlots } : {}),
+      templateKind: "lora_i2v" as const,
+      requiresLora: true,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      identityKey: t.identityKey || t.id,
+    };
+  });
 
   const { resolveVideoLocalPath } = await import(
     "@/lib/quick-video-template-preview"

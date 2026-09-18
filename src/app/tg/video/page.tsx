@@ -146,7 +146,9 @@ function VideoPageInner() {
 
   const load = useCallback(async () => {
     const [tRes, rRes, meRes] = await Promise.all([
-      apiFetch(`/api/tg/templates?kind=video&locale=${locale}`),
+      apiFetch(
+        `/api/tg/templates?kind=video&locale=${locale}&include=speech`,
+      ),
       apiFetch("/api/tg/video-refs"),
       apiFetch(`/api/tg/me?locale=${locale}`),
     ]);

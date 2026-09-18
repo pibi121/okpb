@@ -63,6 +63,9 @@ next-env.d.ts
 /infra/metalnode.llm.json
 metalnode_id_ed25519
 
+# local-only (never GitHub)
+/HANDOFF/
+
 # cursor / temp
 .cursor/
 tmp_*

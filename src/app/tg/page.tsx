@@ -264,38 +264,48 @@ export default function TgFeedPage() {
     setActiveIdx(0);
   }, [tab, items]);
 
-  // Track which feed row is in view → only that ±1 get video src.
+  // Snap-scroll: pick the slide whose center is closest to the viewport center.
+  // More reliable in TG WebView than IntersectionObserver thresholds alone.
   useEffect(() => {
     const root = reelRef.current;
     if (!root || !items.length) return;
-    const slides = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-feed-index]"),
-    );
-    if (!slides.length) return;
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        let bestIdx = -1;
-        let bestRatio = 0;
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const raw = (e.target as HTMLElement).dataset.feedIndex;
-          const idx = raw != null ? Number(raw) : -1;
-          if (idx < 0 || Number.isNaN(idx)) continue;
-          if (e.intersectionRatio >= bestRatio) {
-            bestRatio = e.intersectionRatio;
-            bestIdx = idx;
-          }
+    let raf = 0;
+    const updateActive = () => {
+      raf = 0;
+      const slides = root.querySelectorAll<HTMLElement>("[data-feed-index]");
+      if (!slides.length) return;
+      const mid = root.getBoundingClientRect().top + root.clientHeight / 2;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (const el of slides) {
+        const raw = el.dataset.feedIndex;
+        const idx = raw != null ? Number(raw) : -1;
+        if (idx < 0 || Number.isNaN(idx)) continue;
+        const r = el.getBoundingClientRect();
+        const dist = Math.abs(r.top + r.height / 2 - mid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = idx;
         }
-        if (bestIdx >= 0) setActiveIdx(bestIdx);
-      },
-      { root, threshold: [0.55, 0.7, 0.85] },
-    );
-    slides.forEach((s) => io.observe(s));
-    return () => io.disconnect();
+      }
+      setActiveIdx((prev) => (prev === bestIdx ? prev : bestIdx));
+    };
+
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(updateActive);
+    };
+
+    root.addEventListener("scroll", onScroll, { passive: true });
+    updateActive();
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
   }, [items]);
 
-  // Play/pause only videos that currently have src (hot window).
+  // Play/pause videos in the hot window; TG WebView needs an explicit play().
   useEffect(() => {
     const root = reelRef.current;
     if (!root) return;
@@ -324,11 +334,16 @@ export default function TgFeedPage() {
           }
         }
       },
-      { root, threshold: 0.6 },
+      { root, threshold: 0.55 },
     );
     videos.forEach((v) => {
-      (v as HTMLVideoElement).muted = mutedRef.current;
-      io.observe(v);
+      const el = v as HTMLVideoElement;
+      el.muted = mutedRef.current;
+      io.observe(el);
+      // Kick decode when src just attached (hot window moved).
+      if (el.getAttribute("src") || el.currentSrc) {
+        void el.play().catch(() => undefined);
+      }
     });
     return () => io.disconnect();
   }, [items, activeIdx]);
@@ -397,16 +412,43 @@ export default function TgFeedPage() {
               }
             >
               {item.isVideo ? (
-                <video
-                  // Only hot slides attach mp4; others show poster only.
-                  src={hot && item.preview ? item.preview : undefined}
-                  poster={item.poster || undefined}
-                  className="tg-reel-media"
-                  loop
-                  muted={muted}
-                  playsInline
-                  preload={hot ? "metadata" : "none"}
-                />
+                // TG WebView often paints a black <video> when src is empty,
+                // even with a poster attr — use <img> for cold slides.
+                hot && item.preview ? (
+                  <video
+                    key={`v-${item.id}-hot`}
+                    src={item.preview}
+                    poster={item.poster || undefined}
+                    className="tg-reel-media"
+                    loop
+                    muted={muted}
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : item.poster ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={`v-${item.id}-poster`}
+                    src={item.poster}
+                    alt=""
+                    className="tg-reel-media"
+                    loading={hot ? "eager" : "lazy"}
+                    decoding="async"
+                  />
+                ) : item.preview ? (
+                  // No safe poster — keep a light metadata fetch so slide isn't black.
+                  <video
+                    key={`v-${item.id}-meta`}
+                    src={item.preview}
+                    className="tg-reel-media"
+                    loop
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <div className="tg-reel-media tg-reel-media--empty" aria-hidden />
+                )
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img

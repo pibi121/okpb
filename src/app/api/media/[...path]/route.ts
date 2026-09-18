@@ -67,8 +67,11 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   // TG-catalog assets (preview thumbnails, cast covers) are public by design —
   // they are already served from /public/tg/catalog and are not user-specific.
   const isTgCatalog = relKey.startsWith("tg-catalog/");
+  // Ops broadcast uploads must be fetchable by Telegram (no session cookie).
+  const isOpsBroadcast =
+    parts[0] === "_ops" && /^broadcast_/i.test(parts[1] || "");
 
-  if (!isTgCatalog) {
+  if (!isTgCatalog && !isOpsBroadcast) {
     // Private gallery: owner session, or ops staff (admin jobs / user pages).
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -91,9 +94,10 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   // TG-catalog assets are public thumbnails; user gallery is private — never cache
   // in shared/CDN stores. "immutable" is dropped to prevent stale cached versions
   // from leaking between sessions.
-  const cache = isTgCatalog
-    ? "public, max-age=31536000, immutable"
-    : "private, max-age=3600";
+  const cache =
+    isTgCatalog || isOpsBroadcast
+      ? "public, max-age=31536000, immutable"
+      : "private, max-age=3600";
 
   const range = parseRange(req.headers.get("range"), size);
   if (range) {

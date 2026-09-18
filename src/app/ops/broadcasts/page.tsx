@@ -35,7 +35,9 @@ export default function OpsBroadcastsPage() {
   const [presets, setPresets] = useState<Btn[]>(DEFAULT_PRESETS);
   const [testTgId, setTestTgId] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
+  const [msgTone, setMsgTone] = useState<"ok" | "err">("ok");
 
   async function load() {
     const d = await opsFetch<{ rows: Row[]; presets?: Btn[] }>(
@@ -74,8 +76,10 @@ export default function OpsBroadcastsPage() {
         ...m,
         { type: data.type === "video" ? "video" : "photo", url: data.mediaUrl! },
       ]);
+      setMsgTone("ok");
       setMsg("Медиа добавлено");
     } catch (e) {
+      setMsgTone("err");
       setMsg(e instanceof Error ? e.message : "ошибка загрузки");
     } finally {
       setUploading(false);
@@ -112,7 +116,13 @@ export default function OpsBroadcastsPage() {
           на TG id, потом счётчик, потом отправка. Между массовыми — 30 минут.
         </p>
       </div>
-      {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}
+      {msg ? (
+        <p
+          className={`text-sm ${msgTone === "err" ? "text-rose-300" : "text-emerald-300"}`}
+        >
+          {msg}
+        </p>
+      ) : null}
       <form
         className="flex flex-col gap-2 rounded-2xl border border-white/10 p-4"
         onSubmit={async (e) => {
@@ -308,30 +318,52 @@ export default function OpsBroadcastsPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-full border border-white/15 px-4 py-1.5 text-sm"
+            disabled={testing}
+            className="rounded-full border border-white/15 px-4 py-1.5 text-sm disabled:opacity-50"
             onClick={async () => {
               const form = document.querySelector("form") as HTMLFormElement;
+              if (!form) {
+                setMsgTone("err");
+                setMsg("Форма не найдена");
+                return;
+              }
               const payload = readForm(form);
-              await opsFetch("/api/ops/broadcasts", {
-                method: "POST",
-                body: JSON.stringify({
-                  action: "test",
-                  bodyRu: payload.bodyRu,
-                  bodyEn: payload.bodyEn,
-                  mediaUrl: payload.mediaUrl,
-                  mediaJson: payload.mediaJson,
-                  buttonsJson: payload.buttonsJson,
-                  testTgId: testTgId.trim() || undefined,
-                }),
-              });
-              setMsg(
-                testTgId.trim()
-                  ? `Тест ушёл на TG ${testTgId.trim()}`
-                  : "Тест ушёл вам в бот",
-              );
+              if (!payload.bodyRu.trim() && media.length === 0) {
+                setMsgTone("err");
+                setMsg("Заполни текст RU или добавь медиа");
+                return;
+              }
+              if (!testTgId.trim()) {
+                setMsgTone("err");
+                setMsg("Укажи свой Telegram user id (цифры) для теста");
+                return;
+              }
+              setTesting(true);
+              setMsg("");
+              try {
+                await opsFetch("/api/ops/broadcasts", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    action: "test",
+                    bodyRu: payload.bodyRu,
+                    bodyEn: payload.bodyEn,
+                    mediaUrl: payload.mediaUrl,
+                    mediaJson: payload.mediaJson,
+                    buttonsJson: payload.buttonsJson,
+                    testTgId: testTgId.trim(),
+                  }),
+                });
+                setMsgTone("ok");
+                setMsg(`Тест ушёл на TG ${testTgId.trim()}`);
+              } catch (e) {
+                setMsgTone("err");
+                setMsg(e instanceof Error ? e.message : "Ошибка теста");
+              } finally {
+                setTesting(false);
+              }
             }}
           >
-            Тестовое сообщение
+            {testing ? "Отправляю…" : "Тестовое сообщение"}
           </button>
           <button
             type="button"

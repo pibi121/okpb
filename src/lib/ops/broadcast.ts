@@ -63,9 +63,12 @@ function parseButtonsJson(raw: string): BroadcastButton[] {
     const v = JSON.parse(raw || "[]") as BroadcastButton[];
     if (!Array.isArray(v)) return [];
     return v
-      .filter((b) => b?.text?.trim() && b?.path?.trim())
+      .filter((b) => b?.text?.trim() && typeof b.path === "string")
       .slice(0, 6)
-      .map((b) => ({ text: b.text.trim().slice(0, 64), path: b.path.trim() }));
+      .map((b) => ({
+        text: b.text.trim().slice(0, 64),
+        path: b.path.trim().replace(/^\//, ""),
+      }));
   } catch {
     return [];
   }
@@ -227,7 +230,10 @@ export async function sendTestBroadcast(opts: {
   /** Explicit Telegram user id for preview (overrides actor's own TG). */
   testTgId?: string;
 }) {
-  let chatId = (opts.testTgId || "").trim();
+  let chatId = (opts.testTgId || "").trim().replace(/\s+/g, "");
+  if (chatId && !/^\d{5,15}$/.test(chatId)) {
+    throw new Error("Telegram id — только цифры (user id, не @username)");
+  }
   if (!chatId) {
     const acc = await prisma.platformAccount.findFirst({
       where: { userId: opts.actorUserId, platform: "telegram" },
@@ -245,6 +251,9 @@ export async function sendTestBroadcast(opts: {
     locale === "en" && opts.bodyEn.trim() ? opts.bodyEn : opts.bodyRu;
   const media = parseMediaJson(opts.mediaJson || "[]", opts.mediaUrl);
   const buttons = parseButtonsJson(opts.buttonsJson || "[]");
+  if (!text.trim() && !media.length) {
+    throw new Error("Нужен текст RU или хотя бы одно медиа");
+  }
   await deliverBroadcastPayload(chatId, text, media, buttons);
 }
 

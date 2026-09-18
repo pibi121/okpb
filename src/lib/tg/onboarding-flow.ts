@@ -142,6 +142,10 @@ export async function sendWelcomeAfterRules(
   await scheduleFunnelDrip(userId);
   // Skip "Добро пожаловать…" — go straight to hub («пофантазируем») + CTAs.
   await sendMainMenuHub(chatId, userId, locale, { attachReplyKeyboard: true });
+  const { maybeSendBanBackupAfterOnboard } = await import(
+    "@/lib/tg/ban-backup-notice"
+  );
+  await maybeSendBanBackupAfterOnboard(chatId, userId, locale);
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
@@ -270,7 +274,19 @@ export async function onOnboardKindPicked(
   locale: TgLocale,
   kind: "photo" | "video",
 ) {
-  const { templates } = await sendTemplatePicker(chatId, userId, locale, kind, 0);
+  if (kind === "video") {
+    const { sendVideoModePicker } = await import("@/lib/tg/generation-flow");
+    await sendVideoModePicker(chatId, locale);
+    await setTgSession(platformUserId, {
+      chatState: "idle",
+      clearPending: true,
+      pending: { templateKind: "video" },
+    });
+    return;
+  }
+  const { templates } = await sendTemplatePicker(chatId, userId, locale, kind, 0, {
+    reshuffle: true,
+  });
   await setTgSession(platformUserId, {
     chatState: "idle",
     clearPending: true,

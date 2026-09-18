@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import {
+  BROADCAST_BUTTON_PRESETS,
   previewBroadcastAudience,
   runBroadcast,
   sendTestBroadcast,
@@ -14,6 +15,7 @@ export async function GET() {
       take: 30,
     });
     return jsonOk({
+      presets: BROADCAST_BUTTON_PRESETS,
       rows: rows.map((r) => ({
         ...r,
         createdAt: r.createdAt.toISOString(),
@@ -32,6 +34,9 @@ export async function POST(req: Request) {
       bodyRu?: string;
       bodyEn?: string;
       mediaUrl?: string;
+      mediaJson?: string;
+      buttonsJson?: string;
+      testTgId?: string;
       filter?: Record<string, unknown>;
     };
     if (body.action === "preview") {
@@ -39,24 +44,37 @@ export async function POST(req: Request) {
       return jsonOk({ count: n });
     }
     if (body.action === "test") {
-      await sendTestBroadcast(
-        actor.id,
-        body.bodyRu || "",
-        body.bodyEn || "",
-        body.mediaUrl,
-      );
+      await sendTestBroadcast({
+        actorUserId: actor.id,
+        bodyRu: body.bodyRu || "",
+        bodyEn: body.bodyEn || "",
+        mediaUrl: body.mediaUrl,
+        mediaJson: body.mediaJson,
+        buttonsJson: body.buttonsJson,
+        testTgId: body.testTgId,
+      });
       return jsonOk({ ok: true });
     }
     if (body.action === "create") {
       if (!(body.title || "").trim() || !(body.bodyRu || "").trim()) {
         return jsonErr("Нужны название и русский текст");
       }
+      const mediaJson = body.mediaJson?.trim() || "[]";
+      let firstUrl = body.mediaUrl || "";
+      try {
+        const arr = JSON.parse(mediaJson) as Array<{ url?: string }>;
+        if (!firstUrl && Array.isArray(arr) && arr[0]?.url) firstUrl = arr[0].url;
+      } catch {
+        /* ignore */
+      }
       const row = await prisma.broadcast.create({
         data: {
           title: body.title!.trim(),
           bodyRu: body.bodyRu || "",
           bodyEn: body.bodyEn || "",
-          mediaUrl: body.mediaUrl || "",
+          mediaUrl: firstUrl,
+          mediaJson,
+          buttonsJson: body.buttonsJson?.trim() || "[]",
           filterJson: JSON.stringify(body.filter || {}),
           createdById: actor.id,
           status: "draft",

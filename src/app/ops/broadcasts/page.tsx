@@ -12,17 +12,37 @@ type Row = {
   createdAt: string;
 };
 
+type MediaItem = { type: "photo" | "video"; url: string };
+type Btn = { text: string; path: string };
+
+const DEFAULT_PRESETS: Btn[] = [
+  { text: "Лента", path: "" },
+  { text: "Фото по образу", path: "photo" },
+  { text: "Видео", path: "video" },
+  { text: "Витрина моделей", path: "characters" },
+  { text: "Обучить свою", path: "characters?section=train" },
+  { text: "Галерея", path: "gallery" },
+  { text: "Пополнить", path: "topup" },
+];
+
 export default function OpsBroadcastsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [count, setCount] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
   const [who, setWho] = useState("all");
-  const [mediaUrl, setMediaUrl] = useState("");
+  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [buttons, setButtons] = useState<Btn[]>([]);
+  const [presets, setPresets] = useState<Btn[]>(DEFAULT_PRESETS);
+  const [testTgId, setTestTgId] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [urlDraft, setUrlDraft] = useState("");
 
   async function load() {
-    const d = await opsFetch<{ rows: Row[] }>("/api/ops/broadcasts");
+    const d = await opsFetch<{ rows: Row[]; presets?: Btn[] }>(
+      "/api/ops/broadcasts",
+    );
     setRows(d.rows);
+    if (d.presets?.length) setPresets(d.presets);
   }
 
   useEffect(() => {
@@ -30,6 +50,10 @@ export default function OpsBroadcastsPage() {
   }, []);
 
   async function uploadFile(file: File) {
+    if (media.length >= 2) {
+      setMsg("Максимум 2 медиа");
+      return;
+    }
     setUploading(true);
     setMsg("");
     try {
@@ -42,16 +66,28 @@ export default function OpsBroadcastsPage() {
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         mediaUrl?: string;
+        type?: "photo" | "video";
       };
       if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
       if (!data.mediaUrl) throw new Error("Нет URL после загрузки");
-      setMediaUrl(data.mediaUrl);
-      setMsg("Фото загружено — уйдёт вместе с текстом");
+      setMedia((m) => [
+        ...m,
+        { type: data.type === "video" ? "video" : "photo", url: data.mediaUrl! },
+      ]);
+      setMsg("Медиа добавлено");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "ошибка загрузки");
     } finally {
       setUploading(false);
     }
+  }
+
+  function addUrlMedia() {
+    const u = urlDraft.trim();
+    if (!u || media.length >= 2) return;
+    const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(u);
+    setMedia((m) => [...m, { type: isVideo ? "video" : "photo", url: u }]);
+    setUrlDraft("");
   }
 
   function readForm(form: HTMLFormElement) {
@@ -60,7 +96,9 @@ export default function OpsBroadcastsPage() {
       title: String(f.get("title") || ""),
       bodyRu: String(f.get("bodyRu") || ""),
       bodyEn: String(f.get("bodyEn") || ""),
-      mediaUrl: mediaUrl.trim(),
+      mediaUrl: media[0]?.url || "",
+      mediaJson: JSON.stringify(media),
+      buttonsJson: JSON.stringify(buttons),
       filter: { who, skipQuietDays: 7 },
     };
   }
@@ -70,7 +108,8 @@ export default function OpsBroadcastsPage() {
       <div>
         <h1 className="font-display text-3xl">Рассылки</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Сначала тест себе, потом счётчик, потом отправка. Можно прикрепить фото с компьютера. Между массовыми — пауза 30 минут.
+          До 2 медиа (фото/видео), текст, кнопки в разделы мини-аппа. Сначала тест
+          на TG id, потом счётчик, потом отправка. Между массовыми — 30 минут.
         </p>
       </div>
       {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}
@@ -123,41 +162,147 @@ export default function OpsBroadcastsPage() {
         />
 
         <div className="rounded-xl border border-dashed border-white/15 p-3">
-          <p className="text-xs text-zinc-500">Фото к рассылке (с компьютера или URL)</p>
+          <p className="text-xs text-zinc-500">
+            Медиа (до 2): фото или видео с компьютера / URL
+          </p>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.jpg,.jpeg,.png,.webp,.mp4,.webm"
             className="mt-2 block w-full text-sm text-zinc-400 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-sm file:text-white"
-            disabled={uploading}
+            disabled={uploading || media.length >= 2}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void uploadFile(file);
+              e.target.value = "";
             }}
           />
-          <input
-            value={mediaUrl}
-            onChange={(e) => setMediaUrl(e.target.value)}
-            placeholder="Или вставьте https://… URL картинки"
-            className="mt-2 w-full rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
-          />
-          {mediaUrl ? (
-            <div className="mt-2 flex items-start gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={mediaUrl}
-                alt=""
-                className="h-24 w-24 rounded-lg object-cover border border-white/10"
-              />
-              <button
-                type="button"
-                className="text-xs text-rose-300 underline"
-                onClick={() => setMediaUrl("")}
-              >
-                Убрать фото
-              </button>
-            </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              placeholder="https://… фото или mp4"
+              className="flex-1 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              className="rounded-full border border-white/15 px-3 py-1.5 text-sm"
+              onClick={addUrlMedia}
+            >
+              + URL
+            </button>
+          </div>
+          {media.length ? (
+            <ul className="mt-2 space-y-2">
+              {media.map((m, i) => (
+                <li key={`${m.url}-${i}`} className="flex items-center gap-3 text-xs">
+                  {m.type === "photo" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={m.url}
+                      alt=""
+                      className="h-16 w-16 rounded-lg object-cover border border-white/10"
+                    />
+                  ) : (
+                    <span className="rounded bg-white/10 px-2 py-1">🎬 video</span>
+                  )}
+                  <span className="truncate text-zinc-400">{m.url}</span>
+                  <button
+                    type="button"
+                    className="text-rose-300 underline"
+                    onClick={() =>
+                      setMedia((list) => list.filter((_, j) => j !== i))
+                    }
+                  >
+                    убрать
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : null}
           {uploading ? <p className="mt-1 text-xs text-zinc-500">Загрузка…</p> : null}
+        </div>
+
+        <div className="rounded-xl border border-white/10 p-3">
+          <p className="text-xs text-zinc-500">
+            Кнопки → разделы мини-аппа (web_app). Пресеты или свой path.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {presets.map((p) => (
+              <button
+                key={`${p.text}-${p.path}`}
+                type="button"
+                className="rounded-full border border-white/15 px-2.5 py-1 text-xs"
+                onClick={() => {
+                  if (buttons.length >= 6) return;
+                  if (buttons.some((b) => b.path === p.path && b.text === p.text))
+                    return;
+                  setButtons((b) => [...b, p]);
+                }}
+              >
+                + {p.text}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              id="btnText"
+              placeholder="Текст кнопки"
+              className="w-1/3 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+            />
+            <input
+              id="btnPath"
+              placeholder='path: photo / video?templateId=… / characters'
+              className="flex-1 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              className="rounded-full border border-white/15 px-3 py-1.5 text-sm"
+              onClick={() => {
+                const text = (
+                  document.getElementById("btnText") as HTMLInputElement
+                )?.value?.trim();
+                const path = (
+                  document.getElementById("btnPath") as HTMLInputElement
+                )?.value?.trim();
+                if (!text || !path || buttons.length >= 6) return;
+                setButtons((b) => [...b, { text, path }]);
+              }}
+            >
+              +
+            </button>
+          </div>
+          {buttons.length ? (
+            <ul className="mt-2 space-y-1 text-xs text-zinc-300">
+              {buttons.map((b, i) => (
+                <li key={`${b.path}-${i}`} className="flex justify-between gap-2">
+                  <span>
+                    {b.text} → <code className="text-zinc-500">/tg/{b.path}</code>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-rose-300 underline"
+                    onClick={() =>
+                      setButtons((list) => list.filter((_, j) => j !== i))
+                    }
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-white/10 p-3">
+          <p className="text-xs text-zinc-500">
+            Тестовое сообщение — укажи свой Telegram user id (цифры)
+          </p>
+          <input
+            value={testTgId}
+            onChange={(e) => setTestTgId(e.target.value)}
+            placeholder="Например 123456789"
+            className="mt-2 w-full rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+          />
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -174,12 +319,19 @@ export default function OpsBroadcastsPage() {
                   bodyRu: payload.bodyRu,
                   bodyEn: payload.bodyEn,
                   mediaUrl: payload.mediaUrl,
+                  mediaJson: payload.mediaJson,
+                  buttonsJson: payload.buttonsJson,
+                  testTgId: testTgId.trim() || undefined,
                 }),
               });
-              setMsg("Тест ушёл вам в бот");
+              setMsg(
+                testTgId.trim()
+                  ? `Тест ушёл на TG ${testTgId.trim()}`
+                  : "Тест ушёл вам в бот",
+              );
             }}
           >
-            Тест себе
+            Тестовое сообщение
           </button>
           <button
             type="button"
@@ -197,7 +349,9 @@ export default function OpsBroadcastsPage() {
           >
             Сколько человек: {count ?? "?"}
           </button>
-          <button className="rounded-full btn-grad px-4 py-1.5 text-sm">Отправить</button>
+          <button className="rounded-full btn-grad px-4 py-1.5 text-sm">
+            Отправить
+          </button>
         </div>
       </form>
       <ul className="text-sm text-zinc-400">

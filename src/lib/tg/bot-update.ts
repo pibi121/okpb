@@ -34,6 +34,7 @@ import {
   photoCastPickerKeyboard,
   resolvePickIndex,
   sendTemplatePicker,
+  sendVideoModePicker,
   successInlineKeyboard,
   templatePriceLabel,
 } from "@/lib/tg/generation-flow";
@@ -1145,12 +1146,42 @@ async function handleGenerationCallback(
   hasMedia?: boolean,
 ): Promise<boolean> {
   if (data === GEN_CB.kindPhoto || data === GEN_CB.kindVideo) {
-    const kind = data === GEN_CB.kindPhoto ? "photo" : "video";
+    if (data === GEN_CB.kindVideo) {
+      await sendVideoModePicker(chatId, locale);
+      await setTgSession(platformUserId, {
+        clearPending: true,
+        pending: { templateKind: "video" },
+      });
+      return true;
+    }
+    const kind = "photo" as const;
     const { templates } = await sendTemplatePicker(chatId, userId, locale, kind, 0);
     await setTgSession(platformUserId, {
       clearPending: true,
       pending: {
         templateKind: kind,
+        templatePage: 0,
+        templateIds: templates.map((x) => x.id),
+      },
+    });
+    return true;
+  }
+
+  if (data === GEN_CB.videoModeOne || data === GEN_CB.videoModeLook) {
+    const videoMode = data === GEN_CB.videoModeLook ? "look" : "one_photo";
+    const { templates } = await sendTemplatePicker(
+      chatId,
+      userId,
+      locale,
+      "video",
+      0,
+      { videoMode },
+    );
+    await setTgSession(platformUserId, {
+      clearPending: true,
+      pending: {
+        templateKind: "video",
+        videoMode,
         templatePage: 0,
         templateIds: templates.map((x) => x.id),
       },
@@ -1175,7 +1206,12 @@ async function handleGenerationCallback(
       locale,
       kind,
       page,
-      messageId ? { editMessageId: messageId } : undefined,
+      {
+        ...(messageId ? { editMessageId: messageId } : {}),
+        templateIds: pending.templateIds,
+        reshuffle: false,
+        videoMode: kind === "video" ? pending.videoMode : undefined,
+      },
     );
     await setTgSession(platformUserId, {
       clearPending: true,
@@ -1183,6 +1219,9 @@ async function handleGenerationCallback(
         templateKind: kind,
         templatePage: page,
         templateIds: templates.map((x) => x.id),
+        ...(kind === "video" && pending.videoMode
+          ? { videoMode: pending.videoMode }
+          : {}),
       },
     });
     return true;
@@ -1388,12 +1427,25 @@ async function handleGenerationCallback(
 
   if (data === GEN_CB.backTemplates) {
     const kind = pending.templateKind || "photo";
+    if (kind === "video" && !pending.videoMode) {
+      await sendVideoModePicker(chatId, locale);
+      await setTgSession(platformUserId, {
+        clearPending: true,
+        pending: { templateKind: "video" },
+      });
+      return true;
+    }
     const { templates } = await sendTemplatePicker(
       chatId,
       userId,
       locale,
       kind,
       pending.templatePage || 0,
+      {
+        templateIds: pending.templateIds,
+        reshuffle: false,
+        videoMode: kind === "video" ? pending.videoMode : undefined,
+      },
     );
     await setTgSession(platformUserId, {
       clearPending: true,
@@ -1401,6 +1453,9 @@ async function handleGenerationCallback(
         templateKind: kind,
         templatePage: pending.templatePage || 0,
         templateIds: templates.map((x) => x.id),
+        ...(kind === "video" && pending.videoMode
+          ? { videoMode: pending.videoMode }
+          : {}),
       },
     });
     return true;
@@ -1426,20 +1481,10 @@ async function handleGenerationCallback(
   }
 
   if (data === GEN_CB.againVideo) {
-    const { templates } = await sendTemplatePicker(
-      chatId,
-      userId,
-      locale,
-      "video",
-      0,
-    );
+    await sendVideoModePicker(chatId, locale);
     await setTgSession(platformUserId, {
       clearPending: true,
-      pending: {
-        templateKind: "video",
-        templatePage: 0,
-        templateIds: templates.map((x) => x.id),
-      },
+      pending: { templateKind: "video" },
     });
     return true;
   }

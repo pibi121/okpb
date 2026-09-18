@@ -1236,6 +1236,10 @@ model Broadcast {
   bodyRu      String    @default("")
   bodyEn      String    @default("")
   mediaUrl    String    @default("")
+  /** JSON: [{type:"photo"|"video", url:string}] — up to 2 items */
+  mediaJson   String    @default("[]")
+  /** JSON: [{text:string, path:string}] — Mini App paths like "photo" or "characters?section=train" */
+  buttonsJson String    @default("[]")
   filterJson  String    @default("{}")
   createdById String    @default("")
   sentCount   Int       @default(0)

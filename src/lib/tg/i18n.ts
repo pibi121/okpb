@@ -389,7 +389,7 @@ Find her in "Characters" in the bottom menu — edit body settings, add more cha
 <i>What do you want to generate? Photo or video? 👇</i>`,
   },
 
-  gen_kind_photo_btn: { ru: "Фото 🔞", en: "Photo 🔞" },
+  gen_kind_photo_btn: { ru: "Фото по образу 🔞", en: "Photo by look 🔞" },
   gen_kind_video_btn: { ru: "Видео 🍓", en: "Video 🍓" },
 
   gen_pick_template: {
@@ -397,8 +397,28 @@ Find her in "Characters" in the bottom menu — edit body settings, add more cha
     en: `Pick the first pose and scene for {kind}. Tap to preview. Or open «Marketplace» to scroll templates.`,
   },
 
-  gen_kind_photo_label: { ru: "фотографии", en: "your photo" },
-  gen_kind_video_label: { ru: "видео", en: "your video" },
+  gen_kind_photo_label: { ru: "фото по образу", en: "photo by look" },
+  gen_kind_video_label: { ru: "видео", en: "video" },
+  gen_kind_video_one_label: { ru: "видео по 1 фото", en: "video from 1 photo" },
+  gen_kind_video_look_label: { ru: "видео по образу", en: "video by look" },
+
+  gen_video_mode_pick: {
+    ru: `🍓 <b>Какое видео нужно?</b>
+
+<b>Видео по 1 фото</b> — загружаешь один кадр модели, шаблон оживляет сцену. Обучать образ не нужно.
+
+<b>Видео по образу</b> — максимум реализма с <b>обученной</b> моделью (своя или из витрины). Плашка «Макс. качество».`,
+    en: `🍓 <b>Which video?</b>
+
+<b>Video from 1 photo</b> — upload one still; the template animates it. No look training needed.
+
+<b>Video by look</b> — max realism with a <b>trained</b> model (yours or studio). “Max quality” badge.`,
+  },
+  gen_video_mode_one_btn: { ru: "Видео по 1 фото", en: "Video from 1 photo" },
+  gen_video_mode_look_btn: {
+    ru: "Видео по образу · Макс. качество",
+    en: "Video by look · Max quality",
+  },
 
   marketplace_btn: { ru: "🍑 Маркетплейс", en: "🍑 Marketplace" },
   gen_page_prev: { ru: "◀️", en: "◀️" },

@@ -40,6 +40,8 @@ export type TgPending = {
   }>;
   /** Best quality (LoRA→I2V) — needs trained character */
   requiresLora?: boolean;
+  /** Bot video catalog filter after mode picker */
+  videoMode?: "one_photo" | "look";
   renameCharacterId?: string;
   onboardingCharacterId?: string;
   lookbookCharacterId?: string;

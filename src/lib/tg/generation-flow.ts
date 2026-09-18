@@ -9,10 +9,14 @@ import {
 } from "@/lib/tg/tg-promo";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { shuffleInPlace } from "@/lib/tg/feed-order";
+import type { VideoPickMode } from "@/lib/tg/gen-modes";
 
 export const GEN_CB = {
   kindPhoto: "g:k:p",
   kindVideo: "g:k:v",
+  /** After «Видео» — pick one-photo vs look catalog */
+  videoModeOne: "g:vm:1",
+  videoModeLook: "g:vm:l",
   /** Index pick — kind baked into callback so session can't swap photo/video. */
   pick: (kind: "photo" | "video", idx: number) =>
     `g:pi:${kind === "video" ? "v" : "p"}:${idx}`,
@@ -115,6 +119,7 @@ export async function listBotInlineTemplates(
   userId: string,
   kind: "photo" | "video",
   locale: TgLocale,
+  opts?: { videoMode?: VideoPickMode },
 ): Promise<BotTemplateRow[]> {
   if (kind === "photo") {
     const rows = await listTgFeaturedPhotoTemplates(locale);
@@ -127,7 +132,7 @@ export async function listBotInlineTemplates(
     ),
   ]);
   const filter = botTemplateFilter();
-  const mapped = [
+  let mapped = [
     ...loraI2v.map((r) => ({
       id: r.id,
       title: r.title,
@@ -141,6 +146,11 @@ export async function listBotInlineTemplates(
       requiresLora: false,
     })),
   ];
+  if (opts?.videoMode === "look") {
+    mapped = mapped.filter((r) => r.requiresLora);
+  } else if (opts?.videoMode === "one_photo") {
+    mapped = mapped.filter((r) => !r.requiresLora);
+  }
   if (!filter) return mapped;
   const picked = mapped.filter((r) => filter.includes(r.id));
   return picked.length ? picked : mapped;
@@ -379,6 +389,27 @@ export function videoModelPickerKeyboard(
   return { keyboard: rows, page: safePage, totalPages };
 }
 
+export async function sendVideoModePicker(chatId: number, locale: TgLocale) {
+  await tgSendMessage(chatId, t("gen_video_mode_pick", locale), {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: t("gen_video_mode_one_btn", locale),
+            callback_data: GEN_CB.videoModeOne,
+          },
+        ],
+        [
+          {
+            text: t("gen_video_mode_look_btn", locale),
+            callback_data: GEN_CB.videoModeLook,
+          },
+        ],
+      ],
+    },
+  });
+}
+
 export async function sendTemplatePicker(
   chatId: number,
   userId: string,
@@ -391,9 +422,12 @@ export async function sendTemplatePicker(
     templateIds?: string[];
     /** Fresh shuffle when opening the list (default true if no templateIds). */
     reshuffle?: boolean;
+    videoMode?: VideoPickMode;
   },
 ) {
-  let templates = await listBotInlineTemplates(userId, kind, locale);
+  let templates = await listBotInlineTemplates(userId, kind, locale, {
+    videoMode: opts?.videoMode,
+  });
   if (!templates.length) {
     const emptyMarkup = {
       reply_markup: {
@@ -430,7 +464,13 @@ export async function sendTemplatePicker(
     kind,
   );
   const kindLabel =
-    kind === "photo" ? t("gen_kind_photo_label", locale) : t("gen_kind_video_label", locale);
+    kind === "photo"
+      ? t("gen_kind_photo_label", locale)
+      : opts?.videoMode === "look"
+        ? t("gen_kind_video_look_label", locale)
+        : opts?.videoMode === "one_photo"
+          ? t("gen_kind_video_one_label", locale)
+          : t("gen_kind_video_label", locale);
   const text = tFormat("gen_pick_template", locale, { kind: kindLabel });
   const replyMarkup = { inline_keyboard: keyboard };
 

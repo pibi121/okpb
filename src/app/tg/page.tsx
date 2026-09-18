@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react
 import { useRouter } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { orderFeedMixed, orderFeedNewest } from "@/lib/tg/feed-order";
+import {
+  MODE_LABELS,
+  matchesFeedModeTab,
+  modeBadgeForTemplate,
+  modeNeedLine,
+  type FeedModeTab,
+  type ModeBadgeKind,
+} from "@/lib/tg/gen-modes";
 import { injectVerticalBanners, type BannerDto } from "@/lib/tg/banners";
 import {
   TgFeedBannerCard,
@@ -81,33 +89,38 @@ type FeedRow =
 const UI = {
   ru: {
     title: "Лента",
-    all: "Все",
-    video: "Видео",
-    photo: "Фото",
     shootVideo: "Снять видео",
     makePhoto: "Сделать фото",
     empty: "Шаблоны скоро появятся",
     speech: "🗣 речь",
     newest: "Новое",
-    bestQuality: "Макс. качество",
     soundOn: "Звук вкл",
     soundOff: "Звук выкл",
   },
   en: {
     title: "Feed",
-    all: "All",
-    video: "Video",
-    photo: "Photo",
     shootVideo: "Shoot video",
     makePhoto: "Make photo",
     empty: "Templates coming soon",
     speech: "🗣 speech",
     newest: "New",
-    bestQuality: "Max quality",
     soundOn: "Sound on",
     soundOff: "Sound off",
   },
 } as const;
+
+const MODE_TABS: FeedModeTab[] = [
+  "all",
+  "photo_look",
+  "video_one",
+  "video_look",
+];
+
+function modeTabLabel(tab: FeedModeTab, locale: "ru" | "en"): string {
+  const m = MODE_LABELS[locale];
+  if (tab === "all") return m.tabAll;
+  return m[tab];
+}
 
 function feedSortMs(createdAt?: string, updatedAt?: string): number {
   const c = Date.parse(createdAt || "") || 0;
@@ -118,7 +131,7 @@ function feedSortMs(createdAt?: string, updatedAt?: string): number {
 export default function TgFeedPage() {
   const router = useRouter();
   const { status, error, locale, apiFetch } = useTgMiniApp();
-  const [tab, setTab] = useState<"all" | "video" | "photo">("all");
+  const [tab, setTab] = useState<FeedModeTab>("all");
   const [items, setItems] = useState<FeedRow[]>([]);
   const [pool, setPool] = useState<FeedItem[]>([]);
   const [newest, setNewest] = useState(false);
@@ -133,6 +146,7 @@ export default function TgFeedPage() {
   mutedRef.current = muted;
 
   const u = UI[locale];
+  const modeLabels = MODE_LABELS[locale];
 
   const flashSound = useCallback((nextMuted: boolean) => {
     setSoundFlash(nextMuted ? "off" : "on");
@@ -164,53 +178,49 @@ export default function TgFeedPage() {
 
   const load = useCallback(async () => {
     setLoadErr("");
-    const res = await apiFetch(`/api/tg/templates?kind=${tab}&locale=${locale}`);
+    const res = await apiFetch(`/api/tg/templates?kind=all&locale=${locale}`);
     if (!res.ok) {
       setLoadErr("load");
       return;
     }
     const data = (await res.json()) as { video: VideoTpl[]; photo: PhotoTpl[] };
     const feed: FeedItem[] = [];
-    if (tab !== "photo") {
-      for (const v of data.video || []) {
-        feed.push({
-          kind: "video",
-          id: v.id,
-          title: v.title,
-          notes: v.notes,
-          preview: v.previewVideoUrl || "",
-          poster: v.previewPhotoUrl || "",
-          isVideo: true,
-          price: v.pricePeaches || 142,
-          durationSec: v.durationSec,
-          hasSpeech: v.hasSpeech,
-          bestQuality:
-            v.templateKind === "lora_i2v" || Boolean(v.requiresLora),
-          requiresLora:
-            v.templateKind === "lora_i2v" || Boolean(v.requiresLora),
-          createdAt: feedSortMs(v.createdAt, v.updatedAt),
-          identityKey: v.identityKey || v.id,
-        });
-      }
+    for (const v of data.video || []) {
+      feed.push({
+        kind: "video",
+        id: v.id,
+        title: v.title,
+        notes: v.notes,
+        preview: v.previewVideoUrl || "",
+        poster: v.previewPhotoUrl || "",
+        isVideo: true,
+        price: v.pricePeaches > 0 ? v.pricePeaches : 0,
+        durationSec: v.durationSec,
+        hasSpeech: v.hasSpeech,
+        bestQuality:
+          v.templateKind === "lora_i2v" || Boolean(v.requiresLora),
+        requiresLora:
+          v.templateKind === "lora_i2v" || Boolean(v.requiresLora),
+        createdAt: feedSortMs(v.createdAt, v.updatedAt),
+        identityKey: v.identityKey || v.id,
+      });
     }
-    if (tab !== "video") {
-      for (const p of data.photo || []) {
-        feed.push({
-          kind: "photo",
-          id: p.id,
-          title: p.title,
-          notes: p.notes,
-          preview: p.previewImageUrl,
-          isVideo: false,
-          price: p.pricePeaches,
-          durationSec: 0,
-          createdAt: feedSortMs(p.createdAt, p.updatedAt),
-          identityKey: p.identityKey || p.id,
-        });
-      }
+    for (const p of data.photo || []) {
+      feed.push({
+        kind: "photo",
+        id: p.id,
+        title: p.title,
+        notes: p.notes,
+        preview: p.previewImageUrl,
+        isVideo: false,
+        price: p.pricePeaches,
+        durationSec: 0,
+        createdAt: feedSortMs(p.createdAt, p.updatedAt),
+        identityKey: p.identityKey || p.id,
+      });
     }
     setPool(feed);
-  }, [tab, locale, apiFetch]);
+  }, [locale, apiFetch]);
 
   useEffect(() => {
     if (status !== "ready") return;
@@ -232,7 +242,14 @@ export default function TgFeedPage() {
       setItems([]);
       return;
     }
-    const ordered = newest ? orderFeedNewest(pool) : orderFeedMixed(pool);
+    const filtered = pool.filter((item) =>
+      matchesFeedModeTab(tab, {
+        kind: item.kind,
+        requiresLora: item.kind === "video" ? item.requiresLora : false,
+        bestQuality: item.kind === "video" ? item.bestQuality : false,
+      }),
+    );
+    const ordered = newest ? orderFeedNewest(filtered) : orderFeedMixed(filtered);
     const due = filterVerticalBannersDue(vBanners);
     const mixed = injectVerticalBanners(ordered, due);
     setItems(mixed);
@@ -240,7 +257,7 @@ export default function TgFeedPage() {
       .filter((row): row is Extract<FeedRow, { kind: "banner" }> => row.kind === "banner")
       .map((row) => row.id);
     if (shown.length) markVerticalBannersShown(shown);
-  }, [pool, newest, vBanners]);
+  }, [pool, newest, vBanners, tab]);
 
   useEffect(() => {
     const root = reelRef.current;
@@ -295,15 +312,15 @@ export default function TgFeedPage() {
 
   return (
     <TgShell locale={locale}>
-      <nav className="tg-tabs tg-tabs--sticky">
-        {(["all", "video", "photo"] as const).map((t) => (
+      <nav className="tg-tabs tg-tabs--sticky tg-tabs--modes">
+        {MODE_TABS.map((t) => (
           <button
             key={t}
             type="button"
             className={tab === t ? "active" : ""}
             onClick={() => setTab(t)}
           >
-            {t === "all" ? u.all : t === "video" ? u.video : u.photo}
+            {modeTabLabel(t, locale)}
           </button>
         ))}
         <label className={`tg-new-toggle${newest ? " is-on" : ""}`}>
@@ -372,9 +389,26 @@ export default function TgFeedPage() {
             </div>
             <div className="tg-reel-dock">
               <strong>{item.title}</strong>
-              {item.kind === "video" && item.bestQuality ? (
-                <span className="tg-best-badge">{u.bestQuality}</span>
-              ) : null}
+              {(() => {
+                const mode: ModeBadgeKind = modeBadgeForTemplate({
+                  kind: item.kind,
+                  requiresLora:
+                    item.kind === "video" ? item.requiresLora : false,
+                  bestQuality:
+                    item.kind === "video" ? item.bestQuality : false,
+                });
+                return (
+                  <div className="tg-mode-badges">
+                    <span className={`tg-mode-badge tg-mode-badge--${mode}`}>
+                      {modeLabels[mode]}
+                    </span>
+                    {mode === "video_look" ? (
+                      <span className="tg-best-badge">{modeLabels.maxQuality}</span>
+                    ) : null}
+                    <p className="tg-mode-need">{modeNeedLine(locale, mode)}</p>
+                  </div>
+                );
+              })()}
               <div className="tg-reel-meta">
                 <span className="tg-price">
                   {item.price} 🍑
@@ -399,7 +433,11 @@ export default function TgFeedPage() {
                     );
                   }}
                 >
-                  {item.kind === "video" ? u.shootVideo : u.makePhoto}
+                  {item.kind === "video"
+                    ? item.requiresLora || item.bestQuality
+                      ? modeLabels.video_look
+                      : modeLabels.video_one
+                    : modeLabels.photo_look}
                 </button>
               </div>
             </div>

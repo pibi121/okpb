@@ -111,6 +111,11 @@ export async function POST(req: Request) {
   });
 
   await createSession(user.id);
+  void import("@/lib/ops/ops-telegram")
+    .then(({ notifyOpsSignup }) =>
+      notifyOpsSignup({ userId: user.id, via: "web" }),
+    )
+    .catch(() => undefined);
   return NextResponse.json({
     ok: true,
     user: { id: user.id, email: user.email, credits: user.credits },

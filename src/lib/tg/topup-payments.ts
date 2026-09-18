@@ -202,5 +202,17 @@ export async function fulfillPaidTopup(opts: {
     },
   });
 
+  void import("@/lib/ops/ops-telegram")
+    .then(({ notifyOpsPayment }) =>
+      notifyOpsPayment({
+        userId: order.userId,
+        peaches: order.peaches,
+        amountMinor: order.amountMinor,
+        method: order.paymentMethod,
+        currency: order.currency,
+      }),
+    )
+    .catch(() => undefined);
+
   return { credited: true, peaches: order.peaches, userId: order.userId };
 }

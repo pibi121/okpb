@@ -193,6 +193,12 @@ export async function findOrCreateTelegramUser(
     await attributeTrafficSignup(user.id, trafficCode).catch(() => undefined);
   }
 
+  void import("@/lib/ops/ops-telegram")
+    .then(({ notifyOpsSignup }) =>
+      notifyOpsSignup({ userId: user.id, via: "telegram" }),
+    )
+    .catch(() => undefined);
+
   return user;
 }
 

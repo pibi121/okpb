@@ -109,6 +109,11 @@ export async function register() {
     })();
   }, 20_000);
 
+  // Staff ops Telegram digest (07:00 / 15:00 / 00:00 MSK).
+  void import("@/lib/ops/ops-telegram-digest")
+    .then(({ startOpsTelegramScheduler }) => startOpsTelegramScheduler())
+    .catch((e) => console.error("[peach] ops-tg scheduler:", e));
+
   // Uncaught errors → /ops/errors (so nothing silent in Railway logs only).
   process.on("unhandledRejection", (reason) => {
     const msg = reason instanceof Error ? reason.message : String(reason);

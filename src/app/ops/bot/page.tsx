@@ -184,6 +184,8 @@ export default function OpsBotPage() {
 
       {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}
 
+      <OpsTelegramCard />
+
       <section>
         <h2 className="text-[11px] uppercase tracking-widest text-peach">Список</h2>
         <ul className="mt-2 space-y-2 text-sm">
@@ -262,5 +264,112 @@ export default function OpsBotPage() {
         </ul>
       </section>
     </div>
+  );
+}
+
+type OpsTgProbe = {
+  configured: boolean;
+  tokenSet: boolean;
+  chatIdSet: boolean;
+  usingProductBot: boolean;
+  botUsername: string | null;
+  chatTitle: string | null;
+  isForum: boolean | null;
+  topics: Record<string, number | undefined>;
+  lastDigestKey: string;
+  lastDigestAt: string;
+  detail: string;
+};
+
+function OpsTelegramCard() {
+  const [d, setD] = useState<OpsTgProbe | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setD(await opsFetch<OpsTgProbe>("/api/ops/telegram"));
+  }
+
+  useEffect(() => {
+    void load().catch((e) => setMsg(e instanceof Error ? e.message : "ошибка"));
+  }, []);
+
+  async function act(action: string) {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await opsFetch<{ message?: string }>("/api/ops/telegram", {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      setMsg(res.message || "ок");
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const topics = d
+    ? ["Оплаты", "Регистрации", "Маркетинг", "Ошибки"]
+        .map((label, i) => {
+          const key = ["payments", "signups", "marketing", "errors"][i];
+          const id = d.topics[key];
+          return id ? `${label} #${id}` : `${label} —`;
+        })
+        .join(" · ")
+    : "";
+
+  return (
+    <section className="rounded-2xl border border-white/10 p-4">
+      <h2 className="text-[11px] uppercase tracking-widest text-peach">Ops-чат (ветки)</h2>
+      <p className="mt-1 text-xs text-zinc-500">
+        Супергруппа с темами: оплаты, регистрации, маркетинг 3×/сутки, ошибки. Env:{" "}
+        <code>OPS_TG_BOT_TOKEN</code> + <code>OPS_TG_CHAT_ID</code>.
+      </p>
+      {d ? (
+        <p className={`mt-2 text-sm ${d.configured ? "text-emerald-300" : "text-amber-200"}`}>
+          {d.botUsername ? `@${d.botUsername}` : "бот?"}
+          {d.chatTitle ? ` · ${d.chatTitle}` : ""}
+          {d.isForum ? " · форум" : d.isForum === false ? " · без тем" : ""}
+          {d.usingProductBot ? " · запасной продуктовый токен" : ""}
+          <br />
+          <span className="text-zinc-400">{d.detail}</span>
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-500">Проверяю…</p>
+      )}
+      {topics ? <p className="mt-1 text-xs text-zinc-500">{topics}</p> : null}
+      {d?.lastDigestAt ? (
+        <p className="mt-1 text-xs text-zinc-600">
+          Последний дайджест: {d.lastDigestKey} · {fmtTime(d.lastDigestAt)}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          disabled={busy}
+          className="rounded-full btn-grad px-3 py-1.5 text-xs disabled:opacity-50"
+          onClick={() => void act("bootstrap")}
+        >
+          Создать ветки и тест
+        </button>
+        <button
+          disabled={busy}
+          className="rounded-full border border-white/15 px-3 py-1.5 text-xs disabled:opacity-50"
+          onClick={() => void act("ping")}
+        >
+          Пинг
+        </button>
+        <button
+          disabled={busy}
+          className="rounded-full border border-white/15 px-3 py-1.5 text-xs disabled:opacity-50"
+          onClick={() => void act("digest")}
+        >
+          Дайджест за 8 ч
+        </button>
+      </div>
+      {msg ? <p className="mt-2 text-xs text-emerald-300">{msg}</p> : null}
+    </section>
   );
 }

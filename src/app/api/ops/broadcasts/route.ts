@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import {
   BROADCAST_BUTTON_PRESETS,
+  deleteBroadcast,
   previewBroadcastAudience,
   runBroadcast,
   sendTestBroadcast,
@@ -89,9 +90,18 @@ export async function POST(req: Request) {
         targetType: "broadcast",
         targetId: body.id,
       });
-      void runBroadcast(body.id).catch((e) =>
-        console.error("[ops] broadcast:", e),
-      );
+      // Validates + sets status=sending synchronously; fan-out continues in background.
+      await runBroadcast(body.id);
+      return jsonOk({ ok: true, status: "sending" });
+    }
+    if (body.action === "delete" && body.id) {
+      await writeAudit({
+        actorId: actor.id,
+        action: "broadcast_delete",
+        targetType: "broadcast",
+        targetId: body.id,
+      });
+      await deleteBroadcast(body.id);
       return jsonOk({ ok: true });
     }
     return jsonErr("Неизвестное действие");

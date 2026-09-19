@@ -6,7 +6,7 @@ import {
   tgApi,
 } from "@/lib/tg/telegram-api";
 import { normalizeLocale } from "@/lib/tg/i18n";
-import { getOpsSettings, saveOpsSettings } from "@/lib/ops/settings";
+import { saveOpsSettings } from "@/lib/ops/settings";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 
 export type BroadcastFilter = {
@@ -160,23 +160,35 @@ async function deliverBroadcastPayload(
 
 export async function runBroadcast(
   id: string,
-  opts?: { skipCooldown?: boolean },
+  _opts?: { skipCooldown?: boolean },
 ) {
   const row = await prisma.broadcast.findUnique({ where: { id } });
-  if (!row || row.status === "sending") return;
-  const settings = await getOpsSettings();
-  if (
-    !opts?.skipCooldown &&
-    settings.lastBroadcastAt &&
-    Date.now() - settings.lastBroadcastAt.getTime() < 30 * 60 * 1000
-  ) {
-    throw new Error("Подожди 30 минут между массовыми рассылками");
-  }
+  if (!row) throw new Error("Рассылка не найдена");
+  if (row.status === "sending") throw new Error("Рассылка уже отправляется");
+  if (row.status === "sent") throw new Error("Рассылка уже отправлена");
 
   await prisma.broadcast.update({
     where: { id },
-    data: { status: "sending" },
+    data: { status: "sending", sentCount: 0, failCount: 0 },
   });
+
+  // Heavy fan-out continues in background; caller already got "started".
+  void processBroadcastSend(id).catch(async (e) => {
+    console.error("[ops] broadcast send:", e);
+    try {
+      await prisma.broadcast.update({
+        where: { id },
+        data: { status: "draft" },
+      });
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+async function processBroadcastSend(id: string) {
+  const row = await prisma.broadcast.findUnique({ where: { id } });
+  if (!row || row.status !== "sending") return;
 
   const f = parseFilter(row.filterJson);
   const media = parseMediaJson(row.mediaJson, row.mediaUrl);
@@ -191,7 +203,9 @@ export async function runBroadcast(
   let fail = 0;
   for (const acc of accounts) {
     const locale = normalizeLocale(acc.user.locale);
-    const text = locale === "en" && row.bodyEn.trim() ? row.bodyEn : row.bodyRu;
+    const bodyEn = row.bodyEn || "";
+    const bodyRu = row.bodyRu || "";
+    const text = locale === "en" && bodyEn.trim() ? bodyEn : bodyRu;
     if (!text.trim() && !media.length) continue;
     try {
       await deliverBroadcastPayload(acc.platformUserId, text, media, buttons);
@@ -218,6 +232,15 @@ export async function runBroadcast(
     },
   });
   await saveOpsSettings({ lastBroadcastAt: new Date() });
+}
+
+export async function deleteBroadcast(id: string) {
+  const row = await prisma.broadcast.findUnique({ where: { id } });
+  if (!row) throw new Error("Рассылка не найдена");
+  if (row.status === "sending") {
+    throw new Error("Нельзя удалить рассылку, пока она отправляется");
+  }
+  await prisma.broadcast.delete({ where: { id } });
 }
 
 export async function sendTestBroadcast(opts: {
@@ -248,7 +271,9 @@ export async function sendTestBroadcast(opts: {
   const user = await prisma.user.findUnique({ where: { id: opts.actorUserId } });
   const locale = normalizeLocale(user?.locale);
   const text =
-    locale === "en" && opts.bodyEn.trim() ? opts.bodyEn : opts.bodyRu;
+    locale === "en" && (opts.bodyEn || "").trim()
+      ? opts.bodyEn
+      : opts.bodyRu || "";
   const media = parseMediaJson(opts.mediaJson || "[]", opts.mediaUrl);
   const buttons = parseButtonsJson(opts.buttonsJson || "[]");
   if (!text.trim() && !media.length) {

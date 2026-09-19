@@ -36,6 +36,8 @@ export default function OpsBroadcastsPage() {
   const [testTgId, setTestTgId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [busyId, setBusyId] = useState("");
   const [urlDraft, setUrlDraft] = useState("");
   const [msgTone, setMsgTone] = useState<"ok" | "err">("ok");
 
@@ -48,11 +50,15 @@ export default function OpsBroadcastsPage() {
   }
 
   useEffect(() => {
-    void load().catch((e) => setMsg(e instanceof Error ? e.message : "ошибка"));
+    void load().catch((e) => {
+      setMsgTone("err");
+      setMsg(e instanceof Error ? e.message : "ошибка");
+    });
   }, []);
 
   async function uploadFile(file: File) {
     if (media.length >= 2) {
+      setMsgTone("err");
       setMsg("Максимум 2 медиа");
       return;
     }
@@ -107,13 +113,54 @@ export default function OpsBroadcastsPage() {
     };
   }
 
+  async function sendExisting(id: string, title: string) {
+    if (!confirm(`Отправить черновик «${title}»?`)) return;
+    setBusyId(id);
+    setMsg("");
+    try {
+      await opsFetch("/api/ops/broadcasts", {
+        method: "POST",
+        body: JSON.stringify({ action: "send", id }),
+      });
+      setMsgTone("ok");
+      setMsg(`«${title}» запущена`);
+      await load();
+    } catch (e) {
+      setMsgTone("err");
+      setMsg(e instanceof Error ? e.message : "Ошибка отправки");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function removeRow(id: string, title: string) {
+    if (!confirm(`Удалить «${title}»?`)) return;
+    setBusyId(id);
+    setMsg("");
+    try {
+      await opsFetch("/api/ops/broadcasts", {
+        method: "POST",
+        body: JSON.stringify({ action: "delete", id }),
+      });
+      setMsgTone("ok");
+      setMsg(`«${title}» удалена`);
+      await load();
+    } catch (e) {
+      setMsgTone("err");
+      setMsg(e instanceof Error ? e.message : "Ошибка удаления");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="font-display text-3xl">Рассылки</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          До 2 медиа (фото/видео), текст, кнопки в разделы мини-аппа. Сначала тест
-          на TG id, потом счётчик, потом отправка. Между массовыми — 30 минут.
+          До 2 медиа (фото/видео), текст, кнопки в разделы мини-аппа. Сначала
+          тест на TG id, потом счётчик, потом отправка. Черновики можно
+          отправить или удалить из списка ниже.
         </p>
       </div>
       {msg ? (
@@ -127,18 +174,43 @@ export default function OpsBroadcastsPage() {
         className="flex flex-col gap-2 rounded-2xl border border-white/10 p-4"
         onSubmit={async (e) => {
           e.preventDefault();
-          const payload = readForm(e.currentTarget);
-          const created = await opsFetch<{ id: string }>("/api/ops/broadcasts", {
-            method: "POST",
-            body: JSON.stringify({ action: "create", ...payload }),
-          });
-          if (!confirm(`Отправить ${count ?? "?"} людям?`)) return;
-          await opsFetch("/api/ops/broadcasts", {
-            method: "POST",
-            body: JSON.stringify({ action: "send", id: created.id }),
-          });
-          setMsg("Рассылка пошла");
-          await load();
+          const form = e.currentTarget;
+          const payload = readForm(form);
+          if (!payload.title.trim() || !payload.bodyRu.trim()) {
+            setMsgTone("err");
+            setMsg("Нужны название и текст RU");
+            return;
+          }
+          const n = count ?? "?";
+          if (!confirm(`Отправить ${n} людям?\n\n«${payload.title.trim()}»`)) {
+            return;
+          }
+          setSending(true);
+          setMsg("");
+          try {
+            const created = await opsFetch<{ id: string }>(
+              "/api/ops/broadcasts",
+              {
+                method: "POST",
+                body: JSON.stringify({ action: "create", ...payload }),
+              },
+            );
+            await opsFetch("/api/ops/broadcasts", {
+              method: "POST",
+              body: JSON.stringify({ action: "send", id: created.id }),
+            });
+            setMsgTone("ok");
+            setMsg("Рассылка запущена");
+            form.reset();
+            setMedia([]);
+            setButtons([]);
+            await load();
+          } catch (err) {
+            setMsgTone("err");
+            setMsg(err instanceof Error ? err.message : "Ошибка отправки");
+          } finally {
+            setSending(false);
+          }
         }}
       >
         <input
@@ -273,8 +345,8 @@ export default function OpsBroadcastsPage() {
                 )?.value?.trim();
                 const path = (
                   document.getElementById("btnPath") as HTMLInputElement
-                )?.value?.trim();
-                if (!text || !path || buttons.length >= 6) return;
+                )?.value?.trim() ?? "";
+                if (!text || buttons.length >= 6) return;
                 setButtons((b) => [...b, { text, path }]);
               }}
             >
@@ -381,16 +453,47 @@ export default function OpsBroadcastsPage() {
           >
             Сколько человек: {count ?? "?"}
           </button>
-          <button className="rounded-full btn-grad px-4 py-1.5 text-sm">
-            Отправить
+          <button
+            type="submit"
+            disabled={sending}
+            className="rounded-full btn-grad px-4 py-1.5 text-sm disabled:opacity-50"
+          >
+            {sending ? "Запускаю…" : "Отправить"}
           </button>
         </div>
       </form>
       <ul className="text-sm text-zinc-400">
         {rows.map((r) => (
-          <li key={r.id} className="border-t border-white/8 py-2">
-            {r.title} · {r.status} · ушло {r.sentCount} · брак {r.failCount} ·{" "}
-            {fmtTime(r.createdAt)}
+          <li
+            key={r.id}
+            className="flex flex-wrap items-center justify-between gap-2 border-t border-white/8 py-2"
+          >
+            <span>
+              {r.title} · {r.status} · ушло {r.sentCount} · брак {r.failCount} ·{" "}
+              {fmtTime(r.createdAt)}
+            </span>
+            <span className="flex gap-2">
+              {r.status === "draft" ? (
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  className="text-emerald-300 underline disabled:opacity-50"
+                  onClick={() => void sendExisting(r.id, r.title)}
+                >
+                  Отправить
+                </button>
+              ) : null}
+              {r.status !== "sending" ? (
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  className="text-rose-300 underline disabled:opacity-50"
+                  onClick={() => void removeRow(r.id, r.title)}
+                >
+                  Удалить
+                </button>
+              ) : null}
+            </span>
           </li>
         ))}
       </ul>

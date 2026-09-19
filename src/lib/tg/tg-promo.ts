@@ -94,50 +94,23 @@ export async function consumeLoraWelcomePhoto(
 }
 
 export async function scheduleWelcomePush(userId: string): Promise<void> {
-  const due = new Date(Date.now() + 60_000);
   await prisma.user.update({
     where: { id: userId },
     data: {
-      tgWelcomePushSent: false,
-      tgWelcomePushDueAt: due,
+      tgWelcomePushSent: true,
+      tgWelcomePushDueAt: null,
     },
   });
 }
 
 export async function maybeSendWelcomePush(
-  chatId: number,
+  _chatId: number,
   userId: string,
-  locale: "ru" | "en",
-  send: (body: string, extra?: Record<string, unknown>) => Promise<unknown>,
+  _locale: "ru" | "en",
+  _send?: (body: string, extra?: Record<string, unknown>) => Promise<unknown>,
 ): Promise<void> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.tgWelcomePushSent || !user.tgWelcomePushDueAt) return;
-  if (user.tgWelcomePushDueAt.getTime() > Date.now()) return;
-
-  const { shouldShowWelcomeFreeOffer } = await import("@/lib/tg/menu");
-  if (!(await shouldShowWelcomeFreeOffer(userId))) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { tgWelcomePushSent: true },
-    });
-    return;
-  }
-
-  const { t } = await import("@/lib/tg/i18n");
-  const { castsMiniAppUrl } = await import("@/lib/tg/studio-cast");
-
-  await send(t("welcome_free_push", locale), {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: t("welcome_free_push_catalog_btn", locale),
-            web_app: { url: castsMiniAppUrl() },
-          },
-        ],
-      ],
-    },
-  });
+  if (!user || user.tgWelcomePushSent) return;
 
   await prisma.user.update({
     where: { id: userId },

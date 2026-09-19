@@ -112,6 +112,21 @@ export async function tgEditMessageReplyMarkup(
   );
 }
 
+export async function tgDeleteMessage(
+  chatId: number | string,
+  messageId: number,
+  token?: string,
+) {
+  return tgApi(
+    "deleteMessage",
+    {
+      chat_id: chatId,
+      message_id: messageId,
+    },
+    token,
+  );
+}
+
 export async function tgApiForm<T = unknown>(
   method: string,
   form: FormData,

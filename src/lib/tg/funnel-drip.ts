@@ -33,7 +33,7 @@ async function silenceFunnelDrip(userId: string): Promise<void> {
   });
 }
 
-/** Anchor drip timers at welcome-after-rules. Keeps old welcome_free_push intact. */
+/** Anchor drip timers at welcome-after-rules. welcome_free_push text is disabled. */
 export async function scheduleFunnelDrip(userId: string): Promise<void> {
   await prisma.user.update({
     where: { id: userId },

@@ -76,6 +76,7 @@ What you can do:
 🎬 <b>Video?</b> «Generation» → «Video» → template → from 1 photo → ready in minutes. <i>No character training required for video.</i>`,
   },
 
+  /** Kept for ops overlay; blast itself is disabled. */
   welcome_free_push: {
     ru: `Не тяни. Попробуй наш фото-генератор в деле!
 
@@ -823,6 +824,7 @@ Browse examples and templates via the buttons below or open the Studio.`,
     en: "How to use guide",
   },
 
+  /** Unused in chat: reply keyboard is attached via a deleted carrier message. */
   menu_ready_hint: {
     ru: "Меню снизу всегда под рукой 👇",
     en: "Menu is always at the bottom 👇",

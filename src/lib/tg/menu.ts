@@ -4,6 +4,7 @@ import { tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import {
+  tgDeleteMessage,
   tgEditMessageCaption,
   tgEditMessageText,
   tgSendMessage,
@@ -44,6 +45,33 @@ export function mainMenuKeyboard(locale: TgLocale) {
 
 export function mainMenuExtra(locale: TgLocale) {
   return mainMenuKeyboard(locale);
+}
+
+/**
+ * Telegram can set a reply keyboard only via a sent message, and cannot mix it
+ * with inline buttons on the same message. Send a silent carrier, then delete
+ * it — the bottom keyboard stays.
+ */
+async function attachReplyKeyboardSilent(chatId: number, locale: TgLocale) {
+  const extra: Record<string, unknown> = {
+    ...mainMenuExtra(locale),
+    disable_notification: true,
+  };
+  let sent: { message_id?: number } | undefined;
+  try {
+    sent = (await tgSendMessage(chatId, "\u2060", extra)) as {
+      message_id?: number;
+    };
+  } catch {
+    sent = (await tgSendMessage(chatId, "👇", extra)) as { message_id?: number };
+  }
+  const messageId = sent?.message_id;
+  if (!messageId) return;
+  try {
+    await tgDeleteMessage(chatId, messageId);
+  } catch {
+    /* keyboard is already attached even if the carrier stays */
+  }
 }
 
 /** Inline CTAs under hub message. */
@@ -182,6 +210,6 @@ export async function sendMainMenuHub(
   });
   // Telegram: one message can't mix inline + reply keyboard.
   if (attachKb) {
-    await tgSendMessage(chatId, t("menu_ready_hint", locale), mainMenuExtra(locale));
+    await attachReplyKeyboardSilent(chatId, locale);
   }
 }

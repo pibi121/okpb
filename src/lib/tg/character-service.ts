@@ -81,7 +81,8 @@ export async function getOwnedPhotoUploadCharacter(
     orderBy: { createdAt: "asc" },
   });
   if (primary) return primary;
-  return createTgCharacter(userId);
+  // Auto-create owned draft when user sends a photo without a character yet.
+  return createTgCharacter(userId, "Model");
 }
 
 export async function setActiveTgCharacter(
@@ -99,8 +100,8 @@ export async function setActiveTgCharacter(
   });
 }
 
-export async function createTgCharacter(userId: string, name: string) {
-  const displayName = name.trim().slice(0, 40) || "Model";
+export async function createTgCharacter(userId: string, name?: string | null) {
+  const displayName = (name ?? "").trim().slice(0, 40) || "Model";
   // Pre-create with placeholder id for trigger — set after create.
   const character = await prisma.character.create({
     data: {
@@ -124,8 +125,11 @@ export async function createTgCharacter(userId: string, name: string) {
 }
 
 /** Ref2V video identity — saved refs with 🎬, no LoRA training. */
-export async function createVideoRefCharacter(userId: string, name: string) {
-  const displayName = name.trim().slice(0, 40) || "Модель";
+export async function createVideoRefCharacter(
+  userId: string,
+  name?: string | null,
+) {
+  const displayName = (name ?? "").trim().slice(0, 40) || "Модель";
   const character = await prisma.character.create({
     data: {
       userId,
@@ -158,11 +162,11 @@ export async function listVideoRefCharacters(userId: string) {
 export async function renameTgCharacter(
   userId: string,
   characterId: string,
-  name: string,
+  name?: string | null,
 ) {
   return prisma.character.updateMany({
     where: { id: characterId, userId },
-    data: { name: name.trim().slice(0, 40) || "Model" },
+    data: { name: (name ?? "").trim().slice(0, 40) || "Model" },
   });
 }
 

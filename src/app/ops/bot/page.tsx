@@ -312,9 +312,16 @@ function OpsTelegramCard() {
   }
 
   const topics = d
-    ? ["Оплаты", "Регистрации", "Маркетинг", "Ошибки"]
+    ? ["Оплаты", "Регистрации", "Маркетинг", "Ошибки", "КК", "Деплои"]
         .map((label, i) => {
-          const key = ["payments", "signups", "marketing", "errors"][i];
+          const key = [
+            "payments",
+            "signups",
+            "marketing",
+            "errors",
+            "quality",
+            "deploys",
+          ][i];
           const id = d.topics[key];
           return id ? `${label} #${id}` : `${label} —`;
         })
@@ -325,7 +332,7 @@ function OpsTelegramCard() {
     <section className="rounded-2xl border border-white/10 p-4">
       <h2 className="text-[11px] uppercase tracking-widest text-peach">Ops-чат (ветки)</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        Супергруппа с темами: оплаты, регистрации, маркетинг 3×/сутки, ошибки. Env:{" "}
+        Супергруппа с темами: оплаты, регистрации, маркетинг, ошибки, КК, деплои. Env:{" "}
         <code>OPS_TG_BOT_TOKEN</code> + <code>OPS_TG_CHAT_ID</code>.
       </p>
       {d ? (

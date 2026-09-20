@@ -1,6 +1,6 @@
 /**
  * Staff Telegram bot for a forum-group with topics:
- * payments / signups / marketing digest / errors / quality.
+ * payments / signups / marketing digest / errors / quality / deploys.
  *
  * Token + chat id come from env. Topic ids are created once and persisted
  * under data/ops-telegram.json (Railway volume) so restarts keep the same threads.
@@ -17,6 +17,7 @@ export const OPS_TG_TOPICS = [
   "marketing",
   "errors",
   "quality",
+  "deploys",
 ] as const;
 export type OpsTgTopic = (typeof OPS_TG_TOPICS)[number];
 
@@ -26,6 +27,16 @@ const TOPIC_TITLES: Record<OpsTgTopic, string> = {
   marketing: "Маркетинг",
   errors: "Ошибки",
   quality: "Контроль качества",
+  deploys: "Деплои",
+};
+
+const TOPIC_ENV_KEYS: Record<OpsTgTopic, string> = {
+  payments: "OPS_TG_TOPIC_PAYMENTS",
+  signups: "OPS_TG_TOPIC_SIGNUPS",
+  marketing: "OPS_TG_TOPIC_MARKETING",
+  errors: "OPS_TG_TOPIC_ERRORS",
+  quality: "OPS_TG_TOPIC_QUALITY",
+  deploys: "OPS_TG_TOPIC_DEPLOYS",
 };
 
 const STATE_FILE = () => path.join(dataRoot(), "ops-telegram.json");
@@ -38,6 +49,9 @@ export type OpsTelegramState = {
   lastDigestAt?: string;
   botUsername?: string;
   chatTitle?: string;
+  /** Last notified commit / deploy shas (dedupe). */
+  lastCommitNotifySha?: string;
+  lastDeployNotifySha?: string;
 };
 
 type ChatInfo = {
@@ -65,17 +79,7 @@ function envChatId(): string {
 }
 
 function envTopicId(topic: OpsTgTopic): number | undefined {
-  const key =
-    topic === "payments"
-      ? "OPS_TG_TOPIC_PAYMENTS"
-      : topic === "signups"
-        ? "OPS_TG_TOPIC_SIGNUPS"
-        : topic === "marketing"
-          ? "OPS_TG_TOPIC_MARKETING"
-          : topic === "quality"
-            ? "OPS_TG_TOPIC_QUALITY"
-            : "OPS_TG_TOPIC_ERRORS";
-  const n = Number(process.env[key] || 0);
+  const n = Number(process.env[TOPIC_ENV_KEYS[topic]] || 0);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
@@ -121,6 +125,10 @@ export function saveOpsTelegramState(patch: Partial<OpsTelegramState>) {
     lastDigestAt: patch.lastDigestAt ?? prev?.lastDigestAt,
     botUsername: patch.botUsername ?? prev?.botUsername,
     chatTitle: patch.chatTitle ?? prev?.chatTitle,
+    lastCommitNotifySha:
+      patch.lastCommitNotifySha ?? prev?.lastCommitNotifySha,
+    lastDeployNotifySha:
+      patch.lastDeployNotifySha ?? prev?.lastDeployNotifySha,
   };
   writeState(next);
   return next;
@@ -671,4 +679,110 @@ export function notifyOpsErrorBg(opts: {
       .join("\n");
     await sendOpsTelegram("errors", text);
   })().catch((e) => console.error("[ops-tg] error notify:", e));
+}
+
+export type OpsReleaseKind = "commit" | "deploy";
+
+export type OpsReleaseNotifyOpts = {
+  kind: OpsReleaseKind;
+  /** Full or short git sha */
+  sha: string;
+  /** One-line commit subject */
+  message: string;
+  /** App build label (BUILD_VERSION) */
+  buildVersion?: string;
+  branch?: string;
+  /** When the event happened (defaults to now) */
+  at?: Date | string;
+  /** Skip dedupe (force resend) */
+  force?: boolean;
+};
+
+function shortSha(sha: string): string {
+  const s = (sha || "").trim();
+  return s.length > 7 ? s.slice(0, 7) : s || "—";
+}
+
+/** Notify ops «Деплои» topic about a commit or successful prod deploy. */
+export async function notifyOpsRelease(
+  opts: OpsReleaseNotifyOpts,
+): Promise<{ sent: boolean; detail: string }> {
+  if (!opsTelegramConfigured()) {
+    return { sent: false, detail: "ops telegram not configured" };
+  }
+  const sha = (opts.sha || "").trim();
+  if (!sha) return { sent: false, detail: "no sha" };
+
+  const state = readState();
+  if (!opts.force) {
+    if (
+      opts.kind === "commit" &&
+      state?.lastCommitNotifySha &&
+      state.lastCommitNotifySha === sha
+    ) {
+      return { sent: false, detail: "commit already notified" };
+    }
+    if (
+      opts.kind === "deploy" &&
+      state?.lastDeployNotifySha &&
+      state.lastDeployNotifySha === sha
+    ) {
+      return { sent: false, detail: "deploy already notified" };
+    }
+  }
+
+  const when = opts.at ? new Date(opts.at) : new Date();
+  const title =
+    opts.kind === "deploy"
+      ? "🚀 <b>Деплой на прод</b>"
+      : "📦 <b>Коммит в main</b>";
+  const text = [
+    title,
+    `Коммит: <code>${escHtml(shortSha(sha))}</code>`,
+    opts.buildVersion
+      ? `Версия: <code>${escHtml(opts.buildVersion)}</code>`
+      : "",
+    opts.branch ? `Ветка: ${escHtml(opts.branch)}` : "",
+    `Изменения: ${escHtml((opts.message || "—").trim().slice(0, 500))}`,
+    formatMsk(when) + " МСК",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  await sendOpsTelegram("deploys", text);
+  saveOpsTelegramState(
+    opts.kind === "deploy"
+      ? { lastDeployNotifySha: sha }
+      : { lastCommitNotifySha: sha },
+  );
+  return { sent: true, detail: "ok" };
+}
+
+/**
+ * On Railway boot: notify «Деплои» once per new git sha.
+ * Reads Railway git env + optional infra/release-meta.json written before `railway up`.
+ */
+export async function notifyOpsDeployOnBoot(): Promise<void> {
+  if (!opsTelegramConfigured()) return;
+  if (process.env.OPS_TG_SKIP_DEPLOY_NOTIFY === "1") return;
+
+  try {
+    const { resolveReleaseMeta } = await import("@/lib/ops/release-meta");
+    const meta = resolveReleaseMeta();
+    if (!meta.sha) {
+      console.log("[ops-tg] deploy notify skipped — no commit sha");
+      return;
+    }
+    const r = await notifyOpsRelease({
+      kind: "deploy",
+      sha: meta.sha,
+      message: meta.message,
+      buildVersion: meta.buildVersion,
+      branch: meta.branch,
+      at: meta.at,
+    });
+    console.log(`[ops-tg] deploy notify: ${r.detail}`);
+  } catch (e) {
+    console.error("[ops-tg] deploy boot notify:", e);
+  }
 }

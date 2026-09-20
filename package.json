@@ -21,7 +21,9 @@
     "preflight": "node scripts/peach-preflight.mjs",
     "test:smoke": "node scripts/smoke.mjs",
     "sync:tg-catalog": "tsx scripts/sync-tg-catalog-assets.ts",
-    "tg:bot": "npx tsx scripts/tg-bot-dev.ts"
+    "tg:bot": "npx tsx scripts/tg-bot-dev.ts",
+    "ops:notify-commit": "node scripts/ops-notify-release.mjs --kind commit",
+    "ops:notify-deploy": "node scripts/ops-notify-release.mjs --kind deploy"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

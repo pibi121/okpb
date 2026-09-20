@@ -61,6 +61,7 @@ next-env.d.ts
 /infra/*.key
 /infra/metalnode.local.json
 /infra/metalnode.llm.json
+/infra/release-meta.json
 metalnode_id_ed25519
 
 # local-only (never GitHub)

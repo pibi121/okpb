@@ -114,6 +114,13 @@ export async function register() {
     .then(({ startOpsTelegramScheduler }) => startOpsTelegramScheduler())
     .catch((e) => console.error("[peach] ops-tg scheduler:", e));
 
+  // Notify ops «Деплои» once per new prod boot / git sha.
+  setTimeout(() => {
+    void import("@/lib/ops/ops-telegram")
+      .then(({ notifyOpsDeployOnBoot }) => notifyOpsDeployOnBoot())
+      .catch((e) => console.error("[peach] ops-tg deploy notify:", e));
+  }, 12_000);
+
   // Uncaught errors → /ops/errors (so nothing silent in Railway logs only).
   process.on("unhandledRejection", (reason) => {
     const msg = reason instanceof Error ? reason.message : String(reason);

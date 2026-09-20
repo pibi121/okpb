@@ -11,6 +11,7 @@ Staff-бот шлёт живые события в супергруппу с т�
 | Маркетинг | 3 раза в сутки (МСК **07:00, 15:00, 00:00**) выжимка воронки `/ops/analytics` за прошедшее окно: кто куда жал |
 | Ошибки | Всё, что падает в `reportOpsError` / `/ops/errors` (повтор одного fingerprint схлопывается раз в минуту) |
 | Контроль качества | Заявки «не понравилось» из бота; статус правится при решении staff |
+| Деплои | Коммит в `main` и успешный деплой на прод: sha, версия билда, время МСК, краткое описание |
 
 ## Что сделать Owner
 
@@ -35,9 +36,18 @@ OPS_TG_TOPIC_SIGNUPS=
 OPS_TG_TOPIC_MARKETING=
 OPS_TG_TOPIC_ERRORS=
 OPS_TG_TOPIC_QUALITY=
+OPS_TG_TOPIC_DEPLOYS=
 ```
 
-6. `/ops/bot` → блок «Ops-чат» → **Создать ветки и тест**. В каждой теме должно появиться «Ветка подключена».
+Для уведомлений о коммитах с локальной машины (скрипт → прод API):
+
+```
+OPS_RELEASE_NOTIFY_SECRET=длинный-секрет
+```
+
+(тот же секрет в Railway Variables).
+
+6. `/ops/bot` → блок «Ops-чат» → **Создать ветки и тест**. В каждой теме должно появиться «Ветка подключена» (включая **Деплои**).
 7. Деплой Railway после переменных (web-процесс поднимает планировщик дайджеста).
 
 Если `OPS_TG_BOT_TOKEN` пуст, код возьмёт продуктовый `TELEGRAM_BOT_TOKEN` — лучше не смешивать: продуктовый бот в staff-чате ловит лишние апдейты.
@@ -47,6 +57,10 @@ OPS_TG_TOPIC_QUALITY=
 - Оплата: после `fulfillPaidTopup` (Cashera webhook).
 - Регистрация: новый Telegram-юзер (`findOrCreateTelegramUser`) и web `/register`.
 - Ошибки: единая точка `reportOpsError`.
+- КК: dislike → confirm → топик «Контроль качества».
+- Деплои:
+  - **коммит** — `node scripts/ops-notify-release.mjs --kind commit` (после `git push`);
+  - **деплой** — автоматически при старте web на Railway (дедуп по sha); либо `node scripts/ops-notify-release.mjs --kind deploy` после `railway up`.
 - Дайджест: `instrumentation.ts` + `tg:bot`, слоты МСК, дедуп по `data/ops-telegram.json` (volume Railway). Окно: 00–07 / 07–15 / 15–00. Если процесс лежал — догон в пределах 10 часов.
 - Id тем пишутся в `data/ops-telegram.json`, не в git.
 
@@ -55,4 +69,5 @@ OPS_TG_TOPIC_QUALITY=
 ```bash
 cd peachbitch
 npx tsx scripts/ops-telegram-bootstrap.ts
+node scripts/ops-notify-release.mjs --kind commit
 ```

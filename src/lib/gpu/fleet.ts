@@ -1,10 +1,9 @@
 /**
- * Extra Metalnode GPUs alongside primary (bmserv5 → :8188).
+ * Extra Metalnode GPUs alongside primary (:8188).
  * Keys live in Railway env; tunnels map to local :8189 / :8190.
  *
- * Policy (2026-09-17):
- * - User gens → prefer bmserv4 (fleet :8189) when online
- * - LoRA train SSH → primary bmserv5 (no loraPreferred extra = fall back to metalnode.local.json)
+ * Policy: when only primary is live, leave fleet keys empty / genPreferred off.
+ * Fleet cards are optional overflow — not preferred while single-GPU.
  */
 export type FleetGpu = {
   key: string;
@@ -30,7 +29,7 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     keyEnv: "METALNODE_SSH_KEY_BMSERV4",
     keyPath: "/tmp/metalnode_key_bmserv4",
     pool: "any",
-    genPreferred: true,
+    // Was genPreferred while dual-GPU; off until a second live node is back.
   },
   {
     key: "bmserv1",

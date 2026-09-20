@@ -34,9 +34,17 @@ export function isDeadTelegramRecipient(message: string): boolean {
   );
 }
 
+/** Stale inline-button ACK — Telegram expires callback_query_id in ~seconds. */
+export function isStaleCallbackQuery(message: string): boolean {
+  return /query is too old|response timeout expired|query ID is invalid/i.test(
+    message || "",
+  );
+}
+
 /** Expected UX / safety messages — do not spam Owner ops chat. */
 export function isExpectedClientError(message: string): boolean {
   if (isDeadTelegramRecipient(message || "")) return true;
+  if (isStaleCallbackQuery(message || "")) return true;
   return /age_gate|возраст|несовершеннолетн|minor|18\+|завершить обучение|finish training|шаблон не найден|max photos|already_training|недостаточно (средств|кредит)|insufficient|баланс|оплат|payment required|need_photos|нужно фото/i.test(
     message || "",
   );

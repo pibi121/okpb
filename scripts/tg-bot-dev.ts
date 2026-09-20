@@ -57,12 +57,12 @@ async function pollOneBot(bot: LiveBot) {
                 await handleTgCallbackQuery(u.callback_query);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                const { isDeadTelegramRecipient, reportOpsError } = await import(
+                const { isExpectedClientError, reportOpsError } = await import(
                   "../src/lib/ops/errors"
                 );
-                if (isDeadTelegramRecipient(msg)) {
+                if (isExpectedClientError(msg)) {
                   console.warn(
-                    `[tg-bot @${bot.username}] callback skipped (blocked/gone):`,
+                    `[tg-bot @${bot.username}] callback skipped (expected):`,
                     msg,
                   );
                 } else {
@@ -82,12 +82,12 @@ async function pollOneBot(bot: LiveBot) {
                 await handleTgMessage(u.message);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                const { isDeadTelegramRecipient, reportOpsError } = await import(
+                const { isExpectedClientError, reportOpsError } = await import(
                   "../src/lib/ops/errors"
                 );
-                if (isDeadTelegramRecipient(msg)) {
+                if (isExpectedClientError(msg)) {
                   console.warn(
-                    `[tg-bot @${bot.username}] message skipped (blocked/gone):`,
+                    `[tg-bot @${bot.username}] message skipped (expected):`,
                     msg,
                   );
                 } else {

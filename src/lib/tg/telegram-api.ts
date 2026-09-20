@@ -291,14 +291,23 @@ export async function tgAnswerCallbackQuery(
   text?: string,
   token?: string,
 ) {
-  return tgApi(
-    "answerCallbackQuery",
-    {
-      callback_query_id: callbackQueryId,
-      ...(text ? { text, show_alert: false } : {}),
-    },
-    token,
-  );
+  try {
+    return await tgApi(
+      "answerCallbackQuery",
+      {
+        callback_query_id: callbackQueryId,
+        ...(text ? { text, show_alert: false } : {}),
+      },
+      token,
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Expired / already-answered — not actionable; don't fail the handler.
+    if (/query is too old|response timeout expired|query ID is invalid/i.test(msg)) {
+      return { ok: true, ignored: "stale_callback" as const };
+    }
+    throw e;
+  }
 }
 
 export async function tgDownloadFile(fileId: string, token?: string): Promise<Buffer> {

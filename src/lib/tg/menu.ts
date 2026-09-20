@@ -9,7 +9,6 @@ import {
   tgEditMessageText,
   tgSendMessage,
 } from "@/lib/tg/telegram-api";
-import { prisma } from "@/lib/db";
 
 /** TG invite / community chat (same for RU and EN). */
 export const TG_COMMUNITY_URL = "https://t.me/+6aVo5HU0Yrc4NjYy";
@@ -104,17 +103,11 @@ export function hubInlineKeyboard(locale: TgLocale) {
   };
 }
 
-/** User still has unused welcome/studio free photo offer. */
+/** Welcome free offer removed — starter peaches instead. */
 export async function shouldShowWelcomeFreeOffer(
-  userId: string,
+  _userId: string,
 ): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { tgStudioDailyUsedAt: true, tgFreePhotoUsed: true },
-  });
-  if (!user) return false;
-  // First free studio look photo not consumed yet.
-  return !user.tgStudioDailyUsedAt && !user.tgFreePhotoUsed;
+  return false;
 }
 
 export async function buildHubCaption(
@@ -122,11 +115,7 @@ export async function buildHubCaption(
   locale: TgLocale,
 ): Promise<string> {
   const bal = await getBalancePeaches(userId);
-  let text = tFormat("hub_main", locale, { balance: bal });
-  if (await shouldShowWelcomeFreeOffer(userId)) {
-    text += t("hub_main_free_offer", locale);
-  }
-  return text;
+  return tFormat("hub_main", locale, { balance: bal });
 }
 
 /** Edit existing bot message in-place, or send a new text message. */

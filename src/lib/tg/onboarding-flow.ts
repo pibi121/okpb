@@ -189,6 +189,9 @@ export async function onOnboardNameEntered(
 
   await tgSendMediaMessage(chatId, "photo_upload", t("onboard_photo_prompt", locale));
 
+  await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
+    ensurePriceOverlay(),
+  );
   const price = loraTrainPeaches();
   const balance = await getBalancePeaches(userId);
   await tgSendMessage(chatId, tFormat("onboard_lora_price", locale, { price, balance }), {
@@ -304,10 +307,34 @@ export async function confirmRulesAndWelcome(
   userId: string,
   locale: TgLocale,
 ) {
+  const before = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { ageConfirmed: true },
+  });
   await prisma.user.update({
     where: { id: userId },
-    data: { ageConfirmed: true, locale, tgStudioFreeReady: true },
+    data: { ageConfirmed: true, locale },
   });
+
+  // New users only: starter peaches = current actress photo price from /ops/prices.
+  if (!before?.ageConfirmed) {
+    const already = await prisma.ledgerEntry.findFirst({
+      where: { userId, reason: "tg_starter" },
+      select: { id: true },
+    });
+    if (!already) {
+      await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
+        ensurePriceOverlay(true),
+      );
+      const { photoActressPeaches } = await import("@/lib/tg-pricing");
+      const { creditPeaches } = await import("@/lib/tg/wallet");
+      const amount = Math.max(1, photoActressPeaches());
+      await creditPeaches(userId, amount, "tg_starter", {
+        source: "rules_confirm",
+      });
+    }
+  }
+
   await sendWelcomeAfterRules(chatId, platformUserId, locale, userId);
 }
 

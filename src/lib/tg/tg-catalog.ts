@@ -14,7 +14,8 @@ import {
   userOwnsTemplate,
   type PublicQuickVideoTemplate,
 } from "@/lib/quick-video-template";
-import { storyH3Peaches } from "@/lib/tg-pricing";
+import { storyH3Peaches, tgPhotoPeaches } from "@/lib/tg-pricing";
+import { priceForQuickVideoTemplate } from "@/lib/template-pricing";
 import { tgTemplateDisplayTitle } from "@/lib/tg/tg-publish";
 import { isSafeVideoTemplateThumb } from "@/lib/quick-video-preview-safe";
 import {
@@ -191,8 +192,7 @@ async function listTgPublishedPhotoRows(locale: TgLocale) {
     title: localizedTitle(r),
     notes: localizedNotes(r),
     tier: (r.tier === "pose" ? "pose" : "basic") as "basic" | "pose",
-    pricePeaches:
-      r.pricePeaches || tgPhotoPeaches(r.tier === "pose" ? "pose" : "basic"),
+    pricePeaches: tgPhotoPeaches(r.tier === "pose" ? "pose" : "basic"),
     previewImageUrl: r.previewImageUrl || r.sceneImageUrl,
     hasSpeech: r.hasSpeech,
     createdAt: r.createdAt.toISOString(),
@@ -264,10 +264,13 @@ export async function listTgFeaturedPhotoTemplates(locale: TgLocale = "ru") {
 }
 
 export function videoTemplatePricePeaches(t: PublicQuickVideoTemplate): number {
-  const row = t as PublicQuickVideoTemplate & { pricePeaches?: number };
-  if (row.pricePeaches && row.pricePeaches > 0) return row.pricePeaches;
-  if (t.priceCredits > 0) return t.priceCredits;
-  // Featured TG clips are Story H3 by default; charging path may upgrade to premium.
+  // Always live formula from /ops/prices — ignore stale DB cache.
+  const row = t as PublicQuickVideoTemplate & { shotsJson?: string | null };
+  const n = priceForQuickVideoTemplate({
+    shotsJson: row.shotsJson,
+    durationSec: t.durationSec,
+  });
+  if (n > 0) return n;
   return storyH3Peaches(t.durationSec || 6);
 }
 

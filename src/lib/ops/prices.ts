@@ -55,6 +55,8 @@ const DEFAULTS: OpsPrices = {
 };
 
 let overlay: Partial<OpsPrices> = {};
+let loadedAt = 0;
+const PRICE_TTL_MS = 5_000;
 
 export function setPriceOverlay(json: string) {
   let parsed: Record<string, number> = {};
@@ -85,6 +87,28 @@ export function setPriceOverlay(json: string) {
   }
   setPricingOverlay(parsed);
   overlay = parsed as Partial<OpsPrices>;
+  loadedAt = Date.now();
+}
+
+/**
+ * Reload /ops/prices from DB into memory.
+ * Needed because Railway runs bot poller and Next as separate processes —
+ * admin save updates only the web process unless the bot refreshes.
+ */
+export async function ensurePriceOverlay(force = false): Promise<void> {
+  if (!force && loadedAt > 0 && Date.now() - loadedAt < PRICE_TTL_MS) {
+    return;
+  }
+  try {
+    const { getOpsSettings } = await import("@/lib/ops/settings");
+    const settings = await getOpsSettings();
+    setPriceOverlay(settings.pricesJson || "{}");
+  } catch (e) {
+    console.warn(
+      "[ops] ensurePriceOverlay:",
+      e instanceof Error ? e.message : e,
+    );
+  }
 }
 
 export function getOpsPrices(): OpsPrices {

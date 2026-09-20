@@ -23,6 +23,7 @@ export async function notifyTelegramMediaReady(opts: {
   mediaUrl: string;
   caption: string;
   offerSaveCharacterId?: string;
+  galleryItemId?: string;
 }) {
   const acc = await hasTelegramAccount(opts.userId);
   if (!acc) return;
@@ -39,6 +40,7 @@ export async function notifyTelegramMediaReady(opts: {
       caption: opts.caption,
       successKind: opts.kind,
       locale: acc.locale,
+      ...(opts.galleryItemId ? { galleryItemId: opts.galleryItemId } : {}),
       ...(opts.offerSaveCharacterId
         ? { offerSaveCharacterId: opts.offerSaveCharacterId }
         : {}),

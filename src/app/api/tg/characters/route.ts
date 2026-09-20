@@ -11,7 +11,7 @@ import {
 import { prisma } from "@/lib/db";
 import { startLoraTrainingForUser } from "@/lib/tg/lora-onboard";
 import { normalizeLocale } from "@/lib/tg/i18n";
-import { TG_PREMIUM } from "@/lib/tg-pricing";
+import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { hasRealCharacterLora } from "@/lib/tg/studio-cast";
 
 /** Create personal character (LoRA candidate). */
@@ -22,6 +22,9 @@ export async function POST(req: Request) {
   }
   const body = (await req.json().catch(() => ({}))) as { name?: string };
   const ch = await createTgCharacter(userId, body.name?.trim() || "Model");
+  await import("@/lib/ops/prices")
+    .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
+    .catch(() => undefined);
   return NextResponse.json({
     id: ch.id,
     name: ch.name,
@@ -29,7 +32,7 @@ export async function POST(req: Request) {
     loraStatus: ch.loraStatus,
     minPhotos: TG_MIN_LORA_PHOTOS,
     maxPhotos: TG_MAX_LORA_PHOTOS,
-    trainPrice: TG_PREMIUM.loraTrainPeaches,
+    trainPrice: loraTrainPeaches(),
   });
 }
 
@@ -114,7 +117,7 @@ export async function PUT(req: Request) {
     readyToTrain: characterReadyForLoraTrain(characterId),
     minPhotos: TG_MIN_LORA_PHOTOS,
     maxPhotos: TG_MAX_LORA_PHOTOS,
-    trainPrice: TG_PREMIUM.loraTrainPeaches,
+    trainPrice: loraTrainPeaches(),
     ...(errors.length ? { partialErrors: errors } : {}),
   });
 }
@@ -197,6 +200,6 @@ export async function PATCH(req: Request) {
     ok: true,
     loraStatus: ch?.loraStatus || "lora_training",
     loraUsable: ch ? hasRealCharacterLora(ch) : false,
-    trainPrice: TG_PREMIUM.loraTrainPeaches,
+    trainPrice: loraTrainPeaches(),
   });
 }

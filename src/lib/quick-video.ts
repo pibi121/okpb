@@ -483,6 +483,7 @@ async function runQuickVideoJob(runId: string, userId: string) {
       mediaUrl: saved.publicUrl,
       caption: run.title,
       offerSaveCharacterId: charIds[0],
+      galleryItemId: run.galleryItemId || undefined,
     }).catch((e) => console.error("[peach] tg video notify:", e));
   }
 }
@@ -617,6 +618,7 @@ export async function tryRecoverQuickVideoFromComfy(
     mediaUrl: saved.publicUrl,
     caption: run.title,
     offerSaveCharacterId: charIds[0],
+    galleryItemId: run.galleryItemId || undefined,
   }).catch((e) => console.error("[peach] tg video notify:", e));
 
   return true;

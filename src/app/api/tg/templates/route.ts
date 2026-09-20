@@ -52,8 +52,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  void import("@/lib/ops/seed")
-    .then((m) => m.bootOps())
+  void import("@/lib/ops/prices")
+    .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
     .catch(() => undefined);
 
   const url = new URL(req.url);

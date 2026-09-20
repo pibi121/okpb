@@ -31,6 +31,9 @@ import {
   VID_CB,
   parseGenPageCallback,
   parseGenPickCallback,
+  parseQcConfirmCallback,
+  parseQcDislikeCallback,
+  parseQcStatusCallback,
   photoCastPickerKeyboard,
   resolvePickIndex,
   sendTemplatePicker,
@@ -944,8 +947,7 @@ async function beginGeneration(
     }
     if (
       !isStudioCastCharacter(character) &&
-      !characterUsesLoraPhoto(character) &&
-      !pending.loraWelcome
+      !characterUsesLoraPhoto(character)
     ) {
       await tgSendMessage(chatId, t("photo_need_lora", locale));
       return;
@@ -966,11 +968,8 @@ async function beginGeneration(
     character,
   });
   let charge = pricing.price;
-  const freeOk =
-    charge === 0 &&
-    Boolean(pricing.freePhoto || pricing.studioDaily || pricing.loraWelcome);
 
-  if (charge <= 0 && !freeOk) {
+  if (charge <= 0) {
     charge = Math.max(1, pricing.basePrice);
   }
 
@@ -987,9 +986,9 @@ async function beginGeneration(
       ...pending,
       pricePeaches: charge,
       discountApplied: pricing.discountApplied,
-      freePhoto: pricing.freePhoto,
-      studioDaily: pricing.studioDaily,
-      loraWelcome: pricing.loraWelcome,
+      freePhoto: false,
+      studioDaily: false,
+      loraWelcome: false,
     },
   });
 
@@ -1002,8 +1001,6 @@ async function beginGeneration(
         platformUserId,
         templateId,
         characterId: character.id,
-        studioDaily: Boolean(pricing.studioDaily && freeOk),
-        loraWelcome: Boolean(pricing.loraWelcome && freeOk),
       });
     } else {
       await startTgVideoGeneration({
@@ -1558,6 +1555,9 @@ async function handleLookbookCallback(
 
 export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   await ensureCopyOverlay();
+  await import("@/lib/ops/prices")
+    .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
+    .catch(() => undefined);
   const data = cq.data || "";
   const chatId = cq.message?.chat.id;
   if (!chatId) {
@@ -1716,6 +1716,38 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       return;
     }
 
+    const qcDislikeId = parseQcDislikeCallback(data);
+    if (qcDislikeId) {
+      const { handleQcDislike } = await import("@/lib/tg/quality-claim");
+      await handleQcDislike({
+        callbackId: cq.id,
+        chatId,
+        messageId: cqMsgId || 0,
+        userId: user.id,
+        platformUserId,
+        locale,
+        galleryItemId: qcDislikeId,
+      });
+      return;
+    }
+    const qcConfirmId = parseQcConfirmCallback(data);
+    if (qcConfirmId) {
+      const { handleQcConfirm } = await import("@/lib/tg/quality-claim");
+      await handleQcConfirm({
+        callbackId: cq.id,
+        chatId,
+        userId: user.id,
+        platformUserId,
+        locale,
+        galleryItemId: qcConfirmId,
+      });
+      return;
+    }
+    if (parseQcStatusCallback(data)) {
+      await tgAnswerCallbackQuery(cq.id);
+      return;
+    }
+
     if (await handleGenerationCallback(
       chatId,
       platformUserId,
@@ -1745,6 +1777,9 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 
 export async function handleTgMessage(msg: TgUpdateMessage) {
   await ensureCopyOverlay();
+  await import("@/lib/ops/prices")
+    .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
+    .catch(() => undefined);
   const chatId = msg.chat.id;
   const platformUserId = String(chatId);
   const from = msg.from || { id: chatId };
@@ -2067,6 +2102,7 @@ export async function flushTgOutbox() {
         text?: string;
         mock?: boolean;
         successKind?: "photo" | "video";
+        galleryItemId?: string;
         locale?: TgLocale;
         reply_markup?: unknown;
         botInstanceId?: string;
@@ -2120,7 +2156,11 @@ export async function flushTgOutbox() {
             ? t("gen_success_photo", locale)
             : t("gen_success_video", locale);
         await sendMessage(tFormat("gen_success", locale, { kind: kindLabel }), {
-          reply_markup: successInlineKeyboard(locale),
+          reply_markup: successInlineKeyboard(locale, {
+            kind: payload.successKind,
+            galleryItemId: payload.galleryItemId,
+            qcStatus: "idle",
+          }),
         });
 
         const saveId = (payload as { offerSaveCharacterId?: string }).offerSaveCharacterId;

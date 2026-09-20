@@ -4,9 +4,6 @@ import { t, tFormat } from "@/lib/tg/i18n";
 import { resolveTemplatePricePeaches } from "@/lib/tg/generation-service";
 import { tgSendMessage, tgEditMessageReplyMarkup, tgEditMessageText, tgEditMessageCaption } from "@/lib/tg/telegram-api";
 import { isStudioCastCharacter, characterUsesLoraPhoto } from "@/lib/tg/studio-cast";
-import {
-  canUseStudioDailyFree,
-} from "@/lib/tg/tg-promo";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { shuffleInPlace } from "@/lib/tg/feed-order";
 import type { VideoPickMode } from "@/lib/tg/gen-modes";
@@ -31,6 +28,31 @@ export const GEN_CB = {
   againVideo: "g:av",
   toHub: "g:hub",
 } as const;
+
+/** Quality-control callbacks after generation success. */
+export const QC_CB = {
+  dislike: (itemId: string) => `qc:d:${itemId}`,
+  confirm: (itemId: string) => `qc:c:${itemId}`,
+  status: (itemId: string) => `qc:s:${itemId}`,
+} as const;
+
+export function parseQcDislikeCallback(data: string): string | null {
+  if (!data.startsWith("qc:d:")) return null;
+  const id = data.slice("qc:d:".length).trim();
+  return id || null;
+}
+
+export function parseQcConfirmCallback(data: string): string | null {
+  if (!data.startsWith("qc:c:")) return null;
+  const id = data.slice("qc:c:".length).trim();
+  return id || null;
+}
+
+export function parseQcStatusCallback(data: string): string | null {
+  if (!data.startsWith("qc:s:")) return null;
+  const id = data.slice("qc:s:".length).trim();
+  return id || null;
+}
 
 export function parseGenPickCallback(data: string): {
   kind: "photo" | "video" | null;
@@ -577,7 +599,7 @@ export async function templatePriceLabel(opts: {
 }): Promise<{
   /** Catalog / ops price before promos — always show this to the user. */
   basePrice: number;
-  /** What we actually charge now (0 only for verified free promos). */
+  /** What we actually charge now. */
   price: number;
   label: string;
   discountApplied: boolean;
@@ -585,6 +607,9 @@ export async function templatePriceLabel(opts: {
   studioDaily?: boolean;
   loraWelcome?: boolean;
 }> {
+  await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
+    ensurePriceOverlay(),
+  );
   const { prisma } = await import("@/lib/db");
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
 
@@ -610,39 +635,6 @@ export async function templatePriceLabel(opts: {
   const baseLabel = tFormat("gen_confirm_price", opts.locale, {
     price: basePrice,
   });
-
-  if (opts.kind === "photo" && opts.character) {
-    if (isStudioCastCharacter(opts.character)) {
-      if (await canUseStudioDailyFree(opts.userId)) {
-        return {
-          basePrice,
-          price: 0,
-          label: `${baseLabel}\n${t("studio_free_daily_note", opts.locale)}`,
-          discountApplied: false,
-          freePhoto: true,
-          studioDaily: true,
-        };
-      }
-    } else if (characterUsesLoraPhoto(opts.character)) {
-      const left = user?.tgLoraWelcomePhotosLeft ?? 0;
-      if (left > 0) {
-        const leftNote =
-          left > 1
-            ? `\n${tFormat("lora_welcome_photos_left", opts.locale, { n: left })}`
-            : "";
-        return {
-          basePrice,
-          price: 0,
-          label:
-            `${baseLabel}\n${t("gen_confirm_free_note", opts.locale)}` +
-            leftNote,
-          discountApplied: false,
-          freePhoto: true,
-          loraWelcome: true,
-        };
-      }
-    }
-  }
 
   if (opts.kind === "video" && user && !user.tgFirstVideoDiscountUsed && basePrice > 0) {
     const { applyFirstVideoDiscount } = await import("@/lib/tg-pricing");
@@ -670,14 +662,59 @@ export async function templatePriceLabel(opts: {
   };
 }
 
-export function successInlineKeyboard(locale: TgLocale) {
-  return {
-    inline_keyboard: [
-      [{ text: t("gen_again_photo_btn", locale), callback_data: GEN_CB.againPhoto }],
-      [{ text: t("gen_again_video_btn", locale), callback_data: GEN_CB.againVideo }],
-      [{ text: t("gen_to_hub_btn", locale), callback_data: GEN_CB.toHub }],
-    ],
-  };
+export function successInlineKeyboard(
+  locale: TgLocale,
+  opts?: {
+    kind?: "photo" | "video";
+    galleryItemId?: string;
+    qcStatus?: "idle" | "pending" | "approved" | "rejected";
+  },
+) {
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [
+    [{ text: t("gen_again_photo_btn", locale), callback_data: GEN_CB.againPhoto }],
+    [{ text: t("gen_again_video_btn", locale), callback_data: GEN_CB.againVideo }],
+    [{ text: t("gen_to_hub_btn", locale), callback_data: GEN_CB.toHub }],
+  ];
+
+  const itemId = opts?.galleryItemId?.trim();
+  const kind = opts?.kind;
+  const qcStatus = opts?.qcStatus || "idle";
+  if (itemId && kind) {
+    if (qcStatus === "pending") {
+      rows.push([
+        {
+          text: t("qc_btn_pending", locale),
+          callback_data: QC_CB.status(itemId),
+        },
+      ]);
+    } else if (qcStatus === "approved") {
+      rows.push([
+        {
+          text: t("qc_btn_approved", locale),
+          callback_data: QC_CB.status(itemId),
+        },
+      ]);
+    } else if (qcStatus === "rejected") {
+      rows.push([
+        {
+          text: t("qc_btn_rejected", locale),
+          callback_data: QC_CB.status(itemId),
+        },
+      ]);
+    } else {
+      rows.push([
+        {
+          text:
+            kind === "video"
+              ? t("qc_dislike_video_btn", locale)
+              : t("qc_dislike_photo_btn", locale),
+          callback_data: QC_CB.dislike(itemId),
+        },
+      ]);
+    }
+  }
+
+  return { inline_keyboard: rows };
 }
 
 export function genKindInlineKeyboard(locale: TgLocale) {

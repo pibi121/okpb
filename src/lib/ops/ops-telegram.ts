@@ -1,6 +1,6 @@
 /**
  * Staff Telegram bot for a forum-group with topics:
- * payments / signups / marketing digest / errors.
+ * payments / signups / marketing digest / errors / quality.
  *
  * Token + chat id come from env. Topic ids are created once and persisted
  * under data/ops-telegram.json (Railway volume) so restarts keep the same threads.
@@ -11,7 +11,13 @@ import { prisma } from "@/lib/db";
 import { dataRoot, ensureDataDirs } from "@/lib/paths";
 import { tgApiWithToken, tgSendMessage } from "@/lib/tg/telegram-api";
 
-export const OPS_TG_TOPICS = ["payments", "signups", "marketing", "errors"] as const;
+export const OPS_TG_TOPICS = [
+  "payments",
+  "signups",
+  "marketing",
+  "errors",
+  "quality",
+] as const;
 export type OpsTgTopic = (typeof OPS_TG_TOPICS)[number];
 
 const TOPIC_TITLES: Record<OpsTgTopic, string> = {
@@ -19,6 +25,7 @@ const TOPIC_TITLES: Record<OpsTgTopic, string> = {
   signups: "Регистрации",
   marketing: "Маркетинг",
   errors: "Ошибки",
+  quality: "Контроль качества",
 };
 
 const STATE_FILE = () => path.join(dataRoot(), "ops-telegram.json");
@@ -65,7 +72,9 @@ function envTopicId(topic: OpsTgTopic): number | undefined {
         ? "OPS_TG_TOPIC_SIGNUPS"
         : topic === "marketing"
           ? "OPS_TG_TOPIC_MARKETING"
-          : "OPS_TG_TOPIC_ERRORS";
+          : topic === "quality"
+            ? "OPS_TG_TOPIC_QUALITY"
+            : "OPS_TG_TOPIC_ERRORS";
   const n = Number(process.env[key] || 0);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
@@ -285,23 +294,27 @@ async function sendChunks(
   topic: OpsTgTopic,
   text: string,
   threadId: number | undefined,
-) {
+): Promise<number | undefined> {
   const token = envToken();
   const chatId = envChatId();
   const chunks = splitTelegram(text);
+  let lastMessageId: number | undefined;
   for (const chunk of chunks) {
     const extra: Record<string, unknown> = {
       disable_web_page_preview: true,
     };
     if (threadId) extra.message_thread_id = threadId;
     try {
-      await tgSendMessage(chatId, chunk, extra, token);
+      const sent = (await tgSendMessage(chatId, chunk, extra, token)) as {
+        message_id?: number;
+      };
+      if (typeof sent?.message_id === "number") lastMessageId = sent.message_id;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (threadId && /thread not found|TOPIC_CLOSED|MESSAGE_THREAD/i.test(msg)) {
         const state = await resolveTopics(true);
         const retryThread = state.topics[topic];
-        await tgSendMessage(
+        const sent = (await tgSendMessage(
           chatId,
           chunk,
           {
@@ -309,28 +322,42 @@ async function sendChunks(
             ...(retryThread ? { message_thread_id: retryThread } : {}),
           },
           token,
-        );
+        )) as { message_id?: number };
+        if (typeof sent?.message_id === "number") lastMessageId = sent.message_id;
       } else if (/retry after/i.test(msg)) {
         const sec = Number(msg.match(/retry after (\d+)/i)?.[1] || 2);
         await sleep(Math.min(15, sec) * 1000);
-        await tgSendMessage(chatId, chunk, extra, token);
+        const sent = (await tgSendMessage(chatId, chunk, extra, token)) as {
+          message_id?: number;
+        };
+        if (typeof sent?.message_id === "number") lastMessageId = sent.message_id;
       } else {
         throw e;
       }
     }
     await sleep(80);
   }
+  return lastMessageId;
 }
 
 export async function sendOpsTelegram(
   topic: OpsTgTopic,
   text: string,
 ): Promise<void> {
-  if (!opsTelegramConfigured()) return;
+  await sendOpsTelegramGetMessageId(topic, text);
+}
+
+/** Send to ops topic and return message id (last chunk) for later edits. */
+export async function sendOpsTelegramGetMessageId(
+  topic: OpsTgTopic,
+  text: string,
+): Promise<{ chatId: string; messageId: number } | null> {
+  if (!opsTelegramConfigured()) return null;
   const body = text.trim();
-  if (!body) return;
+  if (!body) return null;
 
   let lastErr: unknown;
+  let result: { chatId: string; messageId: number } | null = null;
   await enqueueSend(async () => {
     try {
       let state = readState();
@@ -349,7 +376,11 @@ export async function sendOpsTelegram(
         threadId || state?.isForum
           ? body
           : `<b>${TOPIC_TITLES[topic]}</b>\n${body}`;
-      await sendChunks(topic, prefixed, threadId);
+      const messageId = await sendChunks(topic, prefixed, threadId);
+      const chatId = envChatId();
+      if (messageId && chatId) {
+        result = { chatId, messageId };
+      }
     } catch (e) {
       lastErr = e;
       console.error(
@@ -360,6 +391,23 @@ export async function sendOpsTelegram(
     }
   });
   if (lastErr) throw lastErr;
+  return result;
+}
+
+export async function editOpsTelegramMessage(
+  chatId: string,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  const token = envToken();
+  if (!token || !chatId || !messageId) return;
+  await tgApiWithToken(token, "editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
 }
 
 export async function pingOpsTelegramTopics(): Promise<string> {

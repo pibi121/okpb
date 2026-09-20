@@ -27,8 +27,16 @@ export function errorFingerprint(kind: string, message: string): string {
   return createHash("sha1").update(`${kind}|${n}`).digest("hex").slice(0, 24);
 }
 
+/** User blocked the bot / chat gone — normal Telegram, not an ops incident. */
+export function isDeadTelegramRecipient(message: string): boolean {
+  return /bot was blocked|chat not found|user is deactivated|Forbidden: bot|bot can't initiate|PEER_ID_INVALID/i.test(
+    message || "",
+  );
+}
+
 /** Expected UX / safety messages — do not spam Owner ops chat. */
 export function isExpectedClientError(message: string): boolean {
+  if (isDeadTelegramRecipient(message || "")) return true;
   return /age_gate|возраст|несовершеннолетн|minor|18\+|завершить обучение|finish training|шаблон не найден|max photos|already_training|недостаточно (средств|кредит)|insufficient|баланс|оплат|payment required|need_photos|нужно фото/i.test(
     message || "",
   );

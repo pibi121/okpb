@@ -56,36 +56,50 @@ async function pollOneBot(bot: LiveBot) {
               try {
                 await handleTgCallbackQuery(u.callback_query);
               } catch (e) {
-                console.error(`[tg-bot @${bot.username}] callback error:`, e);
-                void import("../src/lib/ops/errors")
-                  .then(({ reportOpsError }) =>
-                    reportOpsError({
-                      kind: "bot",
-                      message: e instanceof Error ? e.message : String(e),
-                      stack: e instanceof Error ? e.stack : undefined,
-                      stage: "poll_callback",
-                      meta: { bot: bot.username },
-                    }),
-                  )
-                  .catch(() => undefined);
+                const msg = e instanceof Error ? e.message : String(e);
+                const { isDeadTelegramRecipient, reportOpsError } = await import(
+                  "../src/lib/ops/errors"
+                );
+                if (isDeadTelegramRecipient(msg)) {
+                  console.warn(
+                    `[tg-bot @${bot.username}] callback skipped (blocked/gone):`,
+                    msg,
+                  );
+                } else {
+                  console.error(`[tg-bot @${bot.username}] callback error:`, e);
+                  void reportOpsError({
+                    kind: "bot",
+                    message: msg,
+                    stack: e instanceof Error ? e.stack : undefined,
+                    stage: "poll_callback",
+                    meta: { bot: bot.username },
+                  }).catch(() => undefined);
+                }
               }
             }
             if (u.message) {
               try {
                 await handleTgMessage(u.message);
               } catch (e) {
-                console.error(`[tg-bot @${bot.username}] message error:`, e);
-                void import("../src/lib/ops/errors")
-                  .then(({ reportOpsError }) =>
-                    reportOpsError({
-                      kind: "bot",
-                      message: e instanceof Error ? e.message : String(e),
-                      stack: e instanceof Error ? e.stack : undefined,
-                      stage: "poll_message",
-                      meta: { bot: bot.username },
-                    }),
-                  )
-                  .catch(() => undefined);
+                const msg = e instanceof Error ? e.message : String(e);
+                const { isDeadTelegramRecipient, reportOpsError } = await import(
+                  "../src/lib/ops/errors"
+                );
+                if (isDeadTelegramRecipient(msg)) {
+                  console.warn(
+                    `[tg-bot @${bot.username}] message skipped (blocked/gone):`,
+                    msg,
+                  );
+                } else {
+                  console.error(`[tg-bot @${bot.username}] message error:`, e);
+                  void reportOpsError({
+                    kind: "bot",
+                    message: msg,
+                    stack: e instanceof Error ? e.stack : undefined,
+                    stage: "poll_message",
+                    meta: { bot: bot.username },
+                  }).catch(() => undefined);
+                }
               }
             }
           },
@@ -109,6 +123,9 @@ async function main() {
     void pollTgLoraTrainings().catch((e) => console.error("[tg-lora-poll]", e));
     void pollTgFunnelDrips().catch((e) => console.error("[tg-funnel-poll]", e));
     void ensureCopyOverlay().catch(() => undefined);
+    void import("../src/lib/ops/prices")
+      .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
+      .catch(() => undefined);
   }, 2000);
 
   let bots = await loadPollableBots();

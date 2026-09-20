@@ -38,9 +38,7 @@ export async function listPublicPhotoTemplates(
     title: localizedTitle(r, locale),
     notes: localizedNotes(r, locale),
     tier: (r.tier === "pose" ? "pose" : "basic") as TgPhotoTier,
-    pricePeaches:
-      r.pricePeaches ||
-      tgPhotoPeaches(r.tier === "pose" ? "pose" : "basic"),
+    pricePeaches: tgPhotoPeaches(r.tier === "pose" ? "pose" : "basic"),
     previewImageUrl: r.previewImageUrl || r.sceneImageUrl,
     hasSpeech: r.hasSpeech,
   }));

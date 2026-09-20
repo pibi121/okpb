@@ -295,6 +295,7 @@ async function runPhotoJob(itemId: string, userId: string, opts: PhotoPayload) {
         kind: "photo",
         mediaUrl: saved.publicUrl,
         caption: out.title || "Photo",
+        galleryItemId: itemId,
       }).catch((e) => console.error("[peach] tg photo notify:", e));
       if (opts.templateRunFrameId) {
         await prisma.templateRunFrame.updateMany({

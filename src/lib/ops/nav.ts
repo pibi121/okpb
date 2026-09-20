@@ -4,6 +4,7 @@ export const OPS_NAV: { href: string; section: OpsSection; label: string }[] = [
   { href: "/ops", section: "dashboard", label: "Главная" },
   { href: "/ops/users", section: "users", label: "Люди" },
   { href: "/ops/jobs", section: "jobs", label: "Работы" },
+  { href: "/ops/quality", section: "quality", label: "Контроль качества" },
   { href: "/ops/errors", section: "errors", label: "Ошибки" },
   { href: "/ops/load", section: "load", label: "Нагрузка" },
   { href: "/ops/queue", section: "queue", label: "Очередь" },

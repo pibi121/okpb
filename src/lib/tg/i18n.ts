@@ -56,7 +56,7 @@ Please accept our <a href="{rulesUrl}">Terms of Service</a> and confirm you are 
 
 Что можно в этом боте?
 
-1. <b>Бесплатно</b> сгенерировать фото на актрисах студии — проверить качество
+1. Сгенерировать фото на актрисах студии — на старте на балансе есть персики на одно фото
 2. Создать <b>реалистичные фото</b> со своей моделью (после обучения)
 3. <b>Оживить</b> фото или снять <b>видео</b> с сюжетами, позами и диалогами
 
@@ -67,7 +67,7 @@ Please accept our <a href="{rulesUrl}">Terms of Service</a> and confirm you are 
 
 What you can do:
 
-1. <b>Free</b> photos with studio actresses — see the quality
+1. Photos with studio actresses — starter peaches cover one photo so you can check quality
 2. <b>Realistic photos</b> with your own model (after training)
 3. <b>Animate</b> photos or shoot <b>videos</b> with plots, poses & dialogue
 
@@ -236,13 +236,13 @@ PeachBitch это не бот раздеватор, а полноценная И
     ru: `Стоимость обучения персонажа (от 5 фото, до 20): <b>{price}🍑</b>
 (обучается один раз — потом генерировать можно всегда)
 
-<b>Акция!</b> Оплати и запусти обучение в течение 30 минут — получи <b>5 генераций фото</b> в подарок.
+<b>Акция!</b> Оплати и запусти обучение в течение 30 минут — выгоднее успеть сейчас.
 
 На балансе должно быть от {price}🍑. У тебя сейчас: <b>{balance}🍑</b>.`,
     en: `Character training (5–20 photos): <b>{price}🍑</b>
 (one-time — then generate forever)
 
-<b>Promo!</b> Pay and start training within 30 minutes — get <b>5 free photo</b> generations.
+<b>Promo!</b> Pay and start training within 30 minutes — better to catch it now.
 
 You need {price}🍑 on balance. Yours: <b>{balance}🍑</b>.`,
   },
@@ -613,6 +613,35 @@ When ready — tap «Done, start».`,
   gen_again_video_btn: { ru: "Сгенерировать видео", en: "Generate video" },
   gen_to_hub_btn: { ru: "В главное меню", en: "Main menu" },
 
+  qc_dislike_photo_btn: {
+    ru: "Не понравилось фото",
+    en: "Didn't like the photo",
+  },
+  qc_dislike_video_btn: {
+    ru: "Не понравилось видео",
+    en: "Didn't like the video",
+  },
+  qc_confirm_prompt: {
+    ru: `Если результат не соответствует заявленному по вашему мнению, нажми «Подтвердить». Мы просмотрим работу и если действительно так, то вернём персики на баланс.`,
+    en: `If the result doesn't match what was promised in your view, tap Confirm. We'll review it and refund peaches if you're right.`,
+  },
+  qc_confirm_btn: { ru: "Подтвердить", en: "Confirm" },
+  qc_submitted: {
+    ru: "Отправлено на проверку",
+    en: "Sent for review",
+  },
+  qc_btn_pending: { ru: "На рассмотрении", en: "Under review" },
+  qc_btn_approved: { ru: "Возврат одобрен", en: "Refund approved" },
+  qc_btn_rejected: { ru: "Возврат отменён", en: "Refund declined" },
+  qc_approved_notice: {
+    ru: "✅ Возврат одобрен. +{n} 🍑\nБаланс: {balance} 🍑",
+    en: "✅ Refund approved. +{n} 🍑\nBalance: {balance} 🍑",
+  },
+  qc_rejected_notice: {
+    ru: "Заявка на возврат отклонена.",
+    en: "Refund request declined.",
+  },
+
   /** Anti-ban backup links — after first hub + gens 1/3/6/9. */
   /** Reserve / standby bot — only /start reply until cutover. */
   standby_bot_notice: {
@@ -775,10 +804,10 @@ Browse examples and templates via the buttons below or open the Studio.`,
   hub_main_free_offer: {
     ru: `
 
-🎁 Сейчас тебе доступна 1 бесплатная генерация фото по образу с нашими актрисами, готовыми образами. Просто попробуй, убедись насколько реалистичные кадры получаются`,
+🎁 На старте на баланс начислены персики на одно фото с актрисой студии — попробуй и оцени качество.`,
     en: `
 
-🎁 You have 1 free look-based photo with our actresses. Try it and see how realistic the frames are`,
+🎁 Starter peaches for one studio actress photo are on your balance — try it and check the quality.`,
   },
 
   hub_btn_video_one: {

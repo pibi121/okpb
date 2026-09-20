@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import { setActiveTgCharacter } from "@/lib/tg/character-service";
 import { startTgPhotoGeneration } from "@/lib/tg/generation-service";
-import { canUseStudioDailyFree } from "@/lib/tg/tg-promo";
 import { templatePriceLabel } from "@/lib/tg/generation-flow";
 import { getPhotoTemplate } from "@/lib/photo-template";
 import { normalizeLocale } from "@/lib/tg/i18n";
@@ -87,7 +86,7 @@ export async function POST(req: Request) {
         { status: 402 },
       );
     }
-  } else if (!pricing.freePhoto && !pricing.studioDaily && !pricing.loraWelcome) {
+  } else {
     const need = Math.max(1, pricing.basePrice);
     const bal = await getBalancePeaches(userId);
     if (bal < need) {
@@ -104,8 +103,6 @@ export async function POST(req: Request) {
       platformUserId,
       templateId: body.templateId,
       characterId: character.id,
-      studioDaily: Boolean(pricing.studioDaily && pricing.freePhoto),
-      loraWelcome: Boolean(pricing.loraWelcome && pricing.freePhoto),
     });
     return NextResponse.json({
       ok: true,

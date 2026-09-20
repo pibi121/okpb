@@ -36,11 +36,6 @@ import {
   isStudioCastCharacter,
   characterUsesLoraPhoto,
 } from "@/lib/tg/studio-cast";
-import {
-  canUseStudioDailyFree,
-  consumeLoraWelcomePhoto,
-  consumeStudioDailyFree,
-} from "@/lib/tg/tg-promo";
 
 import {
   applySpeechFills,
@@ -88,6 +83,9 @@ export async function resolveTemplatePricePeaches(opts: {
   /** When set, photo price splits actress vs own LoRA. */
   characterId?: string;
 }): Promise<number> {
+  await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
+    ensurePriceOverlay(),
+  );
   if (opts.kind === "photo") {
     const row = await getPhotoTemplate(opts.templateId);
     if (!row) throw new Error("template not found");
@@ -220,6 +218,7 @@ export async function startTgLoraI2vGeneration(opts: {
         loraI2vTemplateId: tpl.id,
         stillPrompt: tpl.stillPrompt,
         durationSec: tpl.durationSec,
+        chargedPeaches: price,
       }),
     },
   });
@@ -410,7 +409,7 @@ function enqueueLoraI2vJob(opts: {
             }),
           },
         });
-        await notifyTgVideoReady(userId, saved.publicUrl, title);
+        await notifyTgVideoReady(userId, saved.publicUrl, title, undefined, itemId);
         return;
       }
 
@@ -534,7 +533,7 @@ function enqueueLoraI2vJob(opts: {
                 }),
               },
             });
-            await notifyTgVideoReady(userId, saved.publicUrl, title);
+            await notifyTgVideoReady(userId, saved.publicUrl, title, undefined, itemId);
             return;
           }
 
@@ -602,7 +601,7 @@ function enqueueLoraI2vJob(opts: {
             }),
           },
         });
-        await notifyTgVideoReady(userId, saved.publicUrl, title);
+        await notifyTgVideoReady(userId, saved.publicUrl, title, undefined, itemId);
       } finally {
         for (const p of tmpCleanup) {
           try {
@@ -909,6 +908,13 @@ export async function startTgVideoGeneration(opts: {
     select: { galleryItemId: true },
   });
 
+  if (linked?.galleryItemId && price > 0) {
+    const { patchGalleryChargedPeaches } = await import(
+      "@/lib/tg/quality-claim"
+    );
+    await patchGalleryChargedPeaches(linked.galleryItemId, price);
+  }
+
   return {
     runId: run.id,
     galleryItemId: linked?.galleryItemId ?? undefined,
@@ -957,20 +963,9 @@ export async function startTgPhotoGeneration(opts: {
   let price = priceForPhotoCharacter({
     isStudioCast: isStudioCastCharacter(character),
   });
-  let freePhoto = false;
+  const freePhoto = false;
 
-  if (opts.studioDaily) {
-    const ok = await canUseStudioDailyFree(opts.userId);
-    if (!ok) throw new Error("Ежедневный бесплатный кадр уже использован");
-    price = 0;
-    freePhoto = true;
-    await consumeStudioDailyFree(opts.userId);
-  } else if (opts.loraWelcome) {
-    const w = await consumeLoraWelcomePhoto(opts.userId);
-    if (!w.used) throw new Error("Подарочные генерации закончились");
-    price = 0;
-    freePhoto = true;
-  } else if (price > 0) {
+  if (price > 0) {
     const paid = await debitPeaches(opts.userId, price, "tg_photo", {
       templateId: opts.templateId,
     });
@@ -1021,9 +1016,17 @@ export async function startTgPhotoGeneration(opts: {
         url: saved.publicUrl,
         caption: row.title,
         successKind: "photo",
+        galleryItemId: mockItem.id,
+        chargedPeaches: price,
         locale: user.locale?.startsWith("en") ? "en" : "ru",
       },
     });
+    if (price > 0) {
+      const { patchGalleryChargedPeaches } = await import(
+        "@/lib/tg/quality-claim"
+      );
+      await patchGalleryChargedPeaches(mockItem.id, price);
+    }
     return {
       galleryItemId: mockItem.id,
       chargedPeaches: price,
@@ -1055,6 +1058,13 @@ export async function startTgPhotoGeneration(opts: {
     width: 888,
     height: 1176,
   });
+
+  if (price > 0) {
+    const { patchGalleryChargedPeaches } = await import(
+      "@/lib/tg/quality-claim"
+    );
+    await patchGalleryChargedPeaches(item.id, price);
+  }
 
   return {
     galleryItemId: item.id,
@@ -1122,6 +1132,7 @@ async function mockCompleteVideoRun(opts: {
     saved.publicUrl,
     opts.title,
     opts.characterId,
+    item.id,
   );
 
   return { runId: run.id, galleryItemId: item.id };
@@ -1131,6 +1142,7 @@ export async function notifyTgPhotoReady(
   userId: string,
   photoUrl: string,
   title: string,
+  galleryItemId?: string,
 ) {
   const { notifyTelegramMediaReady } = await import("@/lib/tg/tg-notify");
   await notifyTelegramMediaReady({
@@ -1138,6 +1150,7 @@ export async function notifyTgPhotoReady(
     kind: "photo",
     mediaUrl: photoUrl,
     caption: title,
+    galleryItemId,
   });
 }
 
@@ -1146,6 +1159,7 @@ export async function notifyTgVideoReady(
   videoUrl: string,
   title: string,
   characterId?: string,
+  galleryItemId?: string,
 ) {
   let offerSaveCharacterId: string | undefined;
   if (characterId) {
@@ -1164,5 +1178,6 @@ export async function notifyTgVideoReady(
     mediaUrl: videoUrl,
     caption: title,
     offerSaveCharacterId,
+    galleryItemId,
   });
 }

@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/db";
 import { TG_PROMO } from "@/lib/tg-pricing";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export function isSameUtcDay(a: Date, b: Date): boolean {
   return (
     a.getUTCFullYear() === b.getUTCFullYear() &&
@@ -11,16 +9,8 @@ export function isSameUtcDay(a: Date, b: Date): boolean {
   );
 }
 
-/** Mini App visit: grant daily studio free if 24h passed since last use. */
 export async function recordMiniAppVisit(userId: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return;
-
   const now = new Date();
-  const lastUse = user.tgStudioDailyUsedAt;
-  const eligible =
-    !lastUse || now.getTime() - lastUse.getTime() >= DAY_MS;
-
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -28,32 +18,18 @@ export async function recordMiniAppVisit(userId: string): Promise<void> {
       tgLastActiveAt: now,
       tgIdle3dSent: false,
       tgIdle7dSent: false,
-      ...(eligible ? { tgStudioFreeReady: true } : {}),
     },
   });
 }
 
-export async function canUseStudioDailyFree(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.tgStudioFreeReady) return false;
-  if (!user.tgLastMiniAppAt) return false;
-
-  const now = new Date();
-  const lastUse = user.tgStudioDailyUsedAt;
-  if (lastUse && now.getTime() - lastUse.getTime() < DAY_MS) {
-    return false;
-  }
-  return true;
+/** @deprecated Free daily studio photo removed — always false. */
+export async function canUseStudioDailyFree(_userId: string): Promise<boolean> {
+  return false;
 }
 
-export async function consumeStudioDailyFree(userId: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      tgStudioDailyUsedAt: new Date(),
-      tgStudioFreeReady: false,
-    },
-  });
+/** @deprecated Free daily studio photo removed. */
+export async function consumeStudioDailyFree(_userId: string): Promise<void> {
+  /* no-op */
 }
 
 export async function startLoraBonusWindow(userId: string): Promise<Date> {
@@ -72,25 +48,16 @@ export function loraBonusActive(expiresAt: Date | null | undefined): boolean {
   return expiresAt.getTime() > Date.now();
 }
 
-export async function grantLoraWelcomePhotos(userId: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { tgLoraWelcomePhotosLeft: TG_PROMO.loraWelcomePhotos },
-  });
+/** @deprecated LoRA welcome free photos removed. */
+export async function grantLoraWelcomePhotos(_userId: string): Promise<void> {
+  /* no-op */
 }
 
+/** @deprecated LoRA welcome free photos removed. */
 export async function consumeLoraWelcomePhoto(
-  userId: string,
+  _userId: string,
 ): Promise<{ used: boolean; left: number }> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  const left = user?.tgLoraWelcomePhotosLeft ?? 0;
-  if (left <= 0) return { used: false, left: 0 };
-  const next = left - 1;
-  await prisma.user.update({
-    where: { id: userId },
-    data: { tgLoraWelcomePhotosLeft: next },
-  });
-  return { used: true, left: next };
+  return { used: false, left: 0 };
 }
 
 export async function scheduleWelcomePush(userId: string): Promise<void> {

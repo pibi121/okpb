@@ -6,7 +6,7 @@ import { listStudioCasts, hasRealCharacterLora } from "@/lib/tg/studio-cast";
 import { pickCharacterCoverUrl } from "@/lib/tg/tg-catalog";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { listFavoriteCastIds } from "@/lib/tg/cast-favorites";
-import { TG_PROMO, TG_PREMIUM } from "@/lib/tg-pricing";
+import { TG_PROMO, loraTrainPeaches } from "@/lib/tg-pricing";
 import {
   TG_MAX_LORA_PHOTOS,
   TG_MIN_LORA_PHOTOS,
@@ -68,6 +68,10 @@ export async function GET(req: Request) {
         : undefined,
   }));
 
+  await import("@/lib/ops/prices")
+    .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
+    .catch(() => undefined);
+
   return NextResponse.json({
     balancePeaches: user.balancePeaches,
     locale: normalizeLocale(user.locale || locale),
@@ -78,7 +82,7 @@ export async function GET(req: Request) {
       firstVideoDiscountPct: TG_PROMO.firstVideoDiscountPct,
     },
     train: {
-      pricePeaches: TG_PREMIUM.loraTrainPeaches,
+      pricePeaches: loraTrainPeaches(),
       minPhotos: TG_MIN_LORA_PHOTOS,
       maxPhotos: TG_MAX_LORA_PHOTOS,
     },

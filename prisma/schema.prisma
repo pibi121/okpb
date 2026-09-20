@@ -73,6 +73,7 @@ model User {
   ledger            LedgerEntry[]
   paymentOrders     PaymentOrder[]
   galleryItems      GalleryItem[]
+  qualityClaims     QualityClaim[]
   peachPresets      PeachPreset[]
   testSessions      TestSession[]
   peachFilmProjects PeachFilmProject[]
@@ -166,8 +167,39 @@ model GalleryItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character    Character?    @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  qualityClaim QualityClaim?
+}
+
+/// User disputed a TG generation — staff reviews in /ops/quality.
+model QualityClaim {
+  id               String    @id @default(cuid())
+  userId           String
+  galleryItemId    String    @unique
+  /// photo | video
+  kind             String
+  /// pending | approved | rejected
+  status           String    @default("pending")
+  /// Peaches charged for this generation (0 = free / unknown)
+  chargedPeaches   Int       @default(0)
+  refundedPeaches  Int       @default(0)
+  /// Success keyboard message in user chat (edit button label)
+  tgChatId         String    @default("")
+  tgMessageId      Int?
+  /// Ops forum notification (edit status text)
+  opsChatId        String    @default("")
+  opsMessageId     Int?
+  reviewedById     String?
+  reviewedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  galleryItem GalleryItem @relation(fields: [galleryItemId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 model PeachPreset {

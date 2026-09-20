@@ -85,7 +85,8 @@ export const inboxHumanThreadWhere = {
 
 export function peachReasonLabel(reason: string): string {
   const r = reason.toLowerCase();
-  if (/refund|возврат/.test(r)) return "возврат 🍑";
+  if (/refund|возврат|qc_refund/.test(r)) return "возврат 🍑";
+  if (/tg_starter|starter/.test(r)) return "стартовый баланс";
   if (/topup|payment|начисл|paid/.test(r)) return "пополнение";
   if (/lora_train|tg_lora_train/.test(r) && !/refund/.test(r))
     return "обучение LoRA";

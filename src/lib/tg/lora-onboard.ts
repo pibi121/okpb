@@ -9,10 +9,6 @@ import {
 import { useComfy } from "@/lib/metalnode-config";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { debitPeaches, getBalancePeaches, creditPeaches } from "@/lib/tg/wallet";
-import {
-  grantLoraWelcomePhotos,
-  loraBonusActive,
-} from "@/lib/tg/tg-promo";
 import { enqueueTgOutbox } from "@/lib/tg/session";
 import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
@@ -217,6 +213,9 @@ export async function startLoraTrainingForUser(opts: {
     });
   }
 
+  await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
+    ensurePriceOverlay(),
+  );
   const price = loraTrainPeaches();
   const bal = await getBalancePeaches(opts.userId);
   if (bal < price) {
@@ -259,11 +258,6 @@ export async function startLoraTrainingForUser(opts: {
       )
       .catch(() => undefined);
     return { ok: false, error: "debit_failed", price, balance: bal };
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: opts.userId } });
-  if (user && loraBonusActive(user.tgLoraBonusExpiresAt)) {
-    await grantLoraWelcomePhotos(opts.userId);
   }
 
   await prisma.character.update({
@@ -372,10 +366,7 @@ export async function notifyTgLoraTrainingComplete(characterId: string): Promise
   if (!acc) return;
 
   const locale = acc.user.locale?.startsWith("en") ? "en" : "ru";
-  let body = tFormat("onboard_lora_ready", locale, { name: ch.name });
-  if ((acc.user.tgLoraWelcomePhotosLeft ?? 0) > 0) {
-    body += t("onboard_lora_welcome_bonus", locale);
-  }
+  const body = tFormat("onboard_lora_ready", locale, { name: ch.name });
 
   await enqueueTgOutbox({
     platformUserId: acc.platformUserId,

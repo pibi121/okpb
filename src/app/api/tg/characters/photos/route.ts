@@ -12,7 +12,7 @@ import {
   listCharacterPhotos,
 } from "@/lib/character-dataset";
 import { prisma } from "@/lib/db";
-import { TG_PREMIUM } from "@/lib/tg-pricing";
+import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { limits } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -195,7 +195,7 @@ export async function POST(req: Request) {
     readyToTrain: characterReadyForLoraTrain(body.characterId),
     minPhotos: TG_MIN_LORA_PHOTOS,
     maxPhotos: TG_MAX_LORA_PHOTOS,
-    trainPrice: TG_PREMIUM.loraTrainPeaches,
+    trainPrice: loraTrainPeaches(),
     ...(errors.length ? { partialErrors: errors } : {}),
   });
 }

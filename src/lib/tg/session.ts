@@ -70,6 +70,10 @@ export type TgPending = {
   rulesAutoAt?: number;
   /** Rules already auto-sent for this onboarding attempt */
   rulesAutoSent?: boolean;
+  /** QC: gallery item waiting confirm */
+  qcItemId?: string;
+  /** QC: success keyboard message id to edit */
+  qcSuccessMessageId?: number;
 };
 
 export async function getTgSession(platformUserId: string) {

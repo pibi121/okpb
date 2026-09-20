@@ -198,7 +198,7 @@ function CharacterCard({
           </BorderBeam>
         ) : coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={coverUrl} alt="" className="tg-portrait-img" />
+          <img src={coverUrl} alt="" className="tg-portrait-img" loading="lazy" decoding="async" />
         ) : (
           <div className="tg-portrait-placeholder" />
         )}
@@ -667,7 +667,7 @@ function TgCharactersPageInner() {
             {saved.map((p) => (
               <div key={p.name} className="tg-photo-thumb-wrap">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt="" className="tg-photo-thumb" />
+                <img src={p.url} alt="" className="tg-photo-thumb" loading="lazy" decoding="async" />
                 <button
                   type="button"
                   className="tg-photo-del"

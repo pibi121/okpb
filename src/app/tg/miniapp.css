@@ -832,6 +832,11 @@
   display: block;
 }
 
+.tg-gallery-thumb--video {
+  background:
+    linear-gradient(160deg, #2a2a2e 0%, #141416 55%, #1c1c20 100%);
+}
+
 .tg-gallery-badge {
   position: absolute;
   right: 0.4rem;

@@ -9,6 +9,7 @@ import {
   downloadGalleryItem,
   type TgGalleryItem,
 } from "@/lib/tg/miniapp/generation-view";
+import { TgCatalogVideo } from "@/lib/tg/miniapp/catalog-video";
 
 import {
   TgBannerCarousel,
@@ -95,10 +96,17 @@ function GalleryTile({
   return (
     <button type="button" className="tg-gallery-tile" onClick={onOpen}>
       {item.kind === "video" ? (
-        <video src={url} muted playsInline className="tg-gallery-thumb" />
+        // Play only while the tile is on screen — off-screen tiles stay idle.
+        <TgCatalogVideo src={url} className="tg-gallery-thumb" />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="tg-gallery-thumb" />
+        <img
+          src={url}
+          alt=""
+          className="tg-gallery-thumb"
+          loading="lazy"
+          decoding="async"
+        />
       )}
       <span className="tg-gallery-badge">
         {item.kind === "video" ? "🎬" : "📸"}

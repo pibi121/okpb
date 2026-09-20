@@ -61,6 +61,9 @@ export async function GET(req: Request) {
   const includeSpeech =
     url.searchParams.get("include") === "speech" ||
     url.searchParams.get("includeSpeech") === "1";
+  /** Optional: resolve speech only for one template (Mini App defers speech until pick). */
+  const idFilter =
+    url.searchParams.get("id") || url.searchParams.get("templateId") || "";
   const localeParam = url.searchParams.get("locale");
   const user = await prisma.user.findUnique({ where: { id: userId } });
   const locale = normalizeLocale(localeParam || user?.locale);
@@ -94,7 +97,9 @@ export async function GET(req: Request) {
 
       let hasSpeech = Boolean(row.hasSpeech);
       let speechSlots: ReturnType<typeof speechSlotsPublicDto> | undefined;
-      if (includeSpeech) {
+      const wantSpeech =
+        includeSpeech && (!idFilter || idFilter === t.id);
+      if (wantSpeech) {
         const speech = await resolveVideoTemplateSpeech(t.id);
         hasSpeech = speech.hasSpeech;
         speechSlots = speechSlotsPublicDto(speech.slots, locale);
@@ -151,7 +156,9 @@ export async function GET(req: Request) {
       full?.stillPrompt || "",
     );
     const hasSpeech = templateHasSpeech(slotsRaw);
-    const speechSlots = includeSpeech
+    const wantSpeech =
+      includeSpeech && (!idFilter || idFilter === t.id);
+    const speechSlots = wantSpeech
       ? speechSlotsPublicDto(slotsRaw, locale)
       : undefined;
 
@@ -201,10 +208,17 @@ export async function GET(req: Request) {
     sceneCategory: (p as { sceneCategory?: string }).sceneCategory || "",
   }));
 
+  let videoOut = shuffleInPlace([...loraWithPreview, ...videoWithPreview]);
+  let photoOut = shuffleInPlace([...photoMapped]);
+  if (idFilter) {
+    videoOut = videoOut.filter((t) => t.id === idFilter);
+    photoOut = photoOut.filter((t) => t.id === idFilter);
+  }
+
   return NextResponse.json({
     // Mix max-quality (lora_i2v) with regular quick videos — no priority order.
-    video: shuffleInPlace([...loraWithPreview, ...videoWithPreview]),
-    photo: shuffleInPlace([...photoMapped]),
+    video: videoOut,
+    photo: photoOut,
     locale,
   });
 }

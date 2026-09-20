@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 /**
- * Catalog / grid video thumb.
- * iOS Telegram WebView often paints black for <video preload="metadata">
- * until play() — especially without a poster. Autoplay muted when visible.
+ * Catalog / grid video thumb — poster-first like the TG feed.
+ * Cold (off-screen): <img> poster only (TG WebView paints black empty <video>).
+ * Hot (visible): attach video src + muted autoplay.
+ * Pass eager for detail / lightbox (always attach src).
  */
 export function TgCatalogVideo({
   src,
@@ -13,18 +14,44 @@ export function TgCatalogVideo({
   className,
   style,
   onClick,
+  eager = false,
 }: {
   src: string;
   poster?: string | null;
   className?: string;
   style?: CSSProperties;
   onClick?: (el: HTMLVideoElement) => void;
+  eager?: boolean;
 }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [hot, setHot] = useState(eager);
+  const posterUrl = (poster || "").trim();
+  const videoUrl = (src || "").trim();
+  const showVideo = Boolean(videoUrl && (eager || hot));
 
   useEffect(() => {
-    const v = ref.current;
-    if (!v || !src) return;
+    if (eager) {
+      setHot(true);
+      return;
+    }
+    const el = wrapRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          setHot(e.isIntersecting);
+        }
+      },
+      { threshold: 0.2, rootMargin: "120px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [eager]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !showVideo || !videoUrl) return;
 
     v.muted = true;
     v.defaultMuted = true;
@@ -39,12 +66,11 @@ export function TgCatalogVideo({
     };
 
     const onReady = () => {
-      // Force decode of first frame if still paused/black.
       if (v.readyState >= 2 && v.paused && v.currentTime < 0.05) {
         try {
           v.currentTime = 0.001;
         } catch {
-          /* ignore seek errors before enough data */
+          /* ignore */
         }
       }
       tryPlay();
@@ -52,45 +78,68 @@ export function TgCatalogVideo({
 
     v.addEventListener("loadeddata", onReady);
     v.addEventListener("canplay", onReady);
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) tryPlay();
-          else v.pause();
-        }
-      },
-      { threshold: 0.25, rootMargin: "80px" },
-    );
-    io.observe(v);
-
-    // Kick once in case already in viewport.
     tryPlay();
 
     return () => {
       v.removeEventListener("loadeddata", onReady);
       v.removeEventListener("canplay", onReady);
-      io.disconnect();
       v.pause();
     };
-  }, [src]);
+  }, [showVideo, videoUrl]);
+
+  const wrapStyle: CSSProperties = {
+    display: "block",
+    width: "100%",
+    ...(eager ? {} : { height: "100%" }),
+    lineHeight: 0,
+  };
 
   return (
-    <video
-      ref={ref}
-      src={src}
-      poster={poster || undefined}
-      className={className}
-      style={style}
-      muted
-      loop
-      playsInline
-      autoPlay
-      preload="auto"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick?.(e.currentTarget);
-      }}
-    />
+    <div ref={wrapRef} style={wrapStyle}>
+      {showVideo ? (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          poster={posterUrl || undefined}
+          className={className}
+          style={style}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          onClick={
+            onClick
+              ? (e) => {
+                  e.stopPropagation();
+                  onClick(e.currentTarget);
+                }
+              : undefined
+          }
+        />
+      ) : posterUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={posterUrl}
+          alt=""
+          className={className}
+          style={style}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <div
+          className={className}
+          style={{
+            ...style,
+            width: "100%",
+            height: "100%",
+            minHeight: "4rem",
+            background: "#1a1a1c",
+          }}
+          aria-hidden
+        />
+      )}
+    </div>
   );
 }

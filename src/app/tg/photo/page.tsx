@@ -173,7 +173,7 @@ function PhotoPageInner() {
                 <div className="tg-portrait-media">
                   {t.previewImageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.previewImageUrl} alt="" className="tg-portrait-img" />
+                    <img src={t.previewImageUrl} alt="" className="tg-portrait-img" loading="lazy" decoding="async" />
                   ) : (
                     <div className="tg-portrait-placeholder" />
                   )}
@@ -238,7 +238,7 @@ function PhotoPageInner() {
                   <div className="tg-portrait-media">
                     {c.coverUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.coverUrl} alt="" className="tg-portrait-img" />
+                      <img src={c.coverUrl} alt="" className="tg-portrait-img" loading="lazy" decoding="async" />
                     ) : (
                       <div className="tg-portrait-placeholder" />
                     )}
@@ -271,7 +271,7 @@ function PhotoPageInner() {
                   <div className="tg-portrait-media">
                     {c.coverUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.coverUrl} alt="" className="tg-portrait-img" />
+                      <img src={c.coverUrl} alt="" className="tg-portrait-img" loading="lazy" decoding="async" />
                     ) : (
                       <div className="tg-portrait-placeholder" />
                     )}

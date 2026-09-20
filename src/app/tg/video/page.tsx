@@ -143,12 +143,11 @@ function VideoPageInner() {
     Record<string, { text: string; lang: string }>
   >({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const speechFetchedRef = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [tRes, rRes, meRes] = await Promise.all([
-      apiFetch(
-        `/api/tg/templates?kind=video&locale=${locale}&include=speech`,
-      ),
+      apiFetch(`/api/tg/templates?kind=video&locale=${locale}`),
       apiFetch("/api/tg/video-refs"),
       apiFetch(`/api/tg/me?locale=${locale}`),
     ]);
@@ -221,6 +220,47 @@ function VideoPageInner() {
   const isLoraI2v = tpl?.templateKind === "lora_i2v" || !!tpl?.requiresLora;
   const speechSlots = tpl?.speechSlots || [];
 
+  /** Defer speech slot payloads until a template is selected. */
+  useEffect(() => {
+    if (!templateId || !tpl?.hasSpeech) return;
+    if (speechFetchedRef.current.has(templateId)) return;
+    if ((tpl.speechSlots?.length || 0) > 0) {
+      speechFetchedRef.current.add(templateId);
+      return;
+    }
+    let cancelled = false;
+    speechFetchedRef.current.add(templateId);
+    void (async () => {
+      const res = await apiFetch(
+        `/api/tg/templates?kind=video&locale=${locale}&include=speech&id=${encodeURIComponent(templateId)}`,
+      );
+      if (!res.ok || cancelled) return;
+      const data = (await res.json()) as { video: VideoTpl[] };
+      const hit = (data.video || []).find((v) => v.id === templateId);
+      if (!hit || cancelled) return;
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === templateId
+            ? {
+                ...t,
+                hasSpeech: hit.hasSpeech,
+                speechSlots: hit.speechSlots || [],
+              }
+            : t,
+        ),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiFetch,
+    locale,
+    templateId,
+    tpl?.hasSpeech,
+    tpl?.speechSlots?.length,
+  ]);
+
   useEffect(() => {
     if (!tpl) return;
     const next: Record<string, { text: string; lang: string }> = {};
@@ -229,7 +269,7 @@ function VideoPageInner() {
     }
     setSpeechFills(next);
     setUsePreviewSpeech(true);
-  }, [tpl?.id]);
+  }, [tpl?.id, tpl?.speechSlots?.length]);
 
   useEffect(() => {
     if (!tpl || !isLoraI2v) return;
@@ -454,6 +494,7 @@ function VideoPageInner() {
                 src={tpl.previewVideoUrl}
                 poster={tpl.previewPhotoUrl}
                 className="tg-video-detail-preview"
+                eager
                 onClick={togglePreview}
               />
             )}
@@ -516,6 +557,8 @@ function VideoPageInner() {
                               src={c.coverUrl}
                               alt=""
                               className="tg-portrait-img"
+                              loading="lazy"
+                              decoding="async"
                             />
                           ) : (
                             <div className="tg-portrait-placeholder" />

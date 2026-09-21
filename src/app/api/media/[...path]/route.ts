@@ -99,6 +99,37 @@ export async function GET(req: NextRequest, ctx: Ctx) {
       ? "public, max-age=31536000, immutable"
       : "private, max-age=3600";
 
+  // Lightweight JPEG thumb for ops grids / lists (?w=360). Images only; no Range.
+  const widthRaw = Number(req.nextUrl.searchParams.get("w") || 0);
+  const wantThumb =
+    Number.isFinite(widthRaw) &&
+    widthRaw >= 64 &&
+    widthRaw <= 1280 &&
+    [".png", ".jpg", ".jpeg", ".webp"].includes(ext) &&
+    !req.headers.get("range");
+  if (wantThumb) {
+    try {
+      const sharp = (await import("sharp")).default;
+      const out = await sharp(abs)
+        .rotate()
+        .resize({
+          width: Math.round(widthRaw),
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 72, mozjpeg: true })
+        .toBuffer();
+      return new NextResponse(new Uint8Array(out), {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Content-Length": String(out.length),
+          "Cache-Control": cache,
+        },
+      });
+    } catch (e) {
+      console.warn("[media] thumb resize failed, falling back:", e);
+    }
+  }
+
   const range = parseRange(req.headers.get("range"), size);
   if (range) {
     const { start, end } = range;

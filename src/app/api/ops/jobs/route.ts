@@ -5,6 +5,14 @@ import { enqueueQuickVideoJob } from "@/lib/quick-video";
 import { writeAudit } from "@/lib/ops/audit";
 import { creditPeaches } from "@/lib/tg/wallet";
 
+/** Small preview for ops grids — full file only when opened. */
+function opsThumbUrl(resultUrl: string, kind: string): string | null {
+  if (kind !== "photo" || !resultUrl) return null;
+  if (!resultUrl.startsWith("/api/media/")) return resultUrl;
+  const join = resultUrl.includes("?") ? "&" : "?";
+  return `${resultUrl}${join}w=360`;
+}
+
 export async function GET(req: Request) {
   return withOps("jobs", async () => {
     const url = new URL(req.url);
@@ -40,6 +48,7 @@ export async function GET(req: Request) {
         kind: g.kind,
         title: g.title,
         resultUrl: g.resultUrl,
+        thumbUrl: opsThumbUrl(g.resultUrl, g.kind),
         status: galleryStatus(g.metaJson),
         error: parseGalleryMeta(g.metaJson).error || null,
         createdAt: g.createdAt.toISOString(),

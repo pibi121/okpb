@@ -3,6 +3,7 @@
  */
 import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
+import { getPrimaryBotUsername } from "@/lib/tg/bot-config";
 
 const LINK_SEP = "__";
 
@@ -238,7 +239,7 @@ export async function getPartnerDashboard(userId: string) {
     take: 20,
   });
 
-  const botUsername = process.env.TELEGRAM_BOT_USERNAME || "peachbibot";
+  const botUsername = await getPrimaryBotUsername();
 
   const dash = {
     profile,

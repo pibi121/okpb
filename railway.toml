@@ -1,5 +1,5 @@
 [build]
-buildCommand = "python -m pip install -r requirements-age-gate.txt && npx prisma generate && npm run build"
+buildCommand = "python -m pip install -r requirements-age-gate.txt && node scripts/ensure-release-meta.mjs && npx prisma generate && npm run build"
 
 [deploy]
 # Mise shims (python from mise.toml) must be on PATH for age-gate.

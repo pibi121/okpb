@@ -59,8 +59,8 @@ OPS_RELEASE_NOTIFY_SECRET=длинный-секрет
 - Ошибки: единая точка `reportOpsError`.
 - КК: dislike → confirm → топик «Контроль качества».
 - Деплои:
-  - **коммит** — `node scripts/ops-notify-release.mjs --kind commit` (после `git push`);
-  - **деплой** — автоматически при старте web на Railway (дедуп по sha); либо `node scripts/ops-notify-release.mjs --kind deploy` после `railway up`.
+  - **коммит** — `node scripts/ops-notify-release.mjs --kind commit` (после `git push`; пишет `infra/release-meta.json` для следующего `railway up`);
+  - **деплой** — автоматически при старте web на Railway (читает release-meta / git sha, дедуп по sha). `railway up` включает release-meta через `.railwayignore` (в git файл не коммитится). Запасной ручной вызов: `node scripts/ops-notify-release.mjs --kind deploy`.
 - Дайджест: `instrumentation.ts` + `tg:bot`, слоты МСК, дедуп по `data/ops-telegram.json` (volume Railway). Окно: 00–07 / 07–15 / 15–00. Если процесс лежал — догон в пределах 10 часов.
 - Id тем пишутся в `data/ops-telegram.json`, не в git.
 

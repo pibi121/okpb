@@ -8,8 +8,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:next": "next dev",
-    "build": "prisma generate && next build",
-    "build:railway": "prisma generate && next build",
+    "build": "node scripts/ensure-release-meta.mjs && prisma generate && next build",
+    "build:railway": "node scripts/ensure-release-meta.mjs && prisma generate && next build",
     "start": "next start",
     "start:railway": "node scripts/start-railway.mjs",
     "lint": "eslint",

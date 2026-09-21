@@ -189,6 +189,9 @@ async function main() {
   fs.mkdirSync(path.dirname(metaPath), { recursive: true });
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
   console.log(`[ops-release] wrote ${metaPath}`);
+  console.log(
+    "[ops-release] note: keep this file until `railway up` — .railwayignore uploads it for deploy notify on boot",
+  );
 
   const payload = { kind, ...meta, force };
   let result;

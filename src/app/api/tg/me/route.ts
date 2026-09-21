@@ -14,6 +14,7 @@ import {
 } from "@/lib/tg/character-service";
 import { buildTgTrainProgress } from "@/lib/tg/train-progress";
 import { tgSupportUrl } from "@/lib/tg/support";
+import { getPrimaryBotUsername } from "@/lib/tg/bot-config";
 
 /** Mini App profile: balance, characters, studio cast, promos. */
 export async function GET(req: Request) {
@@ -86,9 +87,7 @@ export async function GET(req: Request) {
       minPhotos: TG_MIN_LORA_PHOTOS,
       maxPhotos: TG_MAX_LORA_PHOTOS,
     },
-    botUsername: (
-      process.env.TELEGRAM_BOT_PUBLIC_URL || "https://t.me/peachbibot"
-    ).match(/t\.me\/([A-Za-z0-9_]+)/i)?.[1] || "peachbibot",
+    botUsername: await getPrimaryBotUsername(),
     supportUrl: tgSupportUrl(),
     characters: charactersWithCovers,
     videoRefs: videoRefs.map((c) => ({

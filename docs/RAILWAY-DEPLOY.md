@@ -61,5 +61,7 @@ Menu Button → Web App URL: `https://YOUR-DOMAIN/tg/templates`
 npm i -g @railway/cli
 railway login
 railway link
-railway up
+# --no-gitignore: upload infra/release-meta.json for ops «Деплои» boot notify
+# (.railwayignore still blocks .env / data / keys)
+railway up --detach --no-gitignore
 ```

@@ -23,7 +23,8 @@
     "sync:tg-catalog": "tsx scripts/sync-tg-catalog-assets.ts",
     "tg:bot": "npx tsx scripts/tg-bot-dev.ts",
     "ops:notify-commit": "node scripts/ops-notify-release.mjs --kind commit",
-    "ops:notify-deploy": "node scripts/ops-notify-release.mjs --kind deploy"
+    "ops:notify-deploy": "node scripts/ops-notify-release.mjs --kind deploy",
+    "deploy:railway": "railway up --detach --no-gitignore -y"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

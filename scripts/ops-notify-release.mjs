@@ -190,7 +190,7 @@ async function main() {
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
   console.log(`[ops-release] wrote ${metaPath}`);
   console.log(
-    "[ops-release] note: keep this file until `railway up` — .railwayignore uploads it for deploy notify on boot",
+    "[ops-release] deploy with: railway up --detach --no-gitignore  (so release-meta is uploaded; .railwayignore still blocks secrets)",
   );
 
   const payload = { kind, ...meta, force };

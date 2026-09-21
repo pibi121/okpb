@@ -13,5 +13,7 @@ Force-push в `main` нельзя. Если push отклонён — снова
 Не коммитить: `HANDOFF/` (только локально), `.env`, ключи, `infra/metalnode.local.json`, `infra/release-meta.json`.
 
 После успешного `git push` в `main`: `node scripts/ops-notify-release.mjs --kind commit`
-(пишет `infra/release-meta.json` локально; файл в git не коммитить, но `railway up` его заливает через `.railwayignore`).
-После успешного деплоя на прод (`railway up` / SUCCESS): уведомление «Деплой» уходит само при старте web (читает release-meta / git sha); дополнительно можно `node scripts/ops-notify-release.mjs --kind deploy`.
+(пишет `infra/release-meta.json` локально; в git не коммитить).
+Деплой на прод: `railway up --detach --no-gitignore`
+(`--no-gitignore` нужен, иначе gitignore выкинет release-meta; секреты режет `.railwayignore`).
+После SUCCESS уведомление «Деплой» уходит само при старте web; запасной вызов: `node scripts/ops-notify-release.mjs --kind deploy`.

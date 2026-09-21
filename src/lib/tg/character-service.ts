@@ -50,18 +50,18 @@ export async function getActiveTgCharacter(
   return getPrimaryTgCharacter(userId);
 }
 
-/** Owned draft for photo uploads / LoRA training — never studio cast. */
+/** Owned draft for photo uploads / LoRA training — or video-ref when preferred. */
 export async function getOwnedPhotoUploadCharacter(
   userId: string,
   platformUserId: string,
   preferredId?: string | null,
 ) {
   if (preferredId) {
+    // Prefer the exact slot from pending (video-ref or LoRA draft).
     const preferred = await prisma.character.findFirst({
       where: {
         id: preferredId,
         userId,
-        videoRefOnly: false,
         isStudioCast: false,
       },
     });
@@ -183,12 +183,12 @@ export async function addCharacterPhotoFromBuffer(
   fileName: string,
   opts?: { maxPhotos?: number; locale?: "ru" | "en"; skipAgeGate?: boolean },
 ) {
+  // Own drafts + video-ref slots (Ref2V). Studio casts are never writable here.
   const ch = await prisma.character.findFirst({
     where: {
       id: characterId,
       userId,
       isStudioCast: false,
-      videoRefOnly: false,
     },
   });
   if (!ch) throw new Error("character not found");

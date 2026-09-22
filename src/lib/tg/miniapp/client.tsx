@@ -388,7 +388,7 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
       </Link>
       <Link
         href="/tg/undress"
-        className={undressActive ? "active tg-tab--undress" : "tg-tab--undress"}
+        className={undressActive ? "active" : ""}
         onClick={() => trackMiniAppClient("miniapp.tab.undress")}
       >
         <span className="tg-tab-ico">

@@ -196,14 +196,6 @@
   flex: 1;
 }
 
-.tg-tabbar a.tg-tab--undress {
-  color: color-mix(in srgb, var(--tg-apricot) 85%, white);
-}
-
-.tg-tabbar a.tg-tab--undress.active {
-  color: var(--tg-apricot);
-}
-
 .tg-undress {
   padding: 0.75rem 0.9rem 1.25rem;
   display: flex;

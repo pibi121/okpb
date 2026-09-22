@@ -55,13 +55,22 @@ export function TgTabIcon({
         </svg>
       );
     case "undress":
+      // Strawberry outline (leaf + berry) — replaces map-pin lookalike
       return (
         <svg {...common}>
           <path
-            d="M12 3.5c-2.2 0-4 1.9-4 4.3 0 3.2 4 8.2 4 8.2s4-5 4-8.2c0-2.4-1.8-4.3-4-4.3z"
+            d="M9.2 5.4c.9.2 1.7.7 2.8 1.8 1.1-1.1 1.9-1.6 2.8-1.8-.2 1.4-.9 2.2-1.6 2.6H10.8c-.7-.4-1.4-1.2-1.6-2.6z"
             {...s}
           />
-          <circle cx="12" cy="7.6" r="1.3" {...s} />
+          <path
+            d="M7.1 9.4c0-1.5 2.1-2.6 4.9-2.6s4.9 1.1 4.9 2.6c0 4.1-2.3 8.4-4.9 8.4S7.1 13.5 7.1 9.4z"
+            {...s}
+          />
+          <circle cx="10.2" cy="11.2" r="0.55" fill="currentColor" stroke="none" />
+          <circle cx="13.6" cy="11" r="0.55" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="13.4" r="0.55" fill="currentColor" stroke="none" />
+          <circle cx="9.8" cy="14.6" r="0.5" fill="currentColor" stroke="none" />
+          <circle cx="14" cy="14.4" r="0.5" fill="currentColor" stroke="none" />
         </svg>
       );
     case "photo":

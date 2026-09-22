@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
-import { Suspense } from "react";
 
 const UI = {
   ru: {
@@ -13,7 +12,6 @@ const UI = {
     upload: "Загрузить фото",
     go: "Раздеть",
     busy: "Раздеваю…",
-    started: "Готово — результат придёт в чат бота",
     err: "Ошибка",
     needPhoto: "Сначала загрузи фото",
     disclaimer: `Раздеть по 1 фото — пробная функция. Качество среднее по сравнению с видео/фото по образу и видео по 1 фото.
@@ -27,7 +25,6 @@ const UI = {
     upload: "Upload photo",
     go: "Undress",
     busy: "Undressing…",
-    started: "Started — result will arrive in the bot chat",
     err: "Error",
     needPhoto: "Upload a photo first",
     disclaimer: `Undress from 1 photo is a trial feature. Quality is average vs photo/video by look and video from 1 photo.
@@ -37,6 +34,7 @@ For best quality use those modes. Here you can quickly try undressing in 10–15
 } as const;
 
 function UndressInner() {
+  const router = useRouter();
   const params = useSearchParams();
   const claimFree = params.get("free") === "1";
   const { status, locale, apiFetch, refresh } = useTgMiniApp();
@@ -47,7 +45,6 @@ function UndressInner() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
@@ -69,7 +66,6 @@ function UndressInner() {
   const onFile = (f: File | null) => {
     setFile(f);
     setErr("");
-    setMsg("");
     if (preview) URL.revokeObjectURL(preview);
     setPreview(f ? URL.createObjectURL(f) : "");
   };
@@ -81,7 +77,6 @@ function UndressInner() {
     }
     setBusy(true);
     setErr("");
-    setMsg("");
     try {
       const fd = new FormData();
       fd.append("photo", file);
@@ -97,9 +92,16 @@ function UndressInner() {
         setErr(data.error || u.err);
         return;
       }
-      setMsg(u.started);
-      await refresh();
-      await load();
+      void refresh();
+      try {
+        sessionStorage.setItem(
+          "tg_just_generated",
+          JSON.stringify({ at: Date.now(), kind: "undress" }),
+        );
+      } catch {
+        /* ignore */
+      }
+      router.push("/tg/gallery");
     } catch {
       setErr(u.err);
     } finally {
@@ -139,7 +141,6 @@ function UndressInner() {
             {busy ? u.busy : u.go}
           </button>
         </div>
-        {msg ? <p>{msg}</p> : null}
         {err ? <p style={{ color: "#f88" }}>{err}</p> : null}
         <p className="tg-undress-disclaimer">{u.disclaimer}</p>
       </div>

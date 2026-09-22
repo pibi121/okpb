@@ -89,31 +89,33 @@ const UI = {
     feed: "Лента",
     gallery: "Галерея",
     chars: "Персонажи",
+    undress: "Раздеть",
     photo: "Фото",
     video: "Видео",
     profile: "Профиль",
     balance: "Баланс",
     legalRules: "Политика, правила, оферта",
     legalSupport: "Поддержка",
-    guide: "Инструкция, как пользоваться",
+    guide: "Инструкция",
     topupLink: "Пополнить",
   },
   en: {
     openInTg: "Open from Telegram Mini App",
     authErr: "Auth failed",
     profileErr: "Could not load profile — reopen the mini app",
-    busyErr: "Server is restarting — wait 5s and open again",
+    busyErr: "Server is restarting — wait 5s and reopen",
     loading: "Loading…",
     feed: "Feed",
     gallery: "Gallery",
     chars: "Cast",
+    undress: "Undress",
     photo: "Photo",
     video: "Video",
     profile: "Profile",
     balance: "Balance",
     legalRules: "Policy, rules & offer",
     legalSupport: "Support",
-    guide: "How to use",
+    guide: "Guide",
     topupLink: "Top up",
   },
 } as const;
@@ -346,11 +348,11 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
   const feedActive = path === "/tg" || path === "/tg/templates";
   const charsActive =
     path.startsWith("/tg/characters") || path === "/tg/casts";
+  const undressActive = path.startsWith("/tg/undress");
   const photoActive =
     path.startsWith("/tg/photo") || path === "/tg/studio-photo";
   const videoActive = path.startsWith("/tg/video");
   const galleryActive = path === "/tg/gallery";
-  const profileActive = path.startsWith("/tg/profile") || path.startsWith("/tg/partner");
 
   return (
     <nav className="tg-tabbar">
@@ -385,6 +387,16 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
         {u.chars}
       </Link>
       <Link
+        href="/tg/undress"
+        className={undressActive ? "active tg-tab--undress" : "tg-tab--undress"}
+        onClick={() => trackMiniAppClient("miniapp.tab.undress")}
+      >
+        <span className="tg-tab-ico">
+          <TgTabIcon id="undress" active={undressActive} />
+        </span>
+        {u.undress}
+      </Link>
+      <Link
         href="/tg/photo"
         className={photoActive ? "active" : ""}
         onClick={() => trackMiniAppClient("miniapp.tab.photo")}
@@ -403,16 +415,6 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
           <TgTabIcon id="video" active={videoActive} />
         </span>
         {u.video}
-      </Link>
-      <Link
-        href="/tg/profile"
-        className={profileActive ? "active" : ""}
-        onClick={() => trackMiniAppClient("miniapp.tab.profile")}
-      >
-        <span className="tg-tab-ico">
-          <TgTabIcon id="profile" active={profileActive} />
-        </span>
-        {u.profile}
       </Link>
     </nav>
   );
@@ -521,15 +523,26 @@ export function TgShell({
               {u.topupLink}
             </button>
           </div>
-          <Link
-            href="/tg/guide"
-            className="tg-header-guide"
-            onClick={() =>
-              trackMiniAppClient("miniapp.action", { action: "open_guide" })
-            }
-          >
-            {u.guide}
-          </Link>
+          <div className="tg-header-nav-row">
+            <Link
+              href="/tg/profile"
+              className="tg-header-profile"
+              onClick={() =>
+                trackMiniAppClient("miniapp.action", { action: "open_profile" })
+              }
+            >
+              {u.profile}
+            </Link>
+            <Link
+              href="/tg/guide"
+              className="tg-header-guide"
+              onClick={() =>
+                trackMiniAppClient("miniapp.action", { action: "open_guide" })
+              }
+            >
+              {u.guide}
+            </Link>
+          </div>
         </div>
       </header>
       {children}

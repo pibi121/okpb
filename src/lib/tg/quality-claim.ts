@@ -38,6 +38,18 @@ export async function chargedPeachesForGalleryItem(
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
+export async function undressFreeUsedForGalleryItem(
+  galleryItemId: string,
+): Promise<boolean> {
+  const item = await prisma.galleryItem.findUnique({
+    where: { id: galleryItemId },
+    select: { metaJson: true },
+  });
+  if (!item) return false;
+  const meta = parseGalleryMeta(item.metaJson) as Record<string, unknown>;
+  return Boolean(meta.undressFreeUsed);
+}
+
 export async function patchGalleryChargedPeaches(
   galleryItemId: string,
   chargedPeaches: number,
@@ -155,6 +167,7 @@ export async function handleQcConfirm(opts: {
     pending.qcItemId === item.id ? pending.qcSuccessMessageId : undefined;
 
   const charged = await chargedPeachesForGalleryItem(item.id);
+  const usedFree = await undressFreeUsedForGalleryItem(item.id);
   const kind = item.kind as "photo" | "video";
 
   const claim = await prisma.qualityClaim.create({
@@ -168,6 +181,17 @@ export async function handleQcConfirm(opts: {
       tgMessageId: successMessageId ?? null,
     },
   });
+
+  // Keep free-flag in gallery meta for approve path (charged may be 0).
+  if (usedFree) {
+    const meta = parseGalleryMeta(item.metaJson);
+    await prisma.galleryItem.update({
+      where: { id: item.id },
+      data: {
+        metaJson: JSON.stringify({ ...meta, undressFreeUsed: true }),
+      },
+    });
+  }
 
   await setTgSession(opts.platformUserId, {
     pending: { qcItemId: undefined, qcSuccessMessageId: undefined },
@@ -270,14 +294,24 @@ export async function resolveQualityClaim(opts: {
   const status: QualityClaimStatus =
     opts.action === "approve" ? "approved" : "rejected";
   let refunded = 0;
+  let restoredFree = false;
 
-  if (opts.action === "approve" && claim.chargedPeaches > 0) {
-    await creditPeaches(claim.userId, claim.chargedPeaches, "qc_refund", {
-      claimId: claim.id,
-      galleryItemId: claim.galleryItemId,
-      actorId: opts.actorId,
-    });
-    refunded = claim.chargedPeaches;
+  if (opts.action === "approve") {
+    const usedFree = await undressFreeUsedForGalleryItem(claim.galleryItemId);
+    if (usedFree) {
+      const { restoreUndressFree } = await import(
+        "@/lib/tg/undress-entitlement"
+      );
+      await restoreUndressFree(claim.userId);
+      restoredFree = true;
+    } else if (claim.chargedPeaches > 0) {
+      await creditPeaches(claim.userId, claim.chargedPeaches, "qc_refund", {
+        claimId: claim.id,
+        galleryItemId: claim.galleryItemId,
+        actorId: opts.actorId,
+      });
+      refunded = claim.chargedPeaches;
+    }
   }
 
   await prisma.qualityClaim.update({
@@ -313,13 +347,19 @@ export async function resolveQualityClaim(opts: {
       })
     )?.balancePeaches;
     if (status === "approved") {
-      await tgSendMessage(
-        chatId,
-        tFormat("qc_approved_notice", locale, {
-          n: String(refunded),
-          balance: String(bal ?? 0),
-        }),
-      ).catch(() => undefined);
+      if (restoredFree) {
+        await tgSendMessage(chatId, t("qc_approved_free_undress", locale)).catch(
+          () => undefined,
+        );
+      } else {
+        await tgSendMessage(
+          chatId,
+          tFormat("qc_approved_notice", locale, {
+            n: String(refunded),
+            balance: String(bal ?? 0),
+          }),
+        ).catch(() => undefined);
+      }
     } else {
       await tgSendMessage(chatId, t("qc_rejected_notice", locale)).catch(
         () => undefined,

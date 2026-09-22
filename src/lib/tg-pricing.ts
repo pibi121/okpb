@@ -80,6 +80,13 @@ export const TG_PROMO = {
   firstVideoDiscountPct: 30,
 } as const;
 
+/** Undress-by-1-photo (H3 IMAGE_EDIT) — near-cost hook, Owner 2026-09-22. */
+export const TG_UNDRESS_PEACHES = 25;
+
+export function undressPeaches(): number {
+  return ov("undress", TG_UNDRESS_PEACHES);
+}
+
 export type TgVideoTier = keyof typeof TG_VIDEO_PEACHES;
 export type TgPhotoTier = keyof typeof TG_PHOTO_PEACHES;
 

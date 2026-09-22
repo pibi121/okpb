@@ -3,6 +3,7 @@ export type TgTabIconId =
   | "feed"
   | "gallery"
   | "chars"
+  | "undress"
   | "photo"
   | "video"
   | "profile";
@@ -51,6 +52,16 @@ export function TgTabIcon({
         <svg {...common}>
           <circle cx="12" cy="8" r="3.2" {...s} />
           <path d="M5.5 19.2c1.2-3.2 3.4-4.7 6.5-4.7s5.3 1.5 6.5 4.7" {...s} />
+        </svg>
+      );
+    case "undress":
+      return (
+        <svg {...common}>
+          <path
+            d="M12 3.5c-2.2 0-4 1.9-4 4.3 0 3.2 4 8.2 4 8.2s4-5 4-8.2c0-2.4-1.8-4.3-4-4.3z"
+            {...s}
+          />
+          <circle cx="12" cy="7.6" r="1.3" {...s} />
         </svg>
       );
     case "photo":

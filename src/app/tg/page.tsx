@@ -142,6 +142,10 @@ export default function TgFeedPage() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+  const [lootVisible, setLootVisible] = useState(false);
+  const [lootBusy, setLootBusy] = useState(false);
+  const watchSecRef = useRef(0);
+  const lootEligibleRef = useRef(false);
 
   const u = UI[locale];
   const modeLabels = MODE_LABELS[locale];
@@ -256,6 +260,49 @@ export default function TgFeedPage() {
       .map((row) => row.id);
     if (shown.length) markVerticalBannersShown(shown);
   }, [pool, vBanners, tab]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    let cancelled = false;
+    void (async () => {
+      const res = await apiFetch("/api/tg/undress");
+      if (!res.ok || cancelled) return;
+      const data = (await res.json()) as { canLootToday?: boolean };
+      lootEligibleRef.current = Boolean(data.canLootToday);
+    })();
+    const tick = window.setInterval(() => {
+      watchSecRef.current += 1;
+      if (
+        lootEligibleRef.current &&
+        watchSecRef.current >= 25
+      ) {
+        setLootVisible(true);
+      }
+    }, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
+    };
+  }, [status, apiFetch]);
+
+  const claimLoot = useCallback(async () => {
+    if (lootBusy) return;
+    setLootBusy(true);
+    try {
+      const res = await apiFetch("/api/tg/undress?action=loot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ watchSeconds: watchSecRef.current }),
+      });
+      if (res.ok) {
+        setLootVisible(false);
+        lootEligibleRef.current = false;
+        router.push("/tg/undress?free=1");
+      }
+    } finally {
+      setLootBusy(false);
+    }
+  }, [apiFetch, lootBusy, router]);
 
   useEffect(() => {
     const root = reelRef.current;
@@ -527,6 +574,18 @@ export default function TgFeedPage() {
           );
         })}
       </div>
+      {lootVisible ? (
+        <button
+          type="button"
+          className="tg-feed-loot"
+          disabled={lootBusy}
+          onClick={() => void claimLoot()}
+        >
+          {locale === "en"
+            ? "🍓 Claim 1 free undress"
+            : "🍓 Забрать 1 бесплатное раздевание"}
+        </button>
+      ) : null}
     </TgShell>
   );
 }

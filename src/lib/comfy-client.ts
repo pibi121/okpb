@@ -621,6 +621,26 @@ export async function runComfyJob(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+/** Soft VRAM unload — not a Comfy restart. Use between video ↔ still undress. */
+export async function comfyFreeMemory(): Promise<void> {
+  try {
+    await comfyRequest(
+      "/free",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unload_models: true, free_memory: true }),
+      },
+      60_000,
+    );
+  } catch (e) {
+    console.warn(
+      "[peach] comfy /free failed:",
+      e instanceof Error ? e.message.slice(0, 160) : e,
+    );
+  }
+}
+
 export async function comfyInterrupt(): Promise<void> {
   try {
     await comfyRequest("/interrupt", { method: "POST" }, 15_000);

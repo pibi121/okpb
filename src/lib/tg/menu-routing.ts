@@ -173,6 +173,16 @@ export async function handleHubCallback(
     return true;
   }
 
+  if (data === HUB_CB.undress) {
+    const { sendUndressDisclaimer } = await import("@/lib/tg/undress-flow");
+    await sendUndressDisclaimer(chatId, userId, locale);
+    await setTgSession(platformUserId, {
+      chatState: "idle",
+      clearPending: true,
+    });
+    return true;
+  }
+
   if (
     data === HUB_CB.videoOne ||
     data === HUB_CB.photoLook ||

@@ -15,6 +15,7 @@ export const TG_COMMUNITY_URL = "https://t.me/+6aVo5HU0Yrc4NjYy";
 
 /** Inline hub navigation callbacks. */
 export const HUB_CB = {
+  undress: "hub:ud",
   videoOne: "hub:v1",
   photoLook: "hub:ph",
   videoLook: "hub:vl",
@@ -78,6 +79,12 @@ export function hubInlineKeyboard(locale: TgLocale) {
   return {
     inline_keyboard: [
       [
+        {
+          text: t("hub_btn_undress", locale),
+          callback_data: HUB_CB.undress,
+        },
+      ],
+      [
         { text: t("hub_btn_video_one", locale), callback_data: HUB_CB.videoOne },
         {
           text: t("hub_btn_photo_look", locale),
@@ -115,7 +122,13 @@ export async function buildHubCaption(
   locale: TgLocale,
 ): Promise<string> {
   const bal = await getBalancePeaches(userId);
-  return tFormat("hub_main", locale, { balance: bal });
+  const { getUndressFreeCredits } = await import(
+    "@/lib/tg/undress-entitlement"
+  );
+  const free = await getUndressFreeCredits(userId);
+  const undress_free =
+    free >= 1 ? t("hub_undress_free_suffix", locale) : "";
+  return tFormat("hub_main", locale, { balance: bal, undress_free });
 }
 
 /** Edit existing bot message in-place, or send a new text message. */

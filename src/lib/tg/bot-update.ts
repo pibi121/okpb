@@ -1716,6 +1716,22 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       return;
     }
 
+    {
+      const { handleUndressCallback } = await import("@/lib/tg/undress-flow");
+      if (
+        await handleUndressCallback({
+          data,
+          callbackId: cq.id,
+          chatId,
+          userId: user.id,
+          platformUserId,
+          locale,
+        })
+      ) {
+        return;
+      }
+    }
+
     const qcDislikeId = parseQcDislikeCallback(data);
     if (qcDislikeId) {
       const { handleQcDislike } = await import("@/lib/tg/quality-claim");
@@ -1950,6 +1966,44 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 
   if (msg.photo?.length) {
     const largest = msg.photo[msg.photo.length - 1]!;
+    if (chatState === "awaiting_undress_photo") {
+      const buf = await tgDownloadFile(largest.file_id);
+      await tgSendMessage(chatId, t("undress_busy", locale));
+      await setTgSession(platformUserId, {
+        chatState: "idle",
+        clearPending: true,
+      });
+      try {
+        const { startTgUndressGeneration } = await import(
+          "@/lib/tg/undress-service"
+        );
+        await startTgUndressGeneration({
+          userId: user.id,
+          platformUserId,
+          photoBytes: buf,
+          locale,
+        });
+      } catch (e) {
+        const msgText = e instanceof Error ? e.message : String(e);
+        if (/Недостаточно персиков|free_race/i.test(msgText)) {
+          await tgSendMessage(chatId, msgText, {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: t("topup_btn", locale), callback_data: "tu:open" }],
+              ],
+            },
+          });
+        } else {
+          await tgSendMessage(
+            chatId,
+            locale === "en"
+              ? `Could not start undress: ${msgText}`
+              : `Не удалось начать раздевание: ${msgText}`,
+          );
+        }
+      }
+      return;
+    }
     await handlePhoto(
       chatId,
       platformUserId,
@@ -2101,8 +2155,9 @@ export async function flushTgOutbox() {
         caption?: string;
         text?: string;
         mock?: boolean;
-        successKind?: "photo" | "video";
+        successKind?: "photo" | "video" | "undress";
         galleryItemId?: string;
+        undressFreeUsed?: boolean;
         locale?: TgLocale;
         reply_markup?: unknown;
         botInstanceId?: string;
@@ -2151,17 +2206,29 @@ export async function flushTgOutbox() {
       }
 
       if ((row.kind === "photo" || row.kind === "video") && payload.successKind) {
-        const kindLabel =
-          payload.successKind === "photo"
-            ? t("gen_success_photo", locale)
-            : t("gen_success_video", locale);
-        await sendMessage(tFormat("gen_success", locale, { kind: kindLabel }), {
-          reply_markup: successInlineKeyboard(locale, {
-            kind: payload.successKind,
-            galleryItemId: payload.galleryItemId,
-            qcStatus: "idle",
-          }),
-        });
+        if (payload.successKind === "undress" && payload.galleryItemId) {
+          const { undressSuccessKeyboard } = await import(
+            "@/lib/tg/undress-flow"
+          );
+          await sendMessage(t("undress_success", locale), {
+            reply_markup: undressSuccessKeyboard(
+              locale,
+              String(payload.galleryItemId),
+            ),
+          });
+        } else {
+          const kindLabel =
+            payload.successKind === "photo"
+              ? t("gen_success_photo", locale)
+              : t("gen_success_video", locale);
+          await sendMessage(tFormat("gen_success", locale, { kind: kindLabel }), {
+            reply_markup: successInlineKeyboard(locale, {
+              kind: payload.successKind as "photo" | "video",
+              galleryItemId: payload.galleryItemId,
+              qcStatus: "idle",
+            }),
+          });
+        }
 
         const saveId = (payload as { offerSaveCharacterId?: string }).offerSaveCharacterId;
         if (saveId && row.kind === "video") {

@@ -160,6 +160,135 @@
   background: color-mix(in srgb, var(--tg-apricot) 22%, transparent);
 }
 
+.tg-header-nav-row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.tg-header-profile {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #1a0f12;
+  text-decoration: none;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tg-apricot) 55%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tg-apricot) 92%, white),
+    var(--tg-apricot)
+  );
+}
+
+.tg-header-profile:active {
+  filter: brightness(0.95);
+}
+
+.tg-header-nav-row .tg-header-guide {
+  flex: 1;
+}
+
+.tg-tabbar a.tg-tab--undress {
+  color: color-mix(in srgb, var(--tg-apricot) 85%, white);
+}
+
+.tg-tabbar a.tg-tab--undress.active {
+  color: var(--tg-apricot);
+}
+
+.tg-undress {
+  padding: 0.75rem 0.9rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.tg-undress h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 750;
+}
+
+.tg-undress-price {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.tg-undress-disclaimer {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  opacity: 0.88;
+  white-space: pre-wrap;
+}
+
+.tg-undress-preview {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #111;
+}
+
+.tg-undress-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.tg-undress-actions button,
+.tg-undress-actions label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  border: none;
+  cursor: pointer;
+}
+
+.tg-undress-upload {
+  background: color-mix(in srgb, var(--tg-apricot) 18%, transparent);
+  color: var(--tg-peach);
+  border: 1px solid color-mix(in srgb, var(--tg-apricot) 40%, transparent) !important;
+}
+
+.tg-undress-go {
+  background: var(--tg-apricot);
+  color: #1a0f12;
+}
+
+.tg-undress-go:disabled {
+  opacity: 0.45;
+}
+
+.tg-feed-loot {
+  position: fixed;
+  left: 50%;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: min(92vw, 360px);
+  width: max-content;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tg-apricot) 50%, transparent);
+  background: color-mix(in srgb, #1a1014 88%, var(--tg-apricot));
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
 .tg-header-actions {
   display: flex;
   flex-direction: column;

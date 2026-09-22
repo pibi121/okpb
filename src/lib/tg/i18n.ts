@@ -637,6 +637,10 @@ When ready — tap «Done, start».`,
     ru: "✅ Возврат одобрен. +{n} 🍑\nБаланс: {balance} 🍑",
     en: "✅ Refund approved. +{n} 🍑\nBalance: {balance} 🍑",
   },
+  qc_approved_free_undress: {
+    ru: "✅ Возврат одобрен. Бесплатное раздевание снова доступно.",
+    en: "✅ Refund approved. Free undress is available again.",
+  },
   qc_rejected_notice: {
     ru: "Заявка на возврат отклонена.",
     en: "Refund request declined.",
@@ -764,17 +768,21 @@ Tap below to open the Cashera form. Peaches credit automatically after payment.`
 
 У тебя на балансе: {balance} 🍑
 
-Порно-студия готова к работе. Сейчас тебе доступно 3 режима:
+Порно-студия готова к работе. Сейчас тебе доступно 4 режима:
 
-1) <b>Фотография по образу</b>
+1) <b>Раздеть по 1 фото</b>{undress_free}
+
+Это пробная функция, не самое высокое качество, как в других режимах. Просто отправляешь фото девушки, а я её раздеваю. Можно получать бесплатные раздевания – заходи в ленту каждый день, листай её 20-30 секунд и там появится кнопка, чтобы забрать бесплатное раздевание.
+
+2) <b>Фотография по образу</b>
 
 Образ создаётся на основе фотографий нужной тебе девушки. Загружаешь минимум 5 фото 🡺 система обучается создавать фото с ней 🡺 генерируешь с ней любые фотки максимального качества и реалистичности
 
-2) <b>Видео по образу</b>
+3) <b>Видео по образу</b>
 
 Принцип тот же. Когда образ будет готов, ты сможешь создавать супер-реалистичные видео и порно-фильмы со своей актрисой.
 
-3) <b>Видео по 1 фото</b>
+4) <b>Видео по 1 фото</b>
 
 Это быстрый режим. Видео до 12 секунд по готовым шаблонам создаются на основе 1 фотографии, которую ты отправишь
 
@@ -783,21 +791,108 @@ Tap below to open the Cashera form. Peaches credit automatically after payment.`
 
 Your balance: {balance} 🍑
 
-The porn studio is ready. You have 3 modes:
+The porn studio is ready. You have 4 modes:
 
-1) <b>Photo by look</b>
+1) <b>Undress from 1 photo</b>{undress_free}
+
+Trial mode — not the highest quality vs other modes. Send a girl photo and I undress her. Free undresses: open the feed daily, scroll 20–30 seconds, claim the button when it appears.
+
+2) <b>Photo by look</b>
 
 A look is built from photos of the girl you want. Upload at least 5 photos → the system learns her → generate any photos at max quality and realism
 
-2) <b>Video by look</b>
+3) <b>Video by look</b>
 
 Same idea. When the look is ready, you can make ultra-realistic videos and porn films with your actress.
 
-3) <b>Video from 1 photo</b>
+4) <b>Video from 1 photo</b>
 
 Fast mode. Up to 12s videos from templates using one photo you send
 
 Browse examples and templates via the buttons below or open the Studio.`,
+  },
+
+  hub_undress_free_suffix: {
+    ru: ` (🎁 Тебе доступно бесплатное раздевание)`,
+    en: ` (🎁 Free undress available)`,
+  },
+
+  undress_disclaimer: {
+    ru: `Раздеть по 1 фото - это пробная функция нашей студии. Раздевание имеет свои ограничения и среднее качество, по сравнению с другими нашими функциями.
+
+Если ты пришёл сюда за настоящим удовольствием и властью, то мы рекомендуем сделать видео по 1 фото, или видео/фото по образу для максимального качества и реализма.
+
+Но если ты хочешь просто попробовать раздеть по 1 фото, то просто нажми кнопку “Хочу раздеть” и я раздену девушку на твоей фотографии за 10-15 секунд.`,
+    en: `Undress from 1 photo is a trial studio feature. Undressing has limits and average quality vs our other modes.
+
+If you want real pleasure and control, we recommend Video from 1 photo, or Video/Photo by look for max quality and realism.
+
+To try undress from 1 photo, tap “Want to undress” — I’ll undress the girl in your photo in 10–15 seconds.`,
+  },
+
+  undress_want_btn: {
+    ru: "Хочу раздеть →",
+    en: "Want to undress →",
+  },
+
+  undress_price_line: {
+    ru: `Стоимость раздевания: {price}🍑`,
+    en: `Undress price: {price}🍑`,
+  },
+
+  undress_free_line: {
+    ru: `Тебе доступно 1 бесплатное раздевание`,
+    en: `You have 1 free undress`,
+  },
+
+  undress_await_photo: {
+    ru: `Отправь фотографию девушки, которую ты хочешь раздеть:
+
+✅Хорошо видно лицо, желательно прямой ракурс
+✅Хорошее качество
+✅Нет других людей на фото
+
+Просто прикрепи фото и я раздену её`,
+    en: `Send a photo of the girl you want undressed:
+
+✅Face clearly visible, preferably front angle
+✅Good quality
+✅No other people in the photo
+
+Just attach the photo and I’ll undress her`,
+  },
+
+  undress_busy: {
+    ru: "Раздеваю… ~10–15 сек",
+    en: "Undressing… ~10–15 sec",
+  },
+
+  undress_success: {
+    ru: `Я раздел её!
+
+Но это не лучшее качество, на которое я способен. Попробуй функцию “Видео по 1 фото”, “Видео по образу” или “Фото по образу”. Просто открой студию и в ленте посмотри на примеры, чтобы понять насколько высокое качество я могу делать.
+
+А если хочешь получать бесплатные раздевания, заходи в ленту каждый день, листай её 20-30 секунд и там появится кнопка, чтобы забрать бесплатное раздевание.`,
+    en: `I undressed her!
+
+But this isn’t my best quality. Try “Video from 1 photo”, “Video by look”, or “Photo by look”. Open the studio feed for examples of how high I can go.
+
+For free undresses: open the feed daily, scroll 20–30 seconds, and claim the button when it appears.`,
+  },
+
+  undress_again_btn: {
+    ru: "Хочу ещё раздеть",
+    en: "Undress again",
+  },
+
+  undress_open_feed_btn: {
+    ru: "Открыть ленту",
+    en: "Open feed",
+  },
+
+  hub_btn_undress: {
+    ru: "🍓 Раздеть по 1 фото",
+    en: "🍓 Undress from 1 photo",
   },
 
   /** Appended to hub only if user still has unused studio free photo. */

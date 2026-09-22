@@ -1,0 +1,119 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "0": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "undress_input.png"
+    }
+  },
+  "4": {
+    "class_type": "H3ImageResolutionPreset",
+    "inputs": {
+      "aspect_ratio": "source image",
+      "resolution_profile": "native detail | 0.98 MP",
+      "source_image": ["0", 0]
+    }
+  },
+  "5": {
+    "class_type": "H3ReferenceEditPrepare",
+    "inputs": {
+      "clip": ["2", 0],
+      "vae": ["3", 0],
+      "source_image": ["0", 0],
+      "edit_instruction": "completely nude, naked, bare breasts, bare skin, remove all clothes. Keep the exact same face, hair, body proportions, pose, camera angle, and location/background from Picture 1. Photorealistic natural skin.",
+      "width": ["4", 0],
+      "height": ["4", 1],
+      "quality_profile": "recommended | 5 frames",
+      "source_fidelity": 0.55,
+      "source_fit": "crop_center",
+      "reference_detail": "match_generation_area",
+      "optimize_for_still": true,
+      "reference_transport": "native"
+    }
+  },
+  "15": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["1", 0],
+      "lora_name": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "8": {
+    "class_type": "H3ImageSamplingPreset",
+    "inputs": {
+      "model": ["15", 0],
+      "sampling_profile": "REF2VA Turbo v1.0 768p | 8 steps"
+    }
+  },
+  "6": {
+    "class_type": "RandomNoise",
+    "inputs": { "noise_seed": 0 }
+  },
+  "7": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["8", 0],
+      "conditioning": ["5", 0]
+    }
+  },
+  "10": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["6", 0],
+      "guider": ["7", 0],
+      "sampler": ["8", 1],
+      "sigmas": ["8", 2],
+      "latent_image": ["5", 1]
+    }
+  },
+  "11": {
+    "class_type": "H3ImageDecode",
+    "inputs": {
+      "samples": ["10", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "12": {
+    "class_type": "H3ImageFrameSelector",
+    "inputs": {
+      "frames": ["11", 0],
+      "strategy": "decode_recommended",
+      "manual_index": 0,
+      "skip_first_frames": 0,
+      "candidate_start": 0.0,
+      "candidate_end": 1.0,
+      "similarity_weight": 0.35,
+      "top_k": 4,
+      "source_image": ["5", 2],
+      "recommended_index": ["11", 3]
+    }
+  },
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["12", 0],
+      "filename_prefix": "peach/h3_undress"
+    }
+  }
+}

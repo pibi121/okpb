@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "tgUndressFreeCredits" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "User" ADD COLUMN "tgUndressWelcomeGranted" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "tgUndressLootDay" TEXT NOT NULL DEFAULT '';

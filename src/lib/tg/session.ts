@@ -14,7 +14,8 @@ export type TgChatState =
   | "awaiting_topup_amount"
   | "awaiting_topup_method"
   | "awaiting_lookbook_custom"
-  | "awaiting_video_ref_name";
+  | "awaiting_video_ref_name"
+  | "awaiting_undress_photo";
 
 export type TgPending = {
   templateId?: string;

@@ -75,6 +75,8 @@ export type TgPending = {
   qcItemId?: string;
   /** QC: success keyboard message id to edit */
   qcSuccessMessageId?: number;
+  /** Last silent message that carries the bottom reply keyboard */
+  replyKbCarrierId?: number;
 };
 
 export async function getTgSession(platformUserId: string) {
@@ -109,10 +111,20 @@ export async function setTgSession(
   });
   if (!acc) return null;
 
-  const pending = {
-    ...(patch.clearPending ? {} : parsePending(acc.pendingJson)),
+  const prevPending = parsePending(acc.pendingJson);
+  const pending: TgPending = {
+    ...(patch.clearPending ? {} : prevPending),
     ...(patch.pending || {}),
   };
+  // Keep the reply-keyboard carrier across clearPending — deleting that
+  // message on some Telegram clients also drops the bottom keyboard.
+  if (
+    patch.clearPending &&
+    prevPending.replyKbCarrierId != null &&
+    patch.pending?.replyKbCarrierId === undefined
+  ) {
+    pending.replyKbCarrierId = prevPending.replyKbCarrierId;
+  }
 
   return prisma.platformAccount.update({
     where: { id: acc.id },

@@ -9,6 +9,11 @@ import {
   tgEditMessageText,
   tgSendMessage,
 } from "@/lib/tg/telegram-api";
+import {
+  getTgSession,
+  parsePending,
+  setTgSession,
+} from "@/lib/tg/session";
 
 /** TG invite / community chat (same for RU and EN). */
 export const TG_COMMUNITY_URL = "https://t.me/+6aVo5HU0Yrc4NjYy";
@@ -39,6 +44,8 @@ export function mainMenuKeyboard(locale: TgLocale) {
         ],
       ],
       resize_keyboard: true,
+      // Keep the bar visible; speech one_time keyboards otherwise hide it.
+      is_persistent: true,
     },
   };
 }
@@ -49,10 +56,22 @@ export function mainMenuExtra(locale: TgLocale) {
 
 /**
  * Telegram can set a reply keyboard only via a sent message, and cannot mix it
- * with inline buttons on the same message. Send a silent carrier, then delete
- * it — the bottom keyboard stays.
+ * with inline buttons on the same message. Send a silent carrier and keep it —
+ * deleting that carrier removes the bottom keyboard on many Telegram clients
+ * (flash → gone). Older carriers are cleaned up after the new one is live.
  */
 async function attachReplyKeyboardSilent(chatId: number, locale: TgLocale) {
+  const platformUserId = String(chatId);
+  let prevCarrierId: number | undefined;
+  try {
+    const acc = await getTgSession(platformUserId);
+    if (acc) {
+      prevCarrierId = parsePending(acc.pendingJson).replyKbCarrierId;
+    }
+  } catch {
+    /* session optional for attach */
+  }
+
   const extra: Record<string, unknown> = {
     ...mainMenuExtra(locale),
     disable_notification: true,
@@ -67,10 +86,21 @@ async function attachReplyKeyboardSilent(chatId: number, locale: TgLocale) {
   }
   const messageId = sent?.message_id;
   if (!messageId) return;
+
   try {
-    await tgDeleteMessage(chatId, messageId);
+    await setTgSession(platformUserId, {
+      pending: { replyKbCarrierId: messageId },
+    });
   } catch {
-    /* keyboard is already attached even if the carrier stays */
+    /* ignore */
+  }
+
+  if (prevCarrierId && prevCarrierId !== messageId) {
+    try {
+      await tgDeleteMessage(chatId, prevCarrierId);
+    } catch {
+      /* old carrier already gone */
+    }
   }
 }
 

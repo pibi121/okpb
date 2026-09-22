@@ -85,7 +85,7 @@ export async function maybeSendAutoRules(
     chatState: "awaiting_rules",
     pending: { ...pending, rulesAutoSent: true, rulesAutoAt: due },
   });
-  await sendRulesStep(chatId, locale);
+  await sendRulesStep(chatId, locale, { userId });
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
@@ -96,10 +96,17 @@ export async function maybeSendAutoRules(
   return true;
 }
 
-export async function sendRulesStep(chatId: number, locale: TgLocale) {
-  const body = tFormat("rules_step", locale, {
-    rulesUrl: tgRulesArticleUrl(locale),
-  });
+export async function sendRulesStep(
+  chatId: number,
+  locale: TgLocale,
+  opts?: { userId?: string; nudge?: boolean },
+) {
+  const prefix = opts?.nudge ? t("rules_nudge_prefix", locale) : "";
+  const body =
+    prefix +
+    tFormat("rules_step", locale, {
+      rulesUrl: tgRulesArticleUrl(locale),
+    });
   await tgSendMessage(chatId, body, {
     link_preview_options: { is_disabled: true },
     reply_markup: {
@@ -108,6 +115,12 @@ export async function sendRulesStep(chatId: number, locale: TgLocale) {
       ],
     },
   });
+  if (opts?.userId) {
+    await prisma.user.updateMany({
+      where: { id: opts.userId, tgRulesShownAt: null },
+      data: { tgRulesShownAt: new Date() },
+    });
+  }
 }
 
 export async function onLanguagePicked(
@@ -121,7 +134,7 @@ export async function onLanguagePicked(
     chatState: "awaiting_rules",
     pending: { rulesAutoSent: true },
   });
-  await sendRulesStep(chatId, locale);
+  await sendRulesStep(chatId, locale, { userId });
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
@@ -311,31 +324,102 @@ export async function confirmRulesAndWelcome(
     where: { id: userId },
     select: { ageConfirmed: true },
   });
+
+  // Already confirmed — only re-open hub (do not reset drip timers).
+  if (before?.ageConfirmed) {
+    await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
+    await sendMainMenuHub(chatId, userId, locale, { attachReplyKeyboard: true });
+    return;
+  }
+
+  // Credit starter BEFORE flipping ageConfirmed — if credit fails, user can retry the button.
+  const already = await prisma.ledgerEntry.findFirst({
+    where: { userId, reason: "tg_starter" },
+    select: { id: true },
+  });
+  if (!already) {
+    await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
+      ensurePriceOverlay(true),
+    );
+    const { photoActressPeaches } = await import("@/lib/tg-pricing");
+    const { creditPeaches } = await import("@/lib/tg/wallet");
+    const amount = Math.max(1, photoActressPeaches());
+    await creditPeaches(userId, amount, "tg_starter", {
+      source: "rules_confirm",
+    });
+  }
   await prisma.user.update({
     where: { id: userId },
     data: { ageConfirmed: true, locale },
   });
 
-  // New users only: starter peaches = current actress photo price from /ops/prices.
-  if (!before?.ageConfirmed) {
-    const already = await prisma.ledgerEntry.findFirst({
-      where: { userId, reason: "tg_starter" },
-      select: { id: true },
+  await sendWelcomeAfterRules(chatId, platformUserId, locale, userId);
+}
+
+/** Rules agree nudges: 10m / 3h / 24h after first rules message. */
+export async function maybeSendRulesNudges(
+  chatId: number,
+  userId: string,
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      ageConfirmed: true,
+      locale: true,
+      createdAt: true,
+      tgRulesShownAt: true,
+      tgRulesNudge10mSent: true,
+      tgRulesNudge3hSent: true,
+      tgRulesNudge24hSent: true,
+    },
+  });
+  if (!user || user.ageConfirmed) return;
+
+  const locale: TgLocale = user.locale === "en" ? "en" : "ru";
+  const anchor = user.tgRulesShownAt?.getTime() || user.createdAt.getTime();
+  const ageMs = Date.now() - anchor;
+  const MS_10M = 10 * 60_000;
+  const MS_3H = 3 * 60 * 60_000;
+  const MS_24H = 24 * 60 * 60_000;
+
+  // Seed shownAt for legacy unconfirmed users so nudge clock starts.
+  if (!user.tgRulesShownAt) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { tgRulesShownAt: user.createdAt },
     });
-    if (!already) {
-      await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
-        ensurePriceOverlay(true),
-      );
-      const { photoActressPeaches } = await import("@/lib/tg-pricing");
-      const { creditPeaches } = await import("@/lib/tg/wallet");
-      const amount = Math.max(1, photoActressPeaches());
-      await creditPeaches(userId, amount, "tg_starter", {
-        source: "rules_confirm",
-      });
-    }
   }
 
-  await sendWelcomeAfterRules(chatId, platformUserId, locale, userId);
+  const sendNudge = async (
+    flag: "tgRulesNudge10mSent" | "tgRulesNudge3hSent" | "tgRulesNudge24hSent",
+    eventKey: string,
+  ) => {
+    await setTgSession(String(chatId), { chatState: "awaiting_rules" });
+    await sendRulesStep(chatId, locale, { userId, nudge: true });
+    await prisma.user.update({
+      where: { id: userId },
+      data: { [flag]: true },
+    });
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId,
+      platformUserId: String(chatId),
+      eventKey,
+      surface: "system",
+    });
+  };
+
+  if (!user.tgRulesNudge10mSent && ageMs >= MS_10M) {
+    await sendNudge("tgRulesNudge10mSent", "bot.rules.nudge_10m");
+    return;
+  }
+  if (!user.tgRulesNudge3hSent && ageMs >= MS_3H) {
+    await sendNudge("tgRulesNudge3hSent", "bot.rules.nudge_3h");
+    return;
+  }
+  if (!user.tgRulesNudge24hSent && ageMs >= MS_24H) {
+    await sendNudge("tgRulesNudge24hSent", "bot.rules.nudge_24h");
+  }
 }
 
 export async function sendGenerationKindPicker(chatId: number, locale: TgLocale) {

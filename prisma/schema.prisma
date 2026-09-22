@@ -44,6 +44,11 @@ model User {
   tgFunnel6hSent Boolean @default(false)
   /// Ban-backup notice after first hub (onboarding)
   tgBanBackupOnboardSent Boolean @default(false)
+  /// First rules message shown (nudge clock for unconfirmed users)
+  tgRulesShownAt DateTime?
+  tgRulesNudge10mSent Boolean @default(false)
+  tgRulesNudge3hSent Boolean @default(false)
+  tgRulesNudge24hSent Boolean @default(false)
   /// Undress: unused free credits (max stack 1)
   tgUndressFreeCredits Int @default(0)
   /// Undress: welcome free already granted (existing + new users)

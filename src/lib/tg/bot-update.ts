@@ -1577,7 +1577,8 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 
   const { trackBotCallback, trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackBotCallback(user.id, platformUserId, data);
-  if (!user.ageConfirmed) {
+  // Don't interleave auto-rules while the user is tapping «agree».
+  if (!user.ageConfirmed && data !== CB.rulesAgree && data !== "rules:agree") {
     await maybeSendAutoRules(chatId, user.id);
   }
 
@@ -1602,8 +1603,29 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 
   if (data === CB.rulesAgree || data === "rules:agree") {
     await tgAnswerCallbackQuery(cq.id);
-    if (!user.ageConfirmed) {
+    try {
+      // Always run welcome path: recovers users stuck after a partial confirm.
       await confirmRulesAndWelcome(chatId, platformUserId, user.id, locale);
+      trackFunnelEventBg({
+        userId: user.id,
+        platformUserId,
+        eventKey: "bot.rules.agree",
+        meta: { locale, wasConfirmed: user.ageConfirmed },
+      });
+    } catch (e) {
+      console.error("[tg] rules agree failed", user.id, e);
+      await tgSendMessage(chatId, t("rules_agree_failed", locale), {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: t("rules_agree_btn", locale),
+                callback_data: "rules:agree",
+              },
+            ],
+          ],
+        },
+      });
     }
     return;
   }
@@ -1882,7 +1904,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         });
         await maybeSendAutoRules(chatId, user.id);
       } else {
-        await sendRulesStep(chatId, locale);
+        await sendRulesStep(chatId, locale, { userId: user.id });
       }
       return;
     }

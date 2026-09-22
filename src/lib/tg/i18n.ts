@@ -51,6 +51,20 @@ Please accept our <a href="{rulesUrl}">Terms of Service</a> and confirm you are 
     en: "✅ I accept the rules & offer",
   },
 
+  rules_nudge_prefix: {
+    ru: `<b>Напоминание</b> — без этого шага студия закрыта.
+
+`,
+    en: `<b>Reminder</b> — you need this step to open the studio.
+
+`,
+  },
+
+  rules_agree_failed: {
+    ru: "Не удалось принять правила. Нажми кнопку ещё раз.",
+    en: "Could not accept the rules. Tap the button again.",
+  },
+
   welcome_after_rules: {
     ru: `<b>Добро пожаловать в PeachBitch</b> — место, после которого ты забудешь адреса всех сайтов 🔞🍓⬛️🟧 и станешь режиссёром своих удовольствий!
 

@@ -93,6 +93,27 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "Кнопка «Согласен» / rules:agree — критический шаг входа.",
   ),
   S(
+    "bot.rules.nudge_10m",
+    "system",
+    "onboarding",
+    "Дожим правил через 10 мин",
+    "Повтор правил + кнопка согласия, если юзер ещё не подтвердил.",
+  ),
+  S(
+    "bot.rules.nudge_3h",
+    "system",
+    "onboarding",
+    "Дожим правил через 3 часа",
+    "Второй повтор правил для неподтверждённых.",
+  ),
+  S(
+    "bot.rules.nudge_24h",
+    "system",
+    "onboarding",
+    "Дожим правил через 24 часа",
+    "Третий повтор правил для неподтверждённых.",
+  ),
+  S(
     "bot.welcome.after_rules",
     "bot",
     "onboarding",

@@ -414,6 +414,55 @@ export async function pollAutoRules(limit = 40): Promise<void> {
   }
 }
 
+/** Re-send rules+agree button at 10m / 3h / 24h for users who never confirmed. */
+export async function pollRulesNudges(limit = 40): Promise<void> {
+  const { maybeSendRulesNudges } = await import("@/lib/tg/onboarding-flow");
+  const due10 = new Date(Date.now() - 10 * 60_000);
+  const users = await prisma.user.findMany({
+    where: {
+      source: "telegram",
+      ageConfirmed: false,
+      OR: [
+        {
+          tgRulesShownAt: { not: null, lte: due10 },
+          tgRulesNudge10mSent: false,
+        },
+        {
+          tgRulesShownAt: { not: null, lte: new Date(Date.now() - 3 * 60 * 60_000) },
+          tgRulesNudge3hSent: false,
+        },
+        {
+          tgRulesShownAt: { not: null, lte: new Date(Date.now() - 24 * 60 * 60_000) },
+          tgRulesNudge24hSent: false,
+        },
+        // Legacy: never got shownAt stamped — use account age
+        {
+          tgRulesShownAt: null,
+          createdAt: { lte: due10 },
+        },
+      ],
+    },
+    select: { id: true },
+    take: limit,
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const u of users) {
+    const acc = await prisma.platformAccount.findFirst({
+      where: { userId: u.id, platform: "telegram" },
+      select: { platformUserId: true },
+    });
+    if (!acc) continue;
+    const chatId = Number(acc.platformUserId);
+    if (!Number.isFinite(chatId)) continue;
+    try {
+      await maybeSendRulesNudges(chatId, u.id);
+    } catch (e) {
+      console.error("[tg-rules-nudge]", u.id, e);
+    }
+  }
+}
+
 /** Background: push due drips without waiting for user to open chat. */
 export async function pollTgFunnelDrips(limit = 25): Promise<void> {
   if (funnelPollBusy) return;
@@ -422,6 +471,7 @@ export async function pollTgFunnelDrips(limit = 25): Promise<void> {
   lastFunnelPollAt = Date.now();
   try {
     await pollAutoRules(Math.min(40, limit));
+    await pollRulesNudges(Math.min(40, limit));
     const now = new Date();
     const due5 = new Date(now.getTime() - MS_5M);
     const users = await prisma.user.findMany({

@@ -194,6 +194,8 @@ export async function sendMainMenuHub(
 ) {
   const caption = await buildHubCaption(userId, locale);
   const markup = hubInlineKeyboard(locale);
+  const bal = await getBalancePeaches(userId);
+  const mediaCaption = tFormat("hub_media_caption", locale, { balance: bal });
 
   if (opts?.editMessageId) {
     await editOrSendNavMessage({
@@ -207,10 +209,9 @@ export async function sendMainMenuHub(
   }
 
   const attachKb = opts?.attachReplyKeyboard !== false;
-  await tgSendMediaMessage(chatId, "welcome", caption, {
-    reply_markup: markup,
-  });
-  // Telegram: one message can't mix inline + reply keyboard.
+  // Welcome media uses a short caption (TG 1024 limit); full hub copy is the next text.
+  await tgSendMediaMessage(chatId, "welcome", mediaCaption);
+  await tgSendMessage(chatId, caption, { reply_markup: markup });
   if (attachKb) {
     await attachReplyKeyboardSilent(chatId, locale);
   }

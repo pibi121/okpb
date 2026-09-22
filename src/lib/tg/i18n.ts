@@ -817,6 +817,12 @@ Browse examples and templates via the buttons below or open the Studio.`,
     en: ` (🎁 Free undress available)`,
   },
 
+  /** Short caption under welcome media (Telegram limit 1024). Full hub text is a follow-up message. */
+  hub_media_caption: {
+    ru: `Ну что, пофантазируем? 😏💦\n\nБаланс: {balance} 🍑`,
+    en: `Ready to fantasize? 😏💦\n\nBalance: {balance} 🍑`,
+  },
+
   undress_disclaimer: {
     ru: `Раздеть по 1 фото - это пробная функция нашей студии. Раздевание имеет свои ограничения и среднее качество, по сравнению с другими нашими функциями.
 

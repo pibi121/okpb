@@ -205,6 +205,11 @@ export async function sendMainMenuHub(
       messageId: opts.editMessageId,
       hasMedia: opts.editHasMedia,
     });
+    // In-place edit cannot set a reply keyboard — always re-attach via carrier
+    // so the bottom bar survives bot switches / speech one_time keyboards.
+    if (opts.attachReplyKeyboard !== false) {
+      await attachReplyKeyboardSilent(chatId, locale);
+    }
     return;
   }
 

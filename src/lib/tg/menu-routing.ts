@@ -30,7 +30,8 @@ export async function goToMainMenu(
 ) {
   await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
   await sendMainMenuHub(chatId, userId, locale, {
-    attachReplyKeyboard: !opts?.editMessageId,
+    // Always restore bottom reply keyboard (edit-in-place cannot set it alone).
+    attachReplyKeyboard: true,
     editMessageId: opts?.editMessageId,
     editHasMedia: opts?.editHasMedia,
   });

@@ -223,8 +223,6 @@ export async function sendMainMenuHub(
 ) {
   const caption = await buildHubCaption(userId, locale);
   const markup = hubInlineKeyboard(locale);
-  const bal = await getBalancePeaches(userId);
-  const mediaCaption = tFormat("hub_media_caption", locale, { balance: bal });
 
   if (opts?.editMessageId) {
     await editOrSendNavMessage({
@@ -243,8 +241,8 @@ export async function sendMainMenuHub(
   }
 
   const attachKb = opts?.attachReplyKeyboard !== false;
-  // Welcome media uses a short caption (TG 1024 limit); full hub copy is the next text.
-  await tgSendMediaMessage(chatId, "welcome", mediaCaption);
+  // Video/photo without caption — full hub copy is the following text message.
+  await tgSendMediaMessage(chatId, "welcome", "");
   await tgSendMessage(chatId, caption, { reply_markup: markup });
   if (attachKb) {
     await attachReplyKeyboardSilent(chatId, locale);

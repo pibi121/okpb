@@ -107,9 +107,10 @@ async function showEarnInPlace(
   const { getPartnerDashboard, partnerStartLink } = await import(
     "@/lib/tg/partner-program"
   );
-  const { TG_AFFILIATE_ATTRIBUTION_NOTE } = await import("@/lib/tg/rules");
+  const { tgAffiliateAttributionNote } = await import("@/lib/tg/rules");
   const dash = await getPartnerDashboard(userId);
   const mainUrl = partnerStartLink(dash.botUsername, dash.profile.code);
+  const pct = String(dash.profile.commissionPct || 50);
   const body = [
     tFormat("earn_dash", locale, {
       referrals: String(dash.referrals),
@@ -118,9 +119,10 @@ async function showEarnInPlace(
       earned: String(dash.commissionPeaches),
       balance: String(dash.profile.balancePeaches),
       link: mainUrl,
+      pct,
     }),
     "",
-    TG_AFFILIATE_ATTRIBUTION_NOTE[locale],
+    tgAffiliateAttributionNote(locale, dash.profile.commissionPct || 50),
   ].join("\n");
   const rows = withBackRow(locale, [
     [

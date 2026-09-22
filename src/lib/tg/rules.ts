@@ -31,7 +31,19 @@ export const TG_PAYMENT_NOTE = {
 };
 
 /** Explains affiliate «cookie» — first ref link wins forever. */
+export function tgAffiliateAttributionNote(
+  locale: TgLocale,
+  commissionPct = 50,
+): string {
+  const pct = Math.max(0, Math.min(100, Math.round(commissionPct)));
+  if (locale === "en") {
+    return `Affiliate attribution: if a user arrives via <code>?start=ref_XXX</code>, we link them to that partner <b>for life</b> (same Telegram account). All their top-ups pay <b>${pct}%</b> to that partner.`;
+  }
+  return `«Куки» партнёрки: если юзер пришёл по ссылке <code>?start=ref_XXX</code>, мы <b>навсегда</b> привязываем его к этому партнёру. Все пополнения этого юзера дают партнёру <b>${pct}%</b> — даже через месяц с другого устройства (пока тот же Telegram-аккаунт).`;
+}
+
+/** @deprecated use tgAffiliateAttributionNote(locale, pct) */
 export const TG_AFFILIATE_ATTRIBUTION_NOTE = {
-  ru: `«Куки» партнёрки: если юзер пришёл по ссылке <code>?start=ref_XXX</code>, мы <b>навсегда</b> привязываем его к этому партнёру. Все пополнения этого юзера дают партнёру 50% — даже через месяц с другого устройства (пока тот же Telegram-аккаунт).`,
-  en: `Affiliate attribution: if a user arrives via <code>?start=ref_XXX</code>, we link them to that partner <b>for life</b> (same Telegram account). All their top-ups pay 50% to that partner.`,
+  ru: tgAffiliateAttributionNote("ru", 50),
+  en: tgAffiliateAttributionNote("en", 50),
 };

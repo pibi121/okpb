@@ -43,6 +43,15 @@ function randomCode(len = 8): string {
     .toLowerCase();
 }
 
+/** Validate partner commission % for ops + charging. Returns null if invalid. */
+export function clampPartnerCommissionPct(raw: unknown): number | null {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const pct = Math.round(n);
+  if (pct < 0 || pct > 100) return null;
+  return pct;
+}
+
 export async function ensurePartnerProfile(userId: string) {
   const existing = await prisma.partnerProfile.findUnique({ where: { userId } });
   if (existing) return existing;
@@ -153,7 +162,9 @@ export async function creditPartnerCommission(opts: {
   });
   if (!attr || attr.partner.status !== "active") return;
 
-  const pct = attr.partner.commissionPct || 50;
+  const pct =
+    clampPartnerCommissionPct(attr.partner.commissionPct) ??
+    50;
   const amount = Math.floor((opts.grossPeaches * pct) / 100);
   if (amount <= 0) return;
 

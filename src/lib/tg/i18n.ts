@@ -1045,13 +1045,13 @@ Not sure how to use the bot? Tap the guide button below!`,
   },
 
   earn_text: {
-    ru: "💰 <b>Заработать</b>\n\n50% с оборота пополнений приглашённых пользователей.\nВыплата USDT от 30.",
-    en: "💰 <b>Earn</b>\n\n50% of top-ups from users you refer.\nPayout from 30 USDT.",
+    ru: "💰 <b>Заработать</b>\n\nКомиссия с оборота пополнений приглашённых пользователей (ставка в твоём кабинете).\nВыплата USDT от 30.",
+    en: "💰 <b>Earn</b>\n\nCommission on top-ups from users you refer (your rate is in the partner cabinet).\nPayout from 30 USDT.",
   },
 
   earn_dash: {
-    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля (50%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>50%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n\nТвоя основная ссылка:\n<code>{link}</code>",
-    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share (50%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>50%</b> of referred users' top-ups.\nPayout from 30 USDT.\n\nYour main link:\n<code>{link}</code>",
+    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля ({pct}%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n\nТвоя основная ссылка:\n<code>{link}</code>",
+    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share ({pct}%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n\nYour main link:\n<code>{link}</code>",
   },
 
   earn_open_partner_btn: {

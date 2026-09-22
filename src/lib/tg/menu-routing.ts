@@ -248,15 +248,15 @@ export async function routeMenuText(
   }
   if (isMenuText(text, "menu_open_studio")) {
     trackMenu("bot.menu.open_studio");
-    const { getPrimaryBotUsername } = await import("@/lib/tg/bot-config");
-    const username = await getPrimaryBotUsername();
+    // Inline web_app works; t.me/?startapp often returns BOT_INVALID (wrong bot
+    // username in dual mode, or Main Mini App not configured in BotFather).
     await tgSendMessage(chatId, t("open_studio_tap", locale), {
       reply_markup: {
         inline_keyboard: [
           [
             {
               text: t("menu_open_studio", locale),
-              url: `https://t.me/${username}?startapp=1`,
+              web_app: { url: tgMiniAppUrl() },
             },
           ],
         ],

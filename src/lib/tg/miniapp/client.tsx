@@ -222,25 +222,9 @@ export function useTgMiniApp() {
       const initData = await waitInitData();
       initDataRef.current = initData;
       if (!initData) {
-        // Reply-keyboard WebApp buttons often open an in-app browser without
-        // initData; Menu Button / inline web_app are fine. Re-launch via startapp.
-        try {
-          const cfg = (await fetch("/api/tg/bot-config").then((r) =>
-            r.json(),
-          )) as { startAppUrl?: string };
-          if (cfg.startAppUrl) {
-            if (window.Telegram?.WebApp?.openTelegramLink) {
-              window.Telegram.WebApp.openTelegramLink(cfg.startAppUrl);
-            } else {
-              window.location.href = cfg.startAppUrl;
-            }
-            setError(UI.ru.openInTg);
-            setStatus("error");
-            return;
-          }
-        } catch {
-          /* fall through to static error */
-        }
+        // Opened outside Mini App context (browser / broken reply-kb web_app).
+        // Do not redirect to t.me/?startapp — that often shows BOT_INVALID when
+        // primary username ≠ current bot or Main Mini App is unset in BotFather.
         setError(UI.ru.openInTg);
         setStatus("error");
         return;

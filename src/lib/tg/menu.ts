@@ -38,7 +38,7 @@ export function mainMenuKeyboard(locale: TgLocale) {
         [
           { text: t("menu_main", locale) },
           // Plain text — reply-keyboard web_app often opens without initData.
-          // routeMenuText opens studio via t.me/?startapp (real Mini App).
+          // routeMenuText replies with an inline web_app button (same as hub).
           { text: t("menu_open_studio", locale) },
         ],
       ],

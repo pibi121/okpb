@@ -5,7 +5,7 @@ import {
   getPrimaryBotUsername,
 } from "@/lib/tg/bot-config";
 
-/** Public Mini App helpers (no auth) — used to recover when reply-keyboard WebApp opens without initData. */
+/** Public bot deep-link helpers (no auth). */
 export async function GET() {
   await ensureDefaultBotInstance();
   const botUsername = await getPrimaryBotUsername();
@@ -13,6 +13,5 @@ export async function GET() {
   return NextResponse.json({
     botUrl,
     botUsername,
-    startAppUrl: `https://t.me/${botUsername}?startapp=1`,
   });
 }

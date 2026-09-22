@@ -222,6 +222,25 @@ export function useTgMiniApp() {
       const initData = await waitInitData();
       initDataRef.current = initData;
       if (!initData) {
+        // Reply-keyboard WebApp buttons often open an in-app browser without
+        // initData; Menu Button / inline web_app are fine. Re-launch via startapp.
+        try {
+          const cfg = (await fetch("/api/tg/bot-config").then((r) =>
+            r.json(),
+          )) as { startAppUrl?: string };
+          if (cfg.startAppUrl) {
+            if (window.Telegram?.WebApp?.openTelegramLink) {
+              window.Telegram.WebApp.openTelegramLink(cfg.startAppUrl);
+            } else {
+              window.location.href = cfg.startAppUrl;
+            }
+            setError(UI.ru.openInTg);
+            setStatus("error");
+            return;
+          }
+        } catch {
+          /* fall through to static error */
+        }
         setError(UI.ru.openInTg);
         setStatus("error");
         return;

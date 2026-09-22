@@ -606,14 +606,26 @@ export async function notifyOpsPayment(opts: {
 export async function notifyOpsSignup(opts: {
   userId: string;
   via: "telegram" | "web";
+  /** Product bot username the user just opened (without @). */
+  botUsername?: string | null;
 }): Promise<void> {
   if (!opsTelegramConfigured()) return;
   try {
     const ident = await loadOpsUserIdentity(opts.userId);
     const via = opts.via === "web" ? "сайт" : "Telegram (бот / мини-апп)";
+    let bot = (opts.botUsername || "").replace(/^@/, "").trim();
+    if (!bot && opts.via === "telegram") {
+      try {
+        const { getPrimaryBotUsername } = await import("@/lib/tg/bot-config");
+        bot = (await getPrimaryBotUsername()).replace(/^@/, "");
+      } catch {
+        bot = "";
+      }
+    }
     const text = [
       `🆕 <b>Новая регистрация</b>`,
       `Кто: ${ident?.who || `<code>${escHtml(opts.userId)}</code>`}`,
+      bot ? `Бот: <b>@${escHtml(bot)}</b>` : `Бот: —`,
       `Канал: ${via}`,
       `Источник: ${ident?.sourceLine || "—"}`,
       `Партнёр: ${ident?.partnerLine || "нет"}`,

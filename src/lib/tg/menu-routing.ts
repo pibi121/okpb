@@ -246,6 +246,24 @@ export async function routeMenuText(
     await goToMainMenu(chatId, platformUserId, userId, locale);
     return true;
   }
+  if (isMenuText(text, "menu_open_studio")) {
+    trackMenu("bot.menu.open_studio");
+    const { getPrimaryBotUsername } = await import("@/lib/tg/bot-config");
+    const username = await getPrimaryBotUsername();
+    await tgSendMessage(chatId, t("open_studio_tap", locale), {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: t("menu_open_studio", locale),
+              url: `https://t.me/${username}?startapp=1`,
+            },
+          ],
+        ],
+      },
+    });
+    return true;
+  }
   // Legacy reply-keyboard labels (kept until clients refresh keyboard).
   if (isMenuText(text, "menu_generation")) {
     trackMenu("bot.menu.generation");

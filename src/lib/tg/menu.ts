@@ -37,10 +37,9 @@ export function mainMenuKeyboard(locale: TgLocale) {
       keyboard: [
         [
           { text: t("menu_main", locale) },
-          {
-            text: t("menu_open_studio", locale),
-            web_app: { url: tgMiniAppUrl() },
-          },
+          // Plain text — reply-keyboard web_app often opens without initData.
+          // routeMenuText opens studio via t.me/?startapp (real Mini App).
+          { text: t("menu_open_studio", locale) },
         ],
       ],
       resize_keyboard: true,

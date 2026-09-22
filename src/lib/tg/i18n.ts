@@ -968,6 +968,10 @@ For free undresses: open the feed daily, scroll 20–30 seconds, and claim the b
   menu_help: { ru: "❓ Помощь", en: "❓ Help" },
   menu_main: { ru: "🏠 Главное меню", en: "🏠 Main menu" },
   menu_open_studio: { ru: "🍑 Открыть студию", en: "🍑 Open studio" },
+  open_studio_tap: {
+    ru: "Открой студию кнопкой ниже 👇",
+    en: "Open the studio with the button below 👇",
+  },
 
   community_text: {
     ru: "👥 Залетай в наше коммьюнити — чат, новости и общение:",

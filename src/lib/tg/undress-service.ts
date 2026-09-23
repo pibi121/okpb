@@ -148,6 +148,7 @@ export async function startTgUndressGeneration(opts: {
             locale,
           },
         });
+        throw e;
       }
     },
     {
@@ -157,6 +158,8 @@ export async function startTgUndressGeneration(opts: {
       refType: "galleryItem",
       refId: galleryItemId,
       pool: "photo",
+      // H3 undress needs CLIP type "minimax" — RunPod stock Comfy lacks it.
+      providers: ["metalnode"],
       meta: { undress: true },
     },
   );

@@ -263,9 +263,15 @@ function safeJson(raw: string): Record<string, unknown> {
   }
 }
 
-export async function pickWorker(pool: GpuPool) {
+export async function pickWorker(
+  pool: GpuPool,
+  opts?: { providers?: string[]; excludeProviders?: string[] },
+) {
   await ensurePrimaryWorker();
   await ensureFleetWorkers();
+
+  const allow = opts?.providers?.map((p) => p.toLowerCase());
+  const deny = opts?.excludeProviders?.map((p) => p.toLowerCase()) || [];
 
   const deadline = Date.now() + 90_000;
   while (true) {
@@ -277,8 +283,15 @@ export async function pickWorker(pool: GpuPool) {
       },
       orderBy: { updatedAt: "asc" },
     });
-    const live = candidates.filter((w) => w.comfyUrl && w.status !== "dead");
+    let live = candidates.filter((w) => w.comfyUrl && w.status !== "dead");
+    if (allow?.length) {
+      live = live.filter((w) => allow.includes(w.provider.toLowerCase()));
+    }
+    if (deny.length) {
+      live = live.filter((w) => !deny.includes(w.provider.toLowerCase()));
+    }
     if (!live.length) {
+      // Hard requirement missed — fall back to primary Metalnode rather than a bad GPU.
       return ensurePrimaryWorker();
     }
     const free = live.filter(
@@ -288,6 +301,11 @@ export async function pickWorker(pool: GpuPool) {
     );
 
     const pickFrom = (pool_: typeof live) => {
+      // Video on burst when available — frees Metalnode for H3 undress/photo.
+      if (pool === "video") {
+        const burst = pool_.find((w) => w.provider === "runpod");
+        if (burst) return burst;
+      }
       if (pool === "photo" || pool === "video" || pool === "any") {
         const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(
           (g) => g.key,
@@ -295,10 +313,25 @@ export async function pickWorker(pool: GpuPool) {
         const prefer = pool_.find((w) => preferredKeys.includes(w.key));
         if (prefer) return prefer;
       }
+      // Prefer Metalnode for photo / undress fidelity.
+      if (pool === "photo") {
+        const metal = pool_.find((w) => w.provider === "metalnode");
+        if (metal) return metal;
+      }
       return pool_[0]!;
     };
 
     if (free.length) return pickFrom(free);
+
+    const restricted = Boolean(allow?.length || deny.length);
+    // H3 undress etc.: never pile onto a busy Metalnode (RunPod lacks minimax CLIP).
+    if (restricted) {
+      if (Date.now() >= deadline + 8 * 60_000) {
+        return ensurePrimaryWorker();
+      }
+      await new Promise((r) => setTimeout(r, 1_200));
+      continue;
+    }
 
     // Single live GPU: must share (serial via slots). Multi-GPU: wait for a free card.
     if (live.length <= 1 || Date.now() >= deadline) {

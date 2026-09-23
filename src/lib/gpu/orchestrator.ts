@@ -194,9 +194,19 @@ export async function runTrackedGpuJob(
   });
 
   const { acquireGpuSlot, releaseGpuSlot } = await import("@/lib/gpu/slots");
+  let worker = await pickWorker(pool, {
+    providers: opts?.providers,
+    excludeProviders: opts?.excludeProviders,
+  });
   await acquireGpuSlot();
   try {
-    const worker = await pickWorker(pool);
+    // Re-pick if the chosen card became busy while we waited for a slot.
+    if (worker.currentJobId) {
+      worker = await pickWorker(pool, {
+        providers: opts?.providers,
+        excludeProviders: opts?.excludeProviders,
+      });
+    }
     const startedAt = new Date();
     const waitMs = Math.max(0, startedAt.getTime() - queuedAt.getTime());
     await prisma.gpuJob.update({

@@ -26,9 +26,9 @@ export type RunpodSpawnResult = {
   raw?: unknown;
 };
 
-/** Default start: Comfy from network-volume copy at /workspace/ComfyUI */
+/** Boot: official Comfy image + symlink Metalnode weights from network volume */
 export const DEFAULT_RUNPOD_DOCKER_START_CMD =
-  "bash -lc 'set -e; cd /workspace/ComfyUI; python3 -m pip install -q --upgrade pip; python3 -m pip install -q -r requirements.txt || true; exec python3 main.py --listen 0.0.0.0 --port 8188'";
+  'bash -lc \'set -euo pipefail; TARGET=/workspace/runpod-slim/ComfyUI; if [ ! -f "$TARGET/main.py" ]; then mkdir -p /workspace/runpod-slim; cp -a /opt/comfyui-baked "$TARGET"; fi; rm -rf "$TARGET/models" "$TARGET/custom_nodes"; ln -sfn /workspace/ComfyUI/models "$TARGET/models"; ln -sfn /workspace/ComfyUI/custom_nodes "$TARGET/custom_nodes"; cd "$TARGET"; exec python3 main.py --listen 0.0.0.0 --port 8188 --enable-cors-header\'';
 
 function apiKey() {
   return process.env.RUNPOD_API_KEY?.trim() || "";
@@ -80,7 +80,14 @@ export async function spawnRunpodVideoBurst(actorId: string): Promise<RunpodSpaw
   }
 
   const cloudType = (process.env.RUNPOD_CLOUD_TYPE || "SECURE").toUpperCase();
-  const gpuTypeId = process.env.RUNPOD_GPU_TYPE_ID?.trim() || "NVIDIA GeForce RTX 5090";
+  const preferredGpu = process.env.RUNPOD_GPU_TYPE_ID?.trim() || "NVIDIA GeForce RTX 5090";
+  const gpuFallbacks = (
+    process.env.RUNPOD_GPU_FALLBACKS?.trim() ||
+    `${preferredGpu},NVIDIA GeForce RTX 4090,NVIDIA L4`
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const dataCenterId = process.env.RUNPOD_DATA_CENTER_ID?.trim() || "EU-RO-1";
   const templateId = process.env.RUNPOD_TEMPLATE_ID?.trim() || null;
   const networkVolumeId =
@@ -89,10 +96,9 @@ export async function spawnRunpodVideoBurst(actorId: string): Promise<RunpodSpaw
     null;
   const imageName =
     process.env.RUNPOD_IMAGE_NAME?.trim() ||
-    (!templateId ? "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04" : null);
+    (!templateId ? "runpod/comfyui:cuda12.8" : null);
   const dockerStartCmd =
-    process.env.RUNPOD_DOCKER_START_CMD?.trim() ||
-    (!templateId ? DEFAULT_RUNPOD_DOCKER_START_CMD : null);
+    process.env.RUNPOD_DOCKER_START_CMD?.trim() || DEFAULT_RUNPOD_DOCKER_START_CMD;
   const comfyPort = process.env.RUNPOD_COMFY_PORT?.trim() || "8188";
   const name = `peach-burst-video-${Date.now().toString(36)}`;
 
@@ -105,55 +111,62 @@ export async function spawnRunpodVideoBurst(actorId: string): Promise<RunpodSpaw
     };
   }
 
-  const input: Record<string, unknown> = {
-    cloudType,
-    gpuCount: 1,
-    volumeInGb: 0,
-    containerDiskInGb: Number(process.env.RUNPOD_CONTAINER_DISK_GB || 40),
-    minVcpuCount: 4,
-    minMemoryInGb: 24,
-    gpuTypeId,
-    name,
-    volumeMountPath: "/workspace",
-    ports: `${comfyPort}/http,22/tcp`,
-    dataCenterId,
-    startSsh: true,
-  };
-  if (templateId) input.templateId = templateId;
-  if (networkVolumeId) input.networkVolumeId = networkVolumeId;
-  if (imageName) input.imageName = imageName;
-  if (dockerStartCmd) input.dockerArgs = dockerStartCmd;
+  let lastError = "RunPod spawn failed";
+  for (const gpuTypeId of gpuFallbacks) {
+    const input: Record<string, unknown> = {
+      cloudType,
+      gpuCount: 1,
+      volumeInGb: 0,
+      containerDiskInGb: Number(process.env.RUNPOD_CONTAINER_DISK_GB || 40),
+      minVcpuCount: 4,
+      minMemoryInGb: 24,
+      gpuTypeId,
+      name,
+      volumeMountPath: "/workspace",
+      ports: `${comfyPort}/http,22/tcp`,
+      dataCenterId,
+      startSsh: true,
+    };
+    if (templateId) input.templateId = templateId;
+    if (networkVolumeId) input.networkVolumeId = networkVolumeId;
+    if (imageName) input.imageName = imageName;
+    if (dockerStartCmd) input.dockerArgs = dockerStartCmd;
 
-  try {
-    const data = await gql<{
-      podFindAndDeployOnDemand?: { id?: string; desiredStatus?: string; costPerHr?: number };
-    }>(
-      `mutation($input: PodFindAndDeployOnDemandInput!) {
-        podFindAndDeployOnDemand(input: $input) {
-          id
-          desiredStatus
-          imageName
-          costPerHr
-        }
-      }`,
-      { input },
-    );
-    const pod = data.podFindAndDeployOnDemand;
-    if (!pod?.id) {
-      return { ok: false, message: "RunPod не вернул pod id", raw: data };
+    try {
+      const data = await gql<{
+        podFindAndDeployOnDemand?: { id?: string; desiredStatus?: string; costPerHr?: number };
+      }>(
+        `mutation($input: PodFindAndDeployOnDemandInput!) {
+          podFindAndDeployOnDemand(input: $input) {
+            id
+            desiredStatus
+            imageName
+            costPerHr
+          }
+        }`,
+        { input },
+      );
+      const pod = data.podFindAndDeployOnDemand;
+      if (!pod?.id) {
+        lastError = `RunPod не вернул pod id (${gpuTypeId})`;
+        continue;
+      }
+      return {
+        ok: true,
+        podId: pod.id,
+        message: `RunPod pod ${pod.id} (${pod.desiredStatus || "created"}, ${gpuTypeId}) — Comfy поднимется после старта образа`,
+        raw: { ...pod, gpuTypeId },
+      };
+    } catch (e) {
+      lastError = e instanceof Error ? e.message.slice(0, 280) : "RunPod spawn failed";
+      // try next GPU type on capacity miss
+      if (!/no longer any instances|capacity|stock|available/i.test(lastError)) {
+        return { ok: false, message: lastError };
+      }
     }
-    return {
-      ok: true,
-      podId: pod.id,
-      message: `RunPod pod ${pod.id} (${pod.desiredStatus || "created"}) — Comfy поднимется после старта образа`,
-      raw: pod,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message.slice(0, 280) : "RunPod spawn failed",
-    };
   }
+
+  return { ok: false, message: lastError };
 }
 
 export async function terminateRunpodPod(podId: string): Promise<RunpodSpawnResult> {

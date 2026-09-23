@@ -16,14 +16,17 @@ import { casheraConfigured } from "@/lib/cashera";
 import {
   createTopupPayment,
   formatTopupPriceLine,
+  isActiveTopupMethod,
   TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
 import type { CasheraPaymentMethod } from "@/lib/cashera";
+import { prisma } from "@/lib/db";
 
 export function topupInlineKeyboard(locale: TgLocale) {
   const rows = TG_QUICK_TOPUP_AMOUNTS.map((n) => [
     { text: `🍑 ${n}`, callback_data: TOPUP_CB.amount(n) },
   ]);
+  void locale;
   return { inline_keyboard: rows };
 }
 
@@ -44,6 +47,43 @@ export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
   return { inline_keyboard: rows };
 }
 
+function payLinkKeyboard(opts: {
+  locale: TgLocale;
+  paymentUrl: string;
+  peaches: number;
+  orderId: string;
+}) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text:
+            opts.locale === "en" ? "Open payment →" : "Открыть оплату →",
+          url: opts.paymentUrl,
+        },
+      ],
+      [
+        {
+          text:
+            opts.locale === "en" ? "New payment link" : "Новая ссылка на оплату",
+          callback_data: TOPUP_CB.renew(opts.orderId),
+        },
+      ],
+      [
+        {
+          text:
+            opts.locale === "en" ? "← Change method" : "← Другой способ",
+          callback_data: TOPUP_CB.amount(opts.peaches),
+        },
+      ],
+    ],
+  };
+}
+
+function payLinkCopyKey(method: string): "topup_pay_link_sbp" | "topup_pay_link_crypto" {
+  return method === "crypto" ? "topup_pay_link_crypto" : "topup_pay_link_sbp";
+}
+
 export async function sendTopupPrompt(chatId: number, locale: TgLocale) {
   const usdt = peachesToUsdt(TG_MIN_TOPUP_PEACHES);
   await setTgSession(String(chatId), {
@@ -53,7 +93,10 @@ export async function sendTopupPrompt(chatId: number, locale: TgLocale) {
   await tgSendMediaMessage(
     chatId,
     "topup",
-    tFormat("topup_prompt", locale, { usdt }),
+    tFormat("topup_prompt", locale, {
+      usdt,
+      min: TG_MIN_TOPUP_PEACHES,
+    }),
     {
       reply_markup: topupInlineKeyboard(locale),
     },
@@ -69,7 +112,10 @@ export async function handleTopupAmount(
 ) {
   if (amount < TG_MIN_TOPUP_PEACHES) {
     const usdt = peachesToUsdt(TG_MIN_TOPUP_PEACHES);
-    await tgSendMessage(chatId, tFormat("topup_min_error", locale, { usdt }), {
+    await tgSendMessage(chatId, tFormat("topup_min_error", locale, {
+      usdt,
+      min: TG_MIN_TOPUP_PEACHES,
+    }), {
       reply_markup: topupInlineKeyboard(locale),
     });
     return;
@@ -110,6 +156,14 @@ export async function handleTopupMethod(
     await sendTopupPrompt(chatId, locale);
     return;
   }
+  if (!isActiveTopupMethod(method)) {
+    await tgSendMessage(
+      chatId,
+      t("topup_method_unavailable", locale),
+      { reply_markup: topupMethodKeyboard(locale, peaches) },
+    );
+    return;
+  }
 
   try {
     const pay = await createTopupPayment({
@@ -122,35 +176,19 @@ export async function handleTopupMethod(
       chatState: "idle",
       clearPending: true,
     });
-    const methodLabel =
-      TOPUP_PAYMENT_METHODS.find((m) => m.id === method)?.[
-        locale === "en" ? "labelEn" : "labelRu"
-      ] || method;
 
     await tgSendMessage(
       chatId,
-      tFormat("topup_pay_link", locale, {
+      tFormat(payLinkCopyKey(method), locale, {
         price: pay.priceLine,
-        method: methodLabel,
       }),
       {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text:
-                  locale === "en" ? "Open payment form →" : "Открыть оплату →",
-                url: pay.paymentUrl,
-              },
-            ],
-            [
-              {
-                text: locale === "en" ? "← Change method" : "← Другой способ",
-                callback_data: TOPUP_CB.amount(peaches),
-              },
-            ],
-          ],
-        },
+        reply_markup: payLinkKeyboard({
+          locale,
+          paymentUrl: pay.paymentUrl,
+          peaches,
+          orderId: pay.orderId,
+        }),
       },
     );
   } catch (e) {
@@ -161,6 +199,44 @@ export async function handleTopupMethod(
       { reply_markup: topupMethodKeyboard(locale, peaches) },
     );
   }
+}
+
+/** Re-create Cashera link for an unpaid order (reminder / renew button). */
+export async function handleTopupRenew(
+  chatId: number,
+  platformUserId: string,
+  locale: TgLocale,
+  userId: string,
+  orderId: string,
+) {
+  const order = await prisma.paymentOrder.findFirst({
+    where: { id: orderId, userId },
+  });
+  if (!order || !isActiveTopupMethod(order.paymentMethod)) {
+    await sendTopupPrompt(chatId, locale);
+    return;
+  }
+  if (order.status === "paid" || order.creditedAt) {
+    await tgSendMessage(chatId, t("topup_already_paid", locale));
+    return;
+  }
+
+  // Mark old pending as canceled so we don't keep reminding on a dead link.
+  if (order.status === "pending") {
+    await prisma.paymentOrder.update({
+      where: { id: order.id },
+      data: { status: "canceled" },
+    });
+  }
+
+  await handleTopupMethod(
+    chatId,
+    platformUserId,
+    locale,
+    order.paymentMethod as CasheraPaymentMethod,
+    userId,
+    order.peaches,
+  );
 }
 
 export async function sendInsufficientBalance(

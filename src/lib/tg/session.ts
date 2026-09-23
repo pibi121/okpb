@@ -57,7 +57,7 @@ export type TgPending = {
   uploadProgressMessageId?: number;
   /** Studio cast id when generating photo from mini app */
   studioCastId?: string;
-  /** Pending peach amount while choosing SBP/card/crypto */
+  /** Pending peach amount while choosing SBP/crypto */
   topupPeaches?: number;
   /** Cast picker page on photo confirm */
   castPage?: number;

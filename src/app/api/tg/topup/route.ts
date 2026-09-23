@@ -5,6 +5,7 @@ import { casheraConfigured } from "@/lib/cashera";
 import {
   createTopupPayment,
   formatTopupPriceLine,
+  isActiveTopupMethod,
   TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
 import type { CasheraPaymentMethod } from "@/lib/cashera";
@@ -53,8 +54,11 @@ export async function POST(req: Request) {
 
   const peaches = Math.floor(Number(body.peaches) || 0);
   const method = String(body.method || "") as CasheraPaymentMethod;
-  if (!["sbp", "card", "crypto"].includes(method)) {
-    return NextResponse.json({ error: "bad_method" }, { status: 400 });
+  if (!isActiveTopupMethod(method)) {
+    return NextResponse.json(
+      { error: "bad_method", message: "Use sbp or crypto" },
+      { status: 400 },
+    );
   }
   if (peaches < TG_MIN_TOPUP_PEACHES) {
     return NextResponse.json(

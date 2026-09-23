@@ -90,7 +90,10 @@ async function showTopupInPlace(
   >);
   await editOrSendNavMessage({
     chatId,
-    text: tFormat("topup_prompt", locale, { usdt }),
+    text: tFormat("topup_prompt", locale, {
+      usdt,
+      min: TG_MIN_TOPUP_PEACHES,
+    }),
     reply_markup: { inline_keyboard: rows },
     messageId,
     hasMedia,

@@ -1,5 +1,6 @@
 /**
- * Peach top-ups via Cashera (SBP / card / crypto).
+ * Peach top-ups via Cashera (SBP / crypto).
+ * Card is not offered in product UI — Cashera merchant has card disabled.
  */
 import { prisma } from "@/lib/db";
 import {
@@ -9,22 +10,30 @@ import {
   type CasheraPaymentMethod,
   type CasheraTransaction,
 } from "@/lib/cashera";
-import { peachesToRub, peachesToUsdt } from "@/lib/tg-pricing";
+import { TG_MIN_TOPUP_PEACHES, peachesToRub, peachesToUsdt } from "@/lib/tg-pricing";
 import { creditPeaches } from "@/lib/tg/wallet";
 
+/** Methods shown in bot + Mini App. */
 export const TOPUP_PAYMENT_METHODS: Array<{
-  id: CasheraPaymentMethod;
+  id: Exclude<CasheraPaymentMethod, "card">;
   labelRu: string;
   labelEn: string;
 }> = [
-  { id: "sbp", labelRu: "Пополнить через СБП", labelEn: "Pay via SBP" },
-  { id: "card", labelRu: "Пополнить картой", labelEn: "Pay by card" },
+  { id: "sbp", labelRu: "СБП — перевод из банка", labelEn: "SBP — bank transfer" },
   {
     id: "crypto",
-    labelRu: "Пополнить криптовалютой",
-    labelEn: "Pay with crypto",
+    labelRu: "Крипта — USDT",
+    labelEn: "Crypto — USDT",
   },
 ];
+
+export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
+
+export function isActiveTopupMethod(
+  method: string,
+): method is Exclude<CasheraPaymentMethod, "card"> {
+  return (TOPUP_ACTIVE_METHOD_IDS as string[]).includes(method);
+}
 
 export function formatTopupPriceLine(
   peaches: number,
@@ -55,15 +64,16 @@ export async function createTopupPayment(opts: {
   if (!casheraConfigured()) {
     throw new Error("Платежи ещё не настроены (нет ключей Cashera)");
   }
+  if (!isActiveTopupMethod(opts.method)) {
+    throw new Error("Этот способ оплаты недоступен. Выбери СБП или крипту.");
+  }
   const peaches = Math.floor(opts.peaches);
-  if (peaches < 100) throw new Error("Минимум 100 🍑");
+  if (peaches < TG_MIN_TOPUP_PEACHES) {
+    throw new Error(`Минимум ${TG_MIN_TOPUP_PEACHES} 🍑`);
+  }
 
   const rub = peachesToRub(peaches);
   const amountMinor = rubToMinor(rub);
-  // Card minimum 100.00 RUB (= 10000 minor) — already covered by min peaches.
-  if (opts.method === "card" && amountMinor < 10000) {
-    throw new Error("Для оплаты картой минимум 100 ₽");
-  }
 
   const order = await prisma.paymentOrder.create({
     data: {

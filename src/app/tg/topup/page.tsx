@@ -6,9 +6,8 @@ import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { TG_MIN_TOPUP_PEACHES, TG_QUICK_TOPUP_AMOUNTS } from "@/lib/tg-pricing";
 
 const METHODS = [
-  { id: "sbp", ru: "Пополнить через СБП", en: "Pay via SBP" },
-  { id: "card", ru: "Пополнить картой", en: "Pay by card" },
-  { id: "crypto", ru: "Пополнить криптовалютой", en: "Pay with crypto" },
+  { id: "sbp", ru: "СБП — перевод из банка", en: "SBP — bank transfer" },
+  { id: "crypto", ru: "Крипта — USDT", en: "Crypto — USDT" },
 ] as const;
 
 function priceLine(peaches: number): string {
@@ -60,7 +59,9 @@ export default function TgTopupPage() {
         throw new Error(data.message || data.error || `HTTP ${res.status}`);
       }
       const url = data.paymentUrl;
-      const tg = window.Telegram?.WebApp;
+      const tg = window.Telegram?.WebApp as
+        | { openLink?: (u: string) => void }
+        | undefined;
       if (tg?.openLink) {
         tg.openLink(url);
       } else {
@@ -84,6 +85,11 @@ export default function TgTopupPage() {
           <p style={{ color: "var(--tg-muted)", fontSize: 13, marginTop: 4 }}>
             {ru ? "Баланс" : "Balance"}: {profile?.balancePeaches ?? 0} 🍑
           </p>
+          <p style={{ color: "var(--tg-muted)", fontSize: 12, marginTop: 8 }}>
+            {ru
+              ? "СБП из банка или USDT. Карты пока нет."
+              : "Bank SBP or USDT. Cards unavailable for now."}
+          </p>
 
           <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
             {TG_QUICK_TOPUP_AMOUNTS.map((n) => (
@@ -93,7 +99,8 @@ export default function TgTopupPage() {
                 className="tg-lang"
                 style={{
                   opacity: amount === n ? 1 : 0.75,
-                  borderColor: amount === n ? "var(--tg-accent, #f5a)" : undefined,
+                  borderColor:
+                    amount === n ? "var(--tg-accent, #f5a)" : undefined,
                 }}
                 onClick={() => {
                   setAmount(n);

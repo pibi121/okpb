@@ -112,6 +112,7 @@ export const OB_CB = {
 export const TOPUP_CB = {
   amount: (n: number) => `tu:${n}`,
   method: (m: string) => `tu:pay:${m}`,
+  renew: (orderId: string) => `tu:renew:${orderId}`,
 } as const;
 
 /** Template picker: 2 columns × 3 rows, then ◀️ ▶️ on their own row. */

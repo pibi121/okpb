@@ -299,7 +299,7 @@ model LedgerEntry {
 }
 
 
-/// Cashera top-up orders (SBP / card / crypto).
+/// Cashera top-up orders (SBP / crypto; card disabled in product UI).
 model PaymentOrder {
   id              String   @id @default(cuid())
   /// Our idempotent external_id for Cashera
@@ -309,13 +309,16 @@ model PaymentOrder {
   /// Amount in minor units (kopecks for RUB)
   amountMinor     Int
   currency        String   @default("RUB")
-  /// sbp | card | crypto
+  /// sbp | crypto (| legacy card)
   paymentMethod   String
   status          String   @default("pending")
   casheraUuid     String   @default("")
   paymentUrl      String   @default("")
   paidAt          DateTime?
   creditedAt      DateTime?
+  /// How many unpaid reminders we already sent for this order
+  remindCount     Int      @default(0)
+  lastRemindedAt  DateTime?
   rawStatusJson   String   @default("")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -325,6 +328,7 @@ model PaymentOrder {
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([casheraUuid])
+  @@index([status, remindCount, createdAt])
 }
 
 model GpuVault {

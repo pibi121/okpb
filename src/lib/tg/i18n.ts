@@ -713,22 +713,22 @@ Tap below to top up 👇`,
     ru: `<b>Сколько персиков хочешь приобрести?</b>
 
 🍑 1 персик = 1 рубль
-Минимум — <b>100 🍑</b> (≈ {usdt} USDT по курсу)
+Минимум — <b>{min} 🍑</b> (≈ {usdt} USDT по курсу)
 
 Выбери по кнопке или введи число в чате 👇
-Дальше покажем сумму в ₽ ($) и способы: СБП / карта / крипта.`,
+Дальше — оплата через <b>СБП</b> или <b>крипту (USDT)</b>.`,
     en: `<b>How many peaches do you want?</b>
 
 🍑 1 peach = 1 RUB
-Minimum — <b>100 🍑</b> (≈ {usdt} USDT at current rate)
+Minimum — <b>{min} 🍑</b> (≈ {usdt} USDT at current rate)
 
 Pick a button or type a number 👇
-Next: amount in ₽ ($) and SBP / card / crypto.`,
+Next: pay via <b>SBP</b> or <b>crypto (USDT)</b>.`,
   },
 
   topup_min_error: {
-    ru: "Минимальная сумма для пополнения — 100 🍑 (≈ {usdt} USDT). Введи число от 100.",
-    en: "Minimum top-up is 100 🍑 (≈ {usdt} USDT). Enter 100 or more.",
+    ru: "Минимальная сумма для пополнения — {min} 🍑 (≈ {usdt} USDT). Введи число от {min}.",
+    en: "Minimum top-up is {min} 🍑 (≈ {usdt} USDT). Enter {min} or more.",
   },
 
   topup_btn: { ru: "Пополнить баланс 💳", en: "Top up balance 💳" },
@@ -760,11 +760,58 @@ Payment gateway is not configured yet. Contact support — or try later.`,
     ru: `К оплате: <b>{price}</b>
 Способ: <b>{method}</b>
 
-Нажми кнопку ниже — откроется форма Cashera. После оплаты персики зачислятся автоматически.`,
+Нажми кнопку ниже — откроется форма оплаты. После оплаты персики зачислятся автоматически.`,
     en: `To pay: <b>{price}</b>
 Method: <b>{method}</b>
 
-Tap below to open the Cashera form. Peaches credit automatically after payment.`,
+Tap below to open the payment form. Peaches credit automatically after payment.`,
+  },
+
+  topup_pay_link_sbp: {
+    ru: `К оплате: <b>{price}</b>
+
+Оплата через <b>СБП</b>: открой форму → подтверди перевод в банковском приложении.
+Персики зачислятся сами после оплаты.`,
+    en: `To pay: <b>{price}</b>
+
+Pay via <b>SBP</b>: open the form → confirm in your banking app.
+Peaches credit automatically after payment.`,
+  },
+
+  topup_pay_link_crypto: {
+    ru: `К оплате: <b>{price}</b>
+
+Оплата <b>USDT</b>: открой форму → выбери сеть → переведи сумму.
+Персики зачислятся сами после оплаты.`,
+    en: `To pay: <b>{price}</b>
+
+Pay with <b>USDT</b>: open the form → pick a network → send the amount.
+Peaches credit automatically after payment.`,
+  },
+
+  topup_remind: {
+    ru: `⏳ Оплата ещё не пришла
+
+Сумма: <b>{price}</b>
+Способ: <b>{method}</b>
+
+Если не успел — открой ссылку ещё раз или запроси новую 👇`,
+    en: `⏳ Payment not received yet
+
+Amount: <b>{price}</b>
+Method: <b>{method}</b>
+
+Open the link again or request a new one 👇`,
+  },
+
+  topup_method_unavailable: {
+    ru: "Этот способ временно недоступен. Выбери СБП или крипту.",
+    en: "This method is unavailable. Choose SBP or crypto.",
+  },
+
+  topup_already_paid: {
+    ru: "Эта оплата уже прошла — персики на балансе ✅",
+    en: "This payment already went through — peaches are on your balance ✅",
   },
 
   topup_pay_error: {

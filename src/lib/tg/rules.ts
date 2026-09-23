@@ -26,8 +26,8 @@ export function tgRulesShortMessage(locale: TgLocale): string {
 }
 
 export const TG_PAYMENT_NOTE = {
-  ru: "Оплата: криптовалюта и СБП через наш платёжный сервис. Сумма также показывается в USDT для удобства.",
-  en: "Pay with crypto or SBP via our payment provider. Amount is also shown in USDT for convenience.",
+  ru: "Оплата: СБП или крипта (USDT) через наш платёжный сервис. Сумма также показывается в USDT для удобства.",
+  en: "Pay with SBP or crypto (USDT) via our payment provider. Amount is also shown in USDT for convenience.",
 };
 
 /** Explains affiliate «cookie» — first ref link wins forever. */

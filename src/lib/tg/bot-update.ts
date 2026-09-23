@@ -1686,10 +1686,36 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     return;
   }
 
+  if (data.startsWith("tu:renew:")) {
+    await tgAnswerCallbackQuery(cq.id);
+    const orderId = data.slice("tu:renew:".length).trim();
+    if (!orderId) {
+      await sendTopupPrompt(chatId, locale);
+      return;
+    }
+    const { handleTopupRenew } = await import("@/lib/tg/topup-flow");
+    await handleTopupRenew(
+      chatId,
+      platformUserId,
+      locale,
+      user.id,
+      orderId,
+    );
+    return;
+  }
+
   if (data.startsWith("tu:pay:")) {
     await tgAnswerCallbackQuery(cq.id);
-    const method = data.slice("tu:pay:".length) as "sbp" | "card" | "crypto";
-    if (!["sbp", "card", "crypto"].includes(method)) return;
+    const method = data.slice("tu:pay:".length);
+    if (!["sbp", "crypto"].includes(method)) {
+      await tgSendMessage(
+        chatId,
+        locale === "en"
+          ? "This method is unavailable. Choose SBP or crypto."
+          : "Этот способ недоступен. Выбери СБП или крипту.",
+      );
+      return;
+    }
     const peaches = Number(pending.topupPeaches || 0);
     if (peaches <= 0) {
       await sendTopupPrompt(chatId, locale);
@@ -1699,7 +1725,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       chatId,
       platformUserId,
       locale,
-      method,
+      method as "sbp" | "crypto",
       user.id,
       peaches,
     );

@@ -118,6 +118,10 @@ async function main() {
   await bootOps().catch((e) => console.error("[tg-bot] bootOps", e));
   await ensureCopyOverlay().catch((e) => console.error("[tg-bot] copy", e));
 
+  void import("../src/lib/tg/topup-reminders")
+    .then(({ startTopupReminderWatcher }) => startTopupReminderWatcher())
+    .catch((e) => console.error("[tg-bot] topup-remind", e));
+
   setInterval(() => {
     void flushTgOutbox().catch((e) => console.error("[tg-outbox]", e));
     void pollTgLoraTrainings().catch((e) => console.error("[tg-lora-poll]", e));

@@ -124,7 +124,7 @@ async function alertEscalate(status: {
   reason?: string;
 }) {
   if (!status.escalate) return;
-  if (Date.now() - lastEscalateAlertAt < 5 * 60_000) return;
+  if (Date.now() - lastEscalateAlertAt < 30 * 60_000) return;
   lastEscalateAlertAt = Date.now();
   try {
     const { reportOpsError } = await import("@/lib/ops/errors");

@@ -180,8 +180,24 @@ def main() -> int:
             if "can't start new thread" in msg or "Resource temporarily unavailable" in msg:
                 backoff = min(120.0, max(backoff, 30.0) * 1.5)
                 log(f"thread exhaustion — sleeping {backoff:.0f}s before reconnect")
+            elif any(
+                x in msg
+                for x in (
+                    "Unable to connect",
+                    "NoValidConnectionsError",
+                    "Connection reset",
+                    "Error reading SSH protocol banner",
+                    "Connection closed",
+                    "timed out",
+                    "TimeoutError",
+                    "EOFError",
+                )
+            ):
+                # sshd MaxStartups / host down — do NOT hammer port 22022.
+                backoff = min(300.0, max(backoff, 20.0) * 1.8)
+                log(f"ssh unreachable — sleeping {backoff:.0f}s before reconnect")
             else:
-                backoff = min(60.0, backoff * 1.4)
+                backoff = min(90.0, backoff * 1.4)
         time.sleep(backoff)
         log("reconnect")
 

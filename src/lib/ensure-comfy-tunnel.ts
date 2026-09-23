@@ -76,7 +76,7 @@ export async function ensureComfyTunnel(opts?: {
 
   spawnInFlight = (async () => {
     try {
-      if (Date.now() - lastSpawnAt > 8_000) {
+      if (Date.now() - lastSpawnAt > 60_000) {
         spawnComfyTunnelKeeper();
       }
       const deadline = Date.now() + (opts?.waitMs ?? 90_000);

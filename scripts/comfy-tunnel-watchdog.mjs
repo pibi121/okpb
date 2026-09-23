@@ -87,9 +87,11 @@ function patchStatus(patch) {
 async function restartTunnel(force) {
   if (restartInFlight) return;
   const sinceLast = Date.now() - lastRestartAt;
-  if (sinceLast < 12_000) {
+  // When SSH is wedged (MaxStartups), frequent forceRestart makes it worse.
+  const cooldown = force ? 90_000 : 45_000;
+  if (sinceLast < cooldown) {
     console.log(
-      `[watchdog] skip restart (cooldown ${Math.round((12_000 - sinceLast) / 1000)}s)`,
+      `[watchdog] skip restart (cooldown ${Math.round((cooldown - sinceLast) / 1000)}s)`,
     );
     return;
   }
@@ -213,7 +215,7 @@ async function boot() {
         fails = 0;
       }
 
-      if (downFor >= ESCALATE_AFTER_MS && Date.now() - lastEscalateAt > 120_000) {
+      if (downFor >= ESCALATE_AFTER_MS && Date.now() - lastEscalateAt > 30 * 60_000) {
         lastEscalateAt = Date.now();
         console.error(
           `[watchdog] ESCALATE: Comfy down ${Math.round(downFor / 1000)}s — container/GPU may need restart`,
@@ -222,7 +224,7 @@ async function boot() {
           ok: false,
           escalate: true,
           reason: "escalate",
-          error: `Comfy unreachable for ${Math.round(downFor / 1000)}s`,
+          error: `Metalnode SSH/Comfy unreachable ${Math.round(downFor / 60_000)}m — reboot GPU host via panel`,
           healer: "watchdog",
         });
       }

@@ -9,11 +9,12 @@ import {
 } from "@/lib/gpu/burst";
 import { sloForKind } from "@/lib/gpu/baselines";
 import { getOpsSettings, saveOpsSettings } from "@/lib/ops/settings";
+import { gpuSlotSnapshot, invalidateGpuSlotCap } from "@/lib/gpu/slots";
 
-const TICK_MS = 45_000;
-const SPAWN_COOLDOWN_MS = 12 * 60_000;
-const CLEAR_CALM_MS = 5 * 60_000;
-const WAIT_RATIO_TRIGGER = 1.2;
+const TICK_MS = 30_000;
+const SPAWN_COOLDOWN_MS = 8 * 60_000;
+const CLEAR_CALM_MS = 8 * 60_000;
+const WAIT_RATIO_TRIGGER = 1.15;
 /** Queue depth that alone warrants burst when only primary GPU is live. */
 const QUEUE_DEPTH_TRIGGER = 2;
 
@@ -68,6 +69,7 @@ function evaluatePressure(dash: Awaited<ReturnType<typeof collectLoadDashboard>>
   calm: boolean;
 } {
   const reasons: string[] = [];
+  const slots = gpuSlotSnapshot();
 
   for (const job of dash.activeJobs) {
     const slo = sloForKind(job.kind);
@@ -78,6 +80,39 @@ function evaluatePressure(dash: Awaited<ReturnType<typeof collectLoadDashboard>>
         `${job.kind} wait ${Math.round(wait / 1000)}s > SLO ${Math.round(slo.waitMs / 1000)}s`,
       );
     }
+  }
+
+  // Photo/undress queued while a long video holds the only card.
+  const hasVideoRunning = dash.activeJobs.some(
+    (j) =>
+      j.status !== "queued" &&
+      (j.pool === "video" ||
+        /video|i2v|clip|film|quick|story/i.test(j.kind)),
+  );
+  const photoQueued = dash.activeJobs.filter(
+    (j) =>
+      j.status === "queued" &&
+      (j.pool === "photo" || /photo|undress|identity/i.test(j.kind)),
+  );
+  if (hasVideoRunning && photoQueued.length > 0) {
+    const oldest = Math.max(...photoQueued.map((j) => j.waitMs || 0));
+    if (oldest >= 20_000) {
+      reasons.push(
+        `photo behind video wait ${Math.round(oldest / 1000)}s n=${photoQueued.length}`,
+      );
+    }
+  }
+
+  if (slots.waiting > 0 && slots.oldestWaitMs >= 25_000 && slots.cap <= 1) {
+    reasons.push(
+      `slot-waiters=${slots.waiting} oldest=${Math.round(slots.oldestWaitMs / 1000)}s`,
+    );
+  }
+
+  if (dash.summary.pendingGallery >= 2 && dash.summary.jobsInflight >= 1) {
+    reasons.push(
+      `pendingGallery=${dash.summary.pendingGallery} inflight=${dash.summary.jobsInflight}`,
+    );
   }
 
   for (const fn of dash.functions) {
@@ -104,6 +139,8 @@ function evaluatePressure(dash: Awaited<ReturnType<typeof collectLoadDashboard>>
     !needBurst &&
     queued === 0 &&
     dash.summary.jobsInflight <= 1 &&
+    dash.summary.pendingGallery === 0 &&
+    slots.waiting === 0 &&
     dash.functions.every((f) => f.pool === "lora" || f.health === "ok");
 
   return {
@@ -127,6 +164,12 @@ export async function tickAutoBurst(): Promise<void> {
     const active = burstAlreadyActive(orch, dash.workers);
     const now = Date.now();
 
+    // Refresh slot cap when burst worker comes online.
+    const burstSlot = dash.workers.find((w) => w.key === "burst-video-slot");
+    if (burstSlot?.enabled && burstSlot.status === "online") {
+      invalidateGpuSlotCap();
+    }
+
     if (pressure.needBurst && !active) {
       mem.calmSince = null;
       if (now - mem.lastSpawnAt < SPAWN_COOLDOWN_MS) return;
@@ -148,6 +191,7 @@ export async function tickAutoBurst(): Promise<void> {
         message: result.message.slice(0, 400),
       };
       await saveOpsSettings({ gpuOrchestratorJson: JSON.stringify(orch) });
+      invalidateGpuSlotCap();
       console.warn(
         `[auto-burst] spawn ok=${result.ok} reason=${pressure.reason} msg=${result.message}`,
       );
@@ -173,6 +217,7 @@ export async function tickAutoBurst(): Promise<void> {
       mem.lastActionAt = now;
       const cleared = await clearBurstRequests();
       mem.lastMessage = cleared.message;
+      invalidateGpuSlotCap();
       console.warn(`[auto-burst] clear after calm: ${cleared.message}`);
       return;
     }
@@ -189,11 +234,11 @@ export async function tickAutoBurst(): Promise<void> {
 export function startAutoBurstWatcher() {
   if (started) return;
   if (autoBurstDisabled()) {
-    console.log("[auto-burst] disabled (GPU_AUTO_BURST=0 or DRY_RUN)");
+    console.log("[auto-burst] disabled (GPU_AUTO_BURST=0)");
     return;
   }
   started = true;
-  setTimeout(() => void tickAutoBurst(), 40_000);
+  setTimeout(() => void tickAutoBurst(), 25_000);
   setInterval(() => void tickAutoBurst(), TICK_MS);
   console.log(`[auto-burst] watcher started every ${TICK_MS / 1000}s`);
 }

@@ -2229,6 +2229,7 @@ export async function flushTgOutbox() {
         reply_markup?: unknown;
         botInstanceId?: string;
         attempts?: number;
+        mediaSent?: boolean;
       };
       const chatId = Number(row.platformUserId);
       const locale = payload.locale || "ru";
@@ -2247,20 +2248,35 @@ export async function flushTgOutbox() {
         extra?: Record<string, unknown>,
       ) => tgSendMessage(chatId, text, extra || {}, token);
 
+      const persistPayload = async (next: typeof payload) => {
+        await prisma.tgOutbox.update({
+          where: { id: row.id },
+          data: { payloadJson: JSON.stringify(next) },
+        });
+      };
+
       if (row.kind === "video" && payload.url) {
-        await tgDeliverVideo({
-          chatId,
-          url: payload.url,
-          caption: payload.caption,
-          token,
-        });
+        if (!payload.mediaSent) {
+          await tgDeliverVideo({
+            chatId,
+            url: payload.url,
+            caption: payload.caption,
+            token,
+          });
+          payload.mediaSent = true;
+          await persistPayload(payload);
+        }
       } else if (row.kind === "photo" && payload.url) {
-        await tgDeliverPhoto({
-          chatId,
-          url: payload.url,
-          caption: payload.caption,
-          token,
-        });
+        if (!payload.mediaSent) {
+          await tgDeliverPhoto({
+            chatId,
+            url: payload.url,
+            caption: payload.caption,
+            token,
+          });
+          payload.mediaSent = true;
+          await persistPayload(payload);
+        }
       } else if (row.kind === "text" && payload.text) {
         const extra = payload.reply_markup
           ? { reply_markup: payload.reply_markup as Record<string, unknown> }

@@ -32,25 +32,21 @@ type FilmPayload = Parameters<typeof generateFilmBytes>[0];
 
 export type { GpuEnqueueOpts } from "@/lib/gpu/types";
 
-/** One in-process queue entry per available GPU worker (see lib/gpu/slots).
- * With a single Metalnode this stays serial; with RunPod burst, undress/photo
- * can run in parallel on the free card while video keeps running.
+/** Queue GPU work: GpuJob row is created immediately inside runTrackedGpuJob
+ * (so auto-burst sees wait), then a per-worker slot is acquired.
  */
 export function enqueueGpuJob(
   fn: () => Promise<void>,
   opts?: import("@/lib/gpu/types").GpuEnqueueOpts,
 ): Promise<void> {
   return (async () => {
-    const { acquireGpuSlot, releaseGpuSlot } = await import("@/lib/gpu/slots");
     const { gpuQueueOnStart, gpuQueueOnFinish } = await import("@/lib/ops/queue");
     const { runTrackedGpuJob } = await import("@/lib/gpu/orchestrator");
-    await acquireGpuSlot();
     gpuQueueOnStart();
     try {
       await runTrackedGpuJob(fn, opts);
     } finally {
       gpuQueueOnFinish();
-      releaseGpuSlot();
     }
   })();
 }

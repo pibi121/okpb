@@ -160,7 +160,7 @@ function inferPool(opts?: GpuEnqueueOpts): GpuPool {
   return "any";
 }
 
-/** Create DB job, assign worker, run fn inside ALS context. */
+/** Create DB job first (visible to auto-burst), then take a GPU slot, then run. */
 export async function runTrackedGpuJob(
   fn: () => Promise<void>,
   opts?: GpuEnqueueOpts,
@@ -193,87 +193,93 @@ export async function runTrackedGpuJob(
     },
   });
 
-  const worker = await pickWorker(pool);
-  const startedAt = new Date();
-  const waitMs = Math.max(0, startedAt.getTime() - queuedAt.getTime());
-  await prisma.gpuJob.update({
-    where: { id: job.id },
-    data: {
-      status: "running",
-      stage: "running",
+  const { acquireGpuSlot, releaseGpuSlot } = await import("@/lib/gpu/slots");
+  await acquireGpuSlot();
+  try {
+    const worker = await pickWorker(pool);
+    const startedAt = new Date();
+    const waitMs = Math.max(0, startedAt.getTime() - queuedAt.getTime());
+    await prisma.gpuJob.update({
+      where: { id: job.id },
+      data: {
+        status: "running",
+        stage: "running",
+        workerId: worker.id,
+        startedAt,
+        waitMs,
+        attempt: { increment: 1 },
+        timelineJson: JSON.stringify([
+          ...parseTimeline(job.timelineJson),
+          {
+            at: startedAt.toISOString(),
+            stage: "assigned",
+            detail: worker.label,
+          },
+          { at: startedAt.toISOString(), stage: "running" },
+        ]),
+      },
+    });
+    await prisma.gpuWorker.update({
+      where: { id: worker.id },
+      data: { status: "busy", currentJobId: job.id },
+    });
+
+    const store: JobStore = {
+      jobId: job.id,
       workerId: worker.id,
-      startedAt,
-      waitMs,
-      attempt: { increment: 1 },
-      timelineJson: JSON.stringify([
-        ...parseTimeline(job.timelineJson),
-        {
-          at: startedAt.toISOString(),
-          stage: "assigned",
-          detail: worker.label,
-        },
-        { at: startedAt.toISOString(), stage: "running" },
-      ]),
-    },
-  });
-  await prisma.gpuWorker.update({
-    where: { id: worker.id },
-    data: { status: "busy", currentJobId: job.id },
-  });
+      comfyUrl: (worker.comfyUrl || "").trim() || null,
+      failed: false,
+    };
 
-  const store: JobStore = {
-    jobId: job.id,
-    workerId: worker.id,
-    comfyUrl: (worker.comfyUrl || "").trim() || null,
-    failed: false,
-  };
-
-  await als.run(store, async () => {
-    try {
-      await fn();
-      if (!store.failed) {
-        const now = new Date();
-        const runMs = Math.max(0, now.getTime() - startedAt.getTime());
-        const timeline = parseTimeline(
-          (
-            await prisma.gpuJob.findUnique({
-              where: { id: job.id },
-              select: { timelineJson: true },
-            })
-          )?.timelineJson || "[]",
-        );
-        timeline.push({ at: now.toISOString(), stage: "done" });
-        await prisma.gpuJob.update({
-          where: { id: job.id },
-          data: {
-            status: "done",
-            stage: "done",
-            finishedAt: now,
-            runMs,
-            timelineJson: JSON.stringify(timeline.slice(-40)),
-          },
-        });
+    await als.run(store, async () => {
+      try {
+        await fn();
+        if (!store.failed) {
+          const now = new Date();
+          const runMs = Math.max(0, now.getTime() - startedAt.getTime());
+          const timeline = parseTimeline(
+            (
+              await prisma.gpuJob.findUnique({
+                where: { id: job.id },
+                select: { timelineJson: true },
+              })
+            )?.timelineJson || "[]",
+          );
+          timeline.push({ at: now.toISOString(), stage: "done" });
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              finishedAt: now,
+              runMs,
+              timelineJson: JSON.stringify(timeline.slice(-40)),
+            },
+          });
+        }
+      } catch (e) {
+        if (!store.failed) {
+          await noteGpuJobError(
+            e instanceof Error ? e.message : String(e),
+            { thrown: true },
+          );
+        }
+        throw e;
+      } finally {
+        await prisma.gpuWorker
+          .update({
+            where: { id: worker.id },
+            data: {
+              currentJobId: null,
+              status: "online",
+            },
+          })
+          .catch(() => undefined);
       }
-    } catch (e) {
-      if (!store.failed) {
-        await noteGpuJobError(
-          e instanceof Error ? e.message : String(e),
-          { thrown: true },
-        );
-      }
-      throw e;
-    } finally {
-      await prisma.gpuWorker
-        .update({
-          where: { id: worker.id },
-          data: {
-            currentJobId: null,
-            status: "online",
-          },
-        })
-        .catch(() => undefined);
-    }
-  });
+    });
+  } finally {
+    releaseGpuSlot();
+  }
 }
 
 export async function getRecentGpuJobs(take = 40) {

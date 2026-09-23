@@ -1291,6 +1291,8 @@ model Broadcast {
   createdById String    @default("")
   sentCount   Int       @default(0)
   failCount   Int       @default(0)
+  /** Per-bot delivery: { "@username": { botId, sent, fail } } — dual-bot fan-out */
+  sentByBotJson String  @default("{}")
   createdAt   DateTime  @default(now())
   sentAt      DateTime?
 }

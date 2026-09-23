@@ -3,6 +3,7 @@ import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import {
   BROADCAST_BUTTON_PRESETS,
   deleteBroadcast,
+  listBroadcastBotOptions,
   previewBroadcastAudience,
   runBroadcast,
   sendTestBroadcast,
@@ -11,12 +12,16 @@ import { writeAudit } from "@/lib/ops/audit";
 
 export async function GET() {
   return withOps("broadcasts", async () => {
-    const rows = await prisma.broadcast.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    });
+    const [rows, bots] = await Promise.all([
+      prisma.broadcast.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      }),
+      listBroadcastBotOptions().catch(() => []),
+    ]);
     return jsonOk({
       presets: BROADCAST_BUTTON_PRESETS,
+      bots,
       rows: rows.map((r) => ({
         ...r,
         createdAt: r.createdAt.toISOString(),
@@ -38,14 +43,22 @@ export async function POST(req: Request) {
       mediaJson?: string;
       buttonsJson?: string;
       testTgId?: string;
+      botIds?: string[];
       filter?: Record<string, unknown>;
     };
+    const botIds = Array.isArray(body.botIds)
+      ? body.botIds.filter(
+          (x): x is string => typeof x === "string" && x.trim().length > 0,
+        )
+      : undefined;
     if (body.action === "preview") {
-      const n = await previewBroadcastAudience(JSON.stringify(body.filter || {}));
+      const n = await previewBroadcastAudience(
+        JSON.stringify(body.filter || {}),
+      );
       return jsonOk({ count: n });
     }
     if (body.action === "test") {
-      await sendTestBroadcast({
+      const { results } = await sendTestBroadcast({
         actorUserId: actor.id,
         bodyRu: body.bodyRu || "",
         bodyEn: body.bodyEn || "",
@@ -53,8 +66,9 @@ export async function POST(req: Request) {
         mediaJson: body.mediaJson,
         buttonsJson: body.buttonsJson,
         testTgId: body.testTgId,
+        botIds,
       });
-      return jsonOk({ ok: true });
+      return jsonOk({ ok: true, results });
     }
     if (body.action === "create") {
       if (!(body.title || "").trim() || !(body.bodyRu || "").trim()) {
@@ -68,6 +82,10 @@ export async function POST(req: Request) {
       } catch {
         /* ignore */
       }
+      const filter = {
+        ...(body.filter || {}),
+        ...(botIds?.length ? { botIds } : {}),
+      };
       const row = await prisma.broadcast.create({
         data: {
           title: body.title!.trim(),
@@ -76,7 +94,7 @@ export async function POST(req: Request) {
           mediaUrl: firstUrl,
           mediaJson,
           buttonsJson: body.buttonsJson?.trim() || "[]",
-          filterJson: JSON.stringify(body.filter || {}),
+          filterJson: JSON.stringify(filter),
           createdById: actor.id,
           status: "draft",
         },

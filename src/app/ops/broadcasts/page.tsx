@@ -9,8 +9,11 @@ type Row = {
   status: string;
   sentCount: number;
   failCount: number;
+  sentByBotJson?: string;
   createdAt: string;
 };
+
+type BotOpt = { id: string; username: string; isPrimary: boolean };
 
 type MediaItem = { type: "photo" | "video"; url: string };
 type Btn = { text: string; path: string };
@@ -31,6 +34,23 @@ function buttonTargetLabel(path: string): string {
   return `/tg/${path}`;
 }
 
+function formatBotStats(raw?: string): string {
+  if (!raw || raw === "{}") return "";
+  try {
+    const map = JSON.parse(raw) as Record<
+      string,
+      { username?: string; sent?: number; fail?: number }
+    >;
+    const parts = Object.values(map).map(
+      (s) =>
+        `@${s.username || "?"} ✓${s.sent ?? 0} ✗${s.fail ?? 0}`,
+    );
+    return parts.length ? ` · ${parts.join(" · ")}` : "";
+  } catch {
+    return "";
+  }
+}
+
 export default function OpsBroadcastsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [count, setCount] = useState<number | null>(null);
@@ -39,6 +59,8 @@ export default function OpsBroadcastsPage() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [buttons, setButtons] = useState<Btn[]>([]);
   const [presets, setPresets] = useState<Btn[]>(DEFAULT_PRESETS);
+  const [bots, setBots] = useState<BotOpt[]>([]);
+  const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
   const [testTgId, setTestTgId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -48,11 +70,19 @@ export default function OpsBroadcastsPage() {
   const [msgTone, setMsgTone] = useState<"ok" | "err">("ok");
 
   async function load() {
-    const d = await opsFetch<{ rows: Row[]; presets?: Btn[] }>(
-      "/api/ops/broadcasts",
-    );
+    const d = await opsFetch<{
+      rows: Row[];
+      presets?: Btn[];
+      bots?: BotOpt[];
+    }>("/api/ops/broadcasts");
     setRows(d.rows);
     if (d.presets?.length) setPresets(d.presets);
+    if (d.bots?.length) {
+      setBots(d.bots);
+      setSelectedBotIds((prev) =>
+        prev.length ? prev.filter((id) => d.bots!.some((b) => b.id === id)) : d.bots!.map((b) => b.id),
+      );
+    }
   }
 
   useEffect(() => {
@@ -115,7 +145,12 @@ export default function OpsBroadcastsPage() {
       mediaUrl: media[0]?.url || "",
       mediaJson: JSON.stringify(media),
       buttonsJson: JSON.stringify(buttons),
-      filter: { who, skipQuietDays: 7 },
+      botIds: selectedBotIds,
+      filter: {
+        who,
+        skipQuietDays: 7,
+        ...(selectedBotIds.length ? { botIds: selectedBotIds } : {}),
+      },
     };
   }
 
@@ -164,9 +199,9 @@ export default function OpsBroadcastsPage() {
       <div>
         <h1 className="font-display text-3xl">Рассылки</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          До 2 медиа (фото/видео), текст, кнопки в разделы мини-аппа. Сначала
-          тест на TG id, потом счётчик, потом отправка. Черновики можно
-          отправить или удалить из списка ниже.
+          Dual-bot: уходит во все выбранные active-боты, счётчики отдельно по
+          каждому. Кнопки bot:* (Раздеть) — в чате того бота, куда пришло.
+          Сначала тест, потом отправка.
         </p>
       </div>
       {msg ? (
@@ -187,8 +222,21 @@ export default function OpsBroadcastsPage() {
             setMsg("Нужны название и текст RU");
             return;
           }
+          if (bots.length && !selectedBotIds.length) {
+            setMsgTone("err");
+            setMsg("Выбери хотя бы одного активного бота");
+            return;
+          }
           const n = count ?? "?";
-          if (!confirm(`Отправить ${n} людям?\n\n«${payload.title.trim()}»`)) {
+          const botNames = bots
+            .filter((b) => selectedBotIds.includes(b.id))
+            .map((b) => `@${b.username}`)
+            .join(", ");
+          if (
+            !confirm(
+              `Отправить ~${n} людям через ${botNames || "активных ботов"}?\n\n«${payload.title.trim()}»`,
+            )
+          ) {
             return;
           }
           setSending(true);
@@ -235,6 +283,47 @@ export default function OpsBroadcastsPage() {
           <option value="never_paid">Кто не пополнял</option>
           <option value="no_job">Кто ещё не генерил</option>
         </select>
+
+        <div className="rounded-xl border border-white/10 p-3 sm:col-span-2">
+          <p className="text-xs text-zinc-500">
+            Боты (только active). Сообщение уйдёт в каждый выбранный — кнопка
+            «Раздеть» работает в том чате, куда пришло. Standby/banned не
+            шлём.
+          </p>
+          {bots.length ? (
+            <div className="mt-2 flex flex-wrap gap-3 text-sm">
+              {bots.map((b) => {
+                const on = selectedBotIds.includes(b.id);
+                return (
+                  <label
+                    key={b.id}
+                    className="inline-flex cursor-pointer items-center gap-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() =>
+                        setSelectedBotIds((ids) =>
+                          on
+                            ? ids.filter((x) => x !== b.id)
+                            : [...ids, b.id],
+                        )
+                      }
+                    />
+                    <span>
+                      @{b.username}
+                      {b.isPrimary ? " · primary" : ""}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-amber-300">
+              Активных ботов не видно — проверь /ops/bot
+            </p>
+          )}
+        </div>
         <textarea
           name="bodyRu"
           rows={4}
@@ -424,10 +513,21 @@ export default function OpsBroadcastsPage() {
                 setMsg("Укажи свой Telegram user id (цифры) для теста");
                 return;
               }
+              if (bots.length && !selectedBotIds.length) {
+                setMsgTone("err");
+                setMsg("Выбери хотя бы одного активного бота");
+                return;
+              }
               setTesting(true);
               setMsg("");
               try {
-                await opsFetch("/api/ops/broadcasts", {
+                const d = await opsFetch<{
+                  results?: Array<{
+                    username: string;
+                    ok: boolean;
+                    error?: string;
+                  }>;
+                }>("/api/ops/broadcasts", {
                   method: "POST",
                   body: JSON.stringify({
                     action: "test",
@@ -437,10 +537,19 @@ export default function OpsBroadcastsPage() {
                     mediaJson: payload.mediaJson,
                     buttonsJson: payload.buttonsJson,
                     testTgId: testTgId.trim(),
+                    botIds: payload.botIds,
                   }),
                 });
+                const detail = (d.results || [])
+                  .map(
+                    (r) =>
+                      `@${r.username}: ${r.ok ? "ok" : r.error || "fail"}`,
+                  )
+                  .join("; ");
                 setMsgTone("ok");
-                setMsg(`Тест ушёл на TG ${testTgId.trim()}`);
+                setMsg(
+                  `Тест TG ${testTgId.trim()}${detail ? ` — ${detail}` : ""}`,
+                );
               } catch (e) {
                 setMsgTone("err");
                 setMsg(e instanceof Error ? e.message : "Ошибка теста");
@@ -483,8 +592,8 @@ export default function OpsBroadcastsPage() {
             className="flex flex-wrap items-center justify-between gap-2 border-t border-white/8 py-2"
           >
             <span>
-              {r.title} · {r.status} · ушло {r.sentCount} · брак {r.failCount} ·{" "}
-              {fmtTime(r.createdAt)}
+              {r.title} · {r.status} · ушло {r.sentCount} · брак {r.failCount}
+              {formatBotStats(r.sentByBotJson)} · {fmtTime(r.createdAt)}
             </span>
             <span className="flex gap-2">
               {r.status === "draft" ? (

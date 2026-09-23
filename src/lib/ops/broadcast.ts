@@ -8,13 +8,29 @@ import {
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { saveOpsSettings } from "@/lib/ops/settings";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
+import { listLiveBots, type LiveBot } from "@/lib/tg/bot-registry";
 
 export type BroadcastFilter = {
   who?: "all" | "paid" | "never_paid" | "no_job";
   locale?: "ru" | "en" | "";
   trafficLinkId?: string;
   skipQuietDays?: number;
+  /**
+   * Which active bots to send through.
+   * Omit / empty = all active (dual fan-out).
+   * Standby/banned never included — callbacks would be dead there.
+   */
+  botIds?: string[];
 };
+
+export type BroadcastBotStat = {
+  botId: string;
+  username: string;
+  sent: number;
+  fail: number;
+};
+
+export type BroadcastBotStatsMap = Record<string, BroadcastBotStat>;
 
 export type BroadcastMediaItem = {
   type: "photo" | "video";
@@ -46,10 +62,66 @@ export function resolveBroadcastBotCallback(path: string): string | null {
 
 function parseFilter(raw: string): BroadcastFilter {
   try {
-    return JSON.parse(raw || "{}") as BroadcastFilter;
+    const v = JSON.parse(raw || "{}") as BroadcastFilter;
+    const botIds = Array.isArray(v.botIds)
+      ? v.botIds.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : undefined;
+    return { ...v, ...(botIds?.length ? { botIds } : {}) };
   } catch {
     return {};
   }
+}
+
+function emptyBotStats(bots: LiveBot[]): BroadcastBotStatsMap {
+  const out: BroadcastBotStatsMap = {};
+  for (const b of bots) {
+    const key = `@${b.username || b.id}`;
+    out[key] = { botId: b.id, username: b.username || b.id, sent: 0, fail: 0 };
+  }
+  return out;
+}
+
+function totalsFromBotStats(stats: BroadcastBotStatsMap) {
+  let sent = 0;
+  let fail = 0;
+  for (const s of Object.values(stats)) {
+    sent += s.sent;
+    fail += s.fail;
+  }
+  return { sent, fail };
+}
+
+/** Active dual bots for fan-out (standby/banned excluded — no full callback handling). */
+export async function resolveBroadcastTargetBots(
+  filter?: BroadcastFilter,
+): Promise<LiveBot[]> {
+  const live = await listLiveBots();
+  if (!live.length) {
+    throw new Error(
+      "Нет активных ботов для рассылки. Проверь /ops/bot и TELEGRAM_BOT_TOKEN.",
+    );
+  }
+  const want = filter?.botIds?.filter(Boolean);
+  if (!want?.length) return live;
+  const set = new Set(want);
+  const picked = live.filter((b) => set.has(b.id));
+  if (!picked.length) {
+    throw new Error(
+      "Выбранные боты не активны (или id устарели). Выбери активных в /ops/bot.",
+    );
+  }
+  return picked;
+}
+
+export async function listBroadcastBotOptions(): Promise<
+  Array<{ id: string; username: string; isPrimary: boolean }>
+> {
+  const live = await listLiveBots();
+  return live.map((b) => ({
+    id: b.id,
+    username: b.username || b.id,
+    isPrimary: b.isPrimary,
+  }));
 }
 
 function parseMediaJson(raw: string, legacyUrl?: string): BroadcastMediaItem[] {
@@ -154,24 +226,30 @@ async function deliverBroadcastPayload(
   text: string,
   media: BroadcastMediaItem[],
   buttons: BroadcastButton[],
+  token: string,
 ) {
   const markup = buttonsMarkup(buttons);
   if (media.length >= 2) {
-    await tgApi("sendMediaGroup", {
-      chat_id: chatId,
-      media: media.map((m, i) => ({
-        type: m.type,
-        media: m.url,
-        ...(i === 0 && text.trim()
-          ? { caption: text, parse_mode: "HTML" }
-          : {}),
-      })),
-    });
+    await tgApi(
+      "sendMediaGroup",
+      {
+        chat_id: chatId,
+        media: media.map((m, i) => ({
+          type: m.type,
+          media: m.url,
+          ...(i === 0 && text.trim()
+            ? { caption: text, parse_mode: "HTML" }
+            : {}),
+        })),
+      },
+      token,
+    );
     if (markup) {
       await tgSendMessage(
         chatId,
         buttons.length ? "👇" : text || "·",
         { reply_markup: markup },
+        token,
       );
     } else if (!text.trim()) {
       /* album only */
@@ -182,13 +260,13 @@ async function deliverBroadcastPayload(
     const m = media[0]!;
     const extra = markup ? { reply_markup: markup } : {};
     if (m.type === "video") {
-      await tgSendVideo(chatId, m.url, text || undefined, extra);
+      await tgSendVideo(chatId, m.url, text || undefined, extra, token);
     } else {
-      await tgSendPhoto(chatId, m.url, text || undefined, extra);
+      await tgSendPhoto(chatId, m.url, text || undefined, extra, token);
     }
     return;
   }
-  await tgSendMessage(chatId, text, markup ? { reply_markup: markup } : {});
+  await tgSendMessage(chatId, text, markup ? { reply_markup: markup } : {}, token);
 }
 
 export async function runBroadcast(
@@ -200,9 +278,12 @@ export async function runBroadcast(
   if (row.status === "sending") throw new Error("Рассылка уже отправляется");
   if (row.status === "sent") throw new Error("Рассылка уже отправлена");
 
+  // Validate targets up front so UI gets a clear error before background fan-out.
+  await resolveBroadcastTargetBots(parseFilter(row.filterJson));
+
   await prisma.broadcast.update({
     where: { id },
-    data: { status: "sending", sentCount: 0, failCount: 0 },
+    data: { status: "sending", sentCount: 0, failCount: 0, sentByBotJson: "{}" },
   });
 
   // Heavy fan-out continues in background; caller already got "started".
@@ -226,41 +307,62 @@ async function processBroadcastSend(id: string) {
   const f = parseFilter(row.filterJson);
   const media = parseMediaJson(row.mediaJson, row.mediaUrl);
   const buttons = parseButtonsJson(row.buttonsJson);
+  const bots = await resolveBroadcastTargetBots(f);
+  const byBot = emptyBotStats(bots);
+
   const accounts = await prisma.platformAccount.findMany({
     where: buildWhere(f),
     include: { user: { select: { locale: true } } },
     take: 5000,
   });
 
-  let sent = 0;
-  let fail = 0;
+  let tick = 0;
   for (const acc of accounts) {
     const locale = normalizeLocale(acc.user.locale);
     const bodyEn = row.bodyEn || "";
     const bodyRu = row.bodyRu || "";
     const text = locale === "en" && bodyEn.trim() ? bodyEn : bodyRu;
     if (!text.trim() && !media.length) continue;
-    try {
-      await deliverBroadcastPayload(acc.platformUserId, text, media, buttons);
-      sent += 1;
-    } catch {
-      fail += 1;
-    }
-    await new Promise((r) => setTimeout(r, 50));
-    if (sent % 20 === 0) {
-      await prisma.broadcast.update({
-        where: { id },
-        data: { sentCount: sent, failCount: fail },
-      });
+
+    for (const bot of bots) {
+      const key = `@${bot.username || bot.id}`;
+      const bucket = byBot[key]!;
+      try {
+        await deliverBroadcastPayload(
+          acc.platformUserId,
+          text,
+          media,
+          buttons,
+          bot.token,
+        );
+        bucket.sent += 1;
+      } catch {
+        bucket.fail += 1;
+      }
+      tick += 1;
+      await new Promise((r) => setTimeout(r, 35));
+      if (tick % 25 === 0) {
+        const totals = totalsFromBotStats(byBot);
+        await prisma.broadcast.update({
+          where: { id },
+          data: {
+            sentCount: totals.sent,
+            failCount: totals.fail,
+            sentByBotJson: JSON.stringify(byBot),
+          },
+        });
+      }
     }
   }
 
+  const totals = totalsFromBotStats(byBot);
   await prisma.broadcast.update({
     where: { id },
     data: {
       status: "sent",
-      sentCount: sent,
-      failCount: fail,
+      sentCount: totals.sent,
+      failCount: totals.fail,
+      sentByBotJson: JSON.stringify(byBot),
       sentAt: new Date(),
     },
   });
@@ -285,7 +387,11 @@ export async function sendTestBroadcast(opts: {
   buttonsJson?: string;
   /** Explicit Telegram user id for preview (overrides actor's own TG). */
   testTgId?: string;
-}) {
+  /** Active bot instance ids; omit = all active. */
+  botIds?: string[];
+}): Promise<{
+  results: Array<{ username: string; ok: boolean; error?: string }>;
+}> {
   let chatId = (opts.testTgId || "").trim().replace(/\s+/g, "");
   if (chatId && !/^\d{5,15}$/.test(chatId)) {
     throw new Error("Telegram id — только цифры (user id, не @username)");
@@ -312,7 +418,31 @@ export async function sendTestBroadcast(opts: {
   if (!text.trim() && !media.length) {
     throw new Error("Нужен текст RU или хотя бы одно медиа");
   }
-  await deliverBroadcastPayload(chatId, text, media, buttons);
+
+  const bots = await resolveBroadcastTargetBots({
+    botIds: opts.botIds,
+  });
+  const results: Array<{ username: string; ok: boolean; error?: string }> = [];
+  for (const bot of bots) {
+    try {
+      await deliverBroadcastPayload(chatId, text, media, buttons, bot.token);
+      results.push({ username: bot.username || bot.id, ok: true });
+    } catch (e) {
+      results.push({
+        username: bot.username || bot.id,
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  if (!results.some((r) => r.ok)) {
+    throw new Error(
+      `Тест не дошёл ни в одного бота: ${results
+        .map((r) => `@${r.username}: ${r.error || "fail"}`)
+        .join("; ")}`,
+    );
+  }
+  return { results };
 }
 
 /** Suggested button presets for the ops UI (Mini App + in-bot). */

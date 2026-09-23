@@ -150,7 +150,13 @@ function inferPool(opts?: GpuEnqueueOpts): GpuPool {
   ) {
     return "video";
   }
-  if (kind.includes("photo") || kind.includes("identity")) return "photo";
+  if (
+    kind.includes("undress") ||
+    kind.includes("photo") ||
+    kind.includes("identity")
+  ) {
+    return "photo";
+  }
   return "any";
 }
 

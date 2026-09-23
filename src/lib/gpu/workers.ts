@@ -92,24 +92,45 @@ export async function ensureFleetWorkers() {
 export async function ensurePlaceholderWorkers() {
   await ensurePrimaryWorker();
   await ensureFleetWorkers();
-  await prisma.gpuWorker.upsert({
+  const burstSlot = await prisma.gpuWorker.findUnique({
     where: { key: "burst-video-slot" },
-    create: {
-      key: "burst-video-slot",
-      label: "Пик видео (RunPod) — не подключено",
-      provider: "runpod",
-      pool: "video",
-      comfyUrl: "",
-      enabled: false,
-      status: "pending_provider",
-      costRubPerHour: 80,
-      metaJson: JSON.stringify({
-        role: "burst",
-        needs: ["RUNPOD_API_KEY", "RUNPOD_NETWORK_VOLUME_ID", "RUNPOD_TEMPLATE_ID|RUNPOD_IMAGE_NAME"],
-      }),
-    },
-    update: {},
   });
+  if (!burstSlot) {
+    await prisma.gpuWorker.create({
+      data: {
+        key: "burst-video-slot",
+        label: "Пик GPU (RunPod) — не подключено",
+        provider: "runpod",
+        pool: "any",
+        comfyUrl: "",
+        enabled: false,
+        status: "pending_provider",
+        costRubPerHour: 80,
+        metaJson: JSON.stringify({
+          role: "burst",
+          needs: [
+            "RUNPOD_API_KEY",
+            "RUNPOD_NETWORK_VOLUME_ID",
+            "RUNPOD_TEMPLATE_ID|RUNPOD_IMAGE_NAME",
+          ],
+        }),
+      },
+    });
+  } else if (
+    !burstSlot.enabled &&
+    (burstSlot.status === "pending_provider" || burstSlot.pool === "video")
+  ) {
+    await prisma.gpuWorker.update({
+      where: { key: "burst-video-slot" },
+      data: {
+        pool: "any",
+        label:
+          burstSlot.pool === "video" && burstSlot.label.includes("видео")
+            ? burstSlot.label.replace("видео", "GPU")
+            : burstSlot.label,
+      },
+    });
+  }
   await prisma.gpuWorker.upsert({
     where: { key: "burst-lora-slot" },
     create: {
@@ -245,32 +266,46 @@ function safeJson(raw: string): Record<string, unknown> {
 export async function pickWorker(pool: GpuPool) {
   await ensurePrimaryWorker();
   await ensureFleetWorkers();
-  const candidates = await prisma.gpuWorker.findMany({
-    where: {
-      enabled: true,
-      status: { in: ["online", "busy", "unknown"] },
-      OR: [{ pool: "any" }, { pool }],
-    },
-    orderBy: { updatedAt: "asc" },
-  });
-  const live = candidates.filter((w) => w.comfyUrl && w.status !== "dead");
-  if (!live.length) {
-    // Fall back to primary even if marked dead — better than hard fail.
-    return ensurePrimaryWorker();
-  }
-  const free = live.filter((w) => w.status === "online" || w.status === "unknown");
-  const pool_ = free.length ? free : live;
 
-  // Prefer genPreferred fleet card (bmserv4) for user photo/video when up.
-  if (pool === "photo" || pool === "video" || pool === "any") {
-    const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(
-      (g) => g.key,
+  const deadline = Date.now() + 90_000;
+  while (true) {
+    const candidates = await prisma.gpuWorker.findMany({
+      where: {
+        enabled: true,
+        status: { in: ["online", "busy", "unknown"] },
+        OR: [{ pool: "any" }, { pool }],
+      },
+      orderBy: { updatedAt: "asc" },
+    });
+    const live = candidates.filter((w) => w.comfyUrl && w.status !== "dead");
+    if (!live.length) {
+      return ensurePrimaryWorker();
+    }
+    const free = live.filter(
+      (w) =>
+        !w.currentJobId &&
+        (w.status === "online" || w.status === "unknown"),
     );
-    const prefer = pool_.find((w) => preferredKeys.includes(w.key));
-    if (prefer) return prefer;
-  }
 
-  return pool_[0];
+    const pickFrom = (pool_: typeof live) => {
+      if (pool === "photo" || pool === "video" || pool === "any") {
+        const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(
+          (g) => g.key,
+        );
+        const prefer = pool_.find((w) => preferredKeys.includes(w.key));
+        if (prefer) return prefer;
+      }
+      return pool_[0]!;
+    };
+
+    if (free.length) return pickFrom(free);
+
+    // Single live GPU: must share (serial via slots). Multi-GPU: wait for a free card.
+    if (live.length <= 1 || Date.now() >= deadline) {
+      return pickFrom(live);
+    }
+    await new Promise((r) => setTimeout(r, 1_200));
+  }
 }
 
 export async function listWorkersForOps() {

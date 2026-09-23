@@ -39,7 +39,8 @@ async function markBurstWorker(opts: {
   key: string;
   label: string;
   provider: string;
-  pool: "video" | "lora";
+  /** Burst video slot is "any" so photo/undress/video can use the rented GPU. */
+  pool: "video" | "lora" | "any";
   status: string;
   enabled: boolean;
   comfyUrl: string;
@@ -92,9 +93,9 @@ export async function requestVideoBurst(actorId: string): Promise<{
     await saveOpsSettings({ gpuOrchestratorJson: JSON.stringify(orch) });
     await markBurstWorker({
       key: "burst-video-slot",
-      label: "Пик видео (RunPod) — ждёт конфиг",
+      label: "Пик GPU (RunPod) — ждёт конфиг",
       provider: "runpod",
-      pool: "video",
+      pool: "any",
       status: "pending_provider",
       enabled: false,
       comfyUrl: "",
@@ -120,9 +121,9 @@ export async function requestVideoBurst(actorId: string): Promise<{
   if (!spawned.ok || !spawned.podId) {
     await markBurstWorker({
       key: "burst-video-slot",
-      label: "Пик видео (RunPod) — ошибка",
+      label: "Пик GPU (RunPod) — ошибка",
       provider: "runpod",
-      pool: "video",
+      pool: "any",
       status: "error",
       enabled: false,
       comfyUrl: "",
@@ -135,9 +136,9 @@ export async function requestVideoBurst(actorId: string): Promise<{
   const comfyUrl = runpodProxyUrl(spawned.podId, process.env.RUNPOD_COMFY_PORT || "8188");
   await markBurstWorker({
     key: "burst-video-slot",
-    label: `Пик видео RunPod ${spawned.podId}`,
+    label: `Пик GPU RunPod ${spawned.podId}`,
     provider: "runpod",
-    pool: "video",
+    pool: "any",
     status: ready.dryRun ? "pending_provider" : "booting",
     enabled: !ready.dryRun,
     comfyUrl: ready.dryRun ? "" : comfyUrl,
@@ -150,6 +151,10 @@ export async function requestVideoBurst(actorId: string): Promise<{
       by: actorId,
     },
   });
+
+  void import("@/lib/gpu/slots")
+    .then(({ invalidateGpuSlotCap }) => invalidateGpuSlotCap())
+    .catch(() => undefined);
 
   return { ok: true, message: spawned.message };
 }
@@ -258,9 +263,9 @@ export async function clearBurstRequests(): Promise<{ ok: boolean; message: stri
 
   await markBurstWorker({
     key: "burst-video-slot",
-    label: "Пик видео (RunPod) — слот свободен",
+    label: "Пик GPU (RunPod) — слот свободен",
     provider: "runpod",
-    pool: "video",
+    pool: "any",
     status: "pending_provider",
     enabled: false,
     comfyUrl: "",
@@ -278,6 +283,10 @@ export async function clearBurstRequests(): Promise<{ ok: boolean; message: stri
     costRubPerHour: 40,
     meta: { role: "lora_burst", clearedAt: new Date().toISOString() },
   });
+
+  void import("@/lib/gpu/slots")
+    .then(({ invalidateGpuSlotCap }) => invalidateGpuSlotCap())
+    .catch(() => undefined);
 
   return {
     ok: true,

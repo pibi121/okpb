@@ -20,6 +20,13 @@ export const DEFAULT_FUNCTION_SLOS: FunctionSlo[] = [
     runMs: 90_000,
   },
   {
+    key: "photo_undress",
+    title: "2a. Раздеть по фото",
+    pool: "photo",
+    waitMs: 45_000,
+    runMs: 90_000,
+  },
+  {
     key: "photo_lora",
     title: "2. Фото своя LoRA",
     pool: "photo",
@@ -91,6 +98,9 @@ export function sloForKind(kind: string): FunctionSlo {
   }
   if (k.includes("animate")) {
     return DEFAULT_FUNCTION_SLOS.find((s) => s.key === "video_animate")!;
+  }
+  if (k.includes("undress")) {
+    return DEFAULT_FUNCTION_SLOS.find((s) => s.key === "photo_undress")!;
   }
   if (k.includes("lora") && k.includes("photo")) {
     return DEFAULT_FUNCTION_SLOS.find((s) => s.key === "photo_lora")!;

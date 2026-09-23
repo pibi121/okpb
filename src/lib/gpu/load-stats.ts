@@ -39,6 +39,7 @@ function mapKindToSloKey(kind: string): string {
   if (k.includes("story") || k === "video" || k === "clip" || k === "film" || k.includes("quick")) {
     return "video_story";
   }
+  if (k.includes("undress")) return "photo_undress";
   if (k.includes("lora") && (k.includes("photo") || k === "photo")) return "photo_lora";
   if (k.includes("identity")) return "photo_actress";
   return "photo_actress";

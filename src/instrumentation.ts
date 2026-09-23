@@ -42,6 +42,11 @@ export async function register() {
     .then(({ startTunnelHealer }) => startTunnelHealer())
     .catch((e) => console.error("[peach] tunnel-healer boot:", e));
 
+  // Auto-rent RunPod when live wait exceeds SLO (photo / undress / video).
+  void import("@/lib/gpu/auto-burst")
+    .then(({ startAutoBurstWatcher }) => startAutoBurstWatcher())
+    .catch((e) => console.error("[peach] auto-burst boot:", e));
+
   // Always try to pull finished Comfy outputs for busy/error runs (cheap download).
   // Delay so the Railway SSH tunnel to Comfy is up before we probe/download.
   // Full GPU re-queue only when PEACH_RESUME_QV=1 (can OOM small Railway boxes).

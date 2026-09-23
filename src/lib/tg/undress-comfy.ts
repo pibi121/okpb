@@ -33,10 +33,19 @@ function isNearBlackPng(buf: Buffer): boolean {
 }
 
 export async function runH3UndressBytes(input: Buffer): Promise<Buffer> {
+  const isJpeg = input.length >= 3 && input[0] === 0xff && input[1] === 0xd8;
+  const isPng =
+    input.length >= 8 &&
+    input[0] === 0x89 &&
+    input[1] === 0x50 &&
+    input[2] === 0x4e &&
+    input[3] === 0x47;
+  const ext = isJpeg ? "jpg" : isPng ? "png" : "jpg";
+  const mime = isJpeg ? "image/jpeg" : isPng ? "image/png" : "image/jpeg";
   const uploaded = await comfyUploadImage(
-    `undress_${Date.now()}.png`,
+    `undress_${Date.now()}.${ext}`,
     input,
-    "image/png",
+    mime,
   );
 
   const buildGraph = () => {

@@ -134,6 +134,7 @@ export type TgUpdateMessage = {
   from?: TelegramBotUser;
   text?: string;
   photo?: Array<{ file_id: string }>;
+  document?: { file_id: string; mime_type?: string; file_name?: string };
   video_note?: { file_id: string; length?: number; duration?: number };
   web_app_data?: { data: string };
 };
@@ -2035,6 +2036,50 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       chatState,
       pending,
     );
+    return;
+  }
+
+  // Uncompressed image as document (common from gallery / "Send as file").
+  if (
+    chatState === "awaiting_undress_photo" &&
+    msg.document?.file_id &&
+    String(msg.document.mime_type || "").startsWith("image/")
+  ) {
+    const buf = await tgDownloadFile(msg.document.file_id);
+    await tgSendMessage(chatId, t("undress_busy", locale));
+    await setTgSession(platformUserId, {
+      chatState: "idle",
+      clearPending: true,
+    });
+    try {
+      const { startTgUndressGeneration } = await import(
+        "@/lib/tg/undress-service"
+      );
+      await startTgUndressGeneration({
+        userId: user.id,
+        platformUserId,
+        photoBytes: buf,
+        locale,
+      });
+    } catch (e) {
+      const msgText = e instanceof Error ? e.message : String(e);
+      if (/Недостаточно персиков|free_race/i.test(msgText)) {
+        await tgSendMessage(chatId, msgText, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: t("topup_btn", locale), callback_data: "tu:open" }],
+            ],
+          },
+        });
+      } else {
+        await tgSendMessage(
+          chatId,
+          locale === "en"
+            ? `Could not start undress: ${msgText}`
+            : `Не удалось начать раздевание: ${msgText}`,
+        );
+      }
+    }
     return;
   }
 

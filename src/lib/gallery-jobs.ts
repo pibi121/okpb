@@ -30,44 +30,29 @@ type ClipPayload = Parameters<typeof generateClipBytes>[0] & {
 };
 type FilmPayload = Parameters<typeof generateFilmBytes>[0];
 
-/** One GPU job at a time — parallel MiniMax/Krea/Ollama thrash VRAM and hit timeouts.
- * Each job is also logged to GpuJob (DB) for /ops/load + redeploy visibility.
- */
-let peachJobTail: Promise<void> = Promise.resolve();
-
 export type { GpuEnqueueOpts } from "@/lib/gpu/types";
 
+/** One in-process queue entry per available GPU worker (see lib/gpu/slots).
+ * With a single Metalnode this stays serial; with RunPod burst, undress/photo
+ * can run in parallel on the free card while video keeps running.
+ */
 export function enqueueGpuJob(
   fn: () => Promise<void>,
   opts?: import("@/lib/gpu/types").GpuEnqueueOpts,
 ): Promise<void> {
-  const run = peachJobTail.then(
-    async () => {
-      const { gpuQueueOnStart, gpuQueueOnFinish } = await import("@/lib/ops/queue");
-      const { runTrackedGpuJob } = await import("@/lib/gpu/orchestrator");
-      gpuQueueOnStart();
-      try {
-        await runTrackedGpuJob(fn, opts);
-      } finally {
-        gpuQueueOnFinish();
-      }
-    },
-    async () => {
-      const { gpuQueueOnStart, gpuQueueOnFinish } = await import("@/lib/ops/queue");
-      const { runTrackedGpuJob } = await import("@/lib/gpu/orchestrator");
-      gpuQueueOnStart();
-      try {
-        await runTrackedGpuJob(fn, opts);
-      } finally {
-        gpuQueueOnFinish();
-      }
-    },
-  );
-  peachJobTail = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
+  return (async () => {
+    const { acquireGpuSlot, releaseGpuSlot } = await import("@/lib/gpu/slots");
+    const { gpuQueueOnStart, gpuQueueOnFinish } = await import("@/lib/ops/queue");
+    const { runTrackedGpuJob } = await import("@/lib/gpu/orchestrator");
+    await acquireGpuSlot();
+    gpuQueueOnStart();
+    try {
+      await runTrackedGpuJob(fn, opts);
+    } finally {
+      gpuQueueOnFinish();
+      releaseGpuSlot();
+    }
+  })();
 }
 
 async function createPendingItem(opts: {

@@ -152,10 +152,11 @@ export async function startTgUndressGeneration(opts: {
     },
     {
       userId: opts.userId,
-      kind: "photo",
+      kind: "photo_undress",
       title: "undress",
       refType: "galleryItem",
       refId: galleryItemId,
+      pool: "photo",
       meta: { undress: true },
     },
   );

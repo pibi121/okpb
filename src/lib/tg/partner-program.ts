@@ -12,18 +12,38 @@ const LINK_SEP = "__";
  * Display-only — does not write to DB or allow real withdrawals of fake balance.
  * Remove when real stats are ready.
  */
-const DEMO_PARTNER_TG_IDS = new Set(["8762393340"]);
-const DEMO_PARTNER_STATS = {
-  referrals: 411,
-  purchases: 63,
-  // Cumulative: previous 6441 + new 38953
-  purchaseGrossPeaches: 45394,
-  // Cumulative: previous 3220 + 50% of new 38953 (=19476)
-  commissionPeaches: 22696,
-  balancePeaches: 22696,
-  totalEarnedPeaches: 22696,
-  commissionPct: 50,
-} as const;
+const DEMO_PARTNER_BY_TG: Record<
+  string,
+  {
+    referrals: number;
+    purchases: number;
+    purchaseGrossPeaches: number;
+    commissionPeaches: number;
+    balancePeaches: number;
+    totalEarnedPeaches: number;
+    commissionPct: number;
+  }
+> = {
+  "8762393340": {
+    referrals: 411,
+    purchases: 63,
+    purchaseGrossPeaches: 45394,
+    commissionPeaches: 22696,
+    balancePeaches: 22696,
+    totalEarnedPeaches: 22696,
+    commissionPct: 50,
+  },
+  // ~×2.7 vs first demo; higher purchase rate, uneven numbers
+  "8612204954": {
+    referrals: 973,
+    purchases: 208,
+    purchaseGrossPeaches: 121647,
+    commissionPeaches: 60823,
+    balancePeaches: 60823,
+    totalEarnedPeaches: 60823,
+    commissionPct: 50,
+  },
+};
 
 export function parsePartnerRefPayload(payload: string | undefined): {
   code?: string;
@@ -270,18 +290,20 @@ export async function getPartnerDashboard(userId: string) {
     where: { userId, platform: "telegram" },
     select: { platformUserId: true },
   });
-  if (tgAcc && DEMO_PARTNER_TG_IDS.has(String(tgAcc.platformUserId))) {
+  const demo =
+    tgAcc && DEMO_PARTNER_BY_TG[String(tgAcc.platformUserId)];
+  if (demo) {
     return {
       ...dash,
-      referrals: DEMO_PARTNER_STATS.referrals,
-      purchases: DEMO_PARTNER_STATS.purchases,
-      purchaseGrossPeaches: DEMO_PARTNER_STATS.purchaseGrossPeaches,
-      commissionPeaches: DEMO_PARTNER_STATS.commissionPeaches,
+      referrals: demo.referrals,
+      purchases: demo.purchases,
+      purchaseGrossPeaches: demo.purchaseGrossPeaches,
+      commissionPeaches: demo.commissionPeaches,
       profile: {
         ...profile,
-        balancePeaches: DEMO_PARTNER_STATS.balancePeaches,
-        totalEarnedPeaches: DEMO_PARTNER_STATS.totalEarnedPeaches,
-        commissionPct: DEMO_PARTNER_STATS.commissionPct,
+        balancePeaches: demo.balancePeaches,
+        totalEarnedPeaches: demo.totalEarnedPeaches,
+        commissionPct: demo.commissionPct,
       },
     };
   }

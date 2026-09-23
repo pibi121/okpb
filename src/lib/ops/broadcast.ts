@@ -21,11 +21,28 @@ export type BroadcastMediaItem = {
   url: string;
 };
 
+/**
+ * Broadcast CTA button.
+ * - Default: Mini App web_app via `path` under /tg/
+ * - In-bot: `path` like `bot:undress` (allowlisted → callback_data, no Mini App)
+ */
 export type BroadcastButton = {
   text: string;
-  /** Mini App path under /tg/, e.g. "photo", "video?templateId=…", "characters?section=train" */
+  /** Mini App path under /tg/, or `bot:<key>` for in-bot callback. */
   path: string;
 };
+
+/** Allowlisted in-bot actions (must match HUB_CB / menu-routing). */
+export const BROADCAST_BOT_ACTIONS: Record<string, string> = {
+  undress: "hub:ud",
+};
+
+export function resolveBroadcastBotCallback(path: string): string | null {
+  const p = path.trim().replace(/^\//, "");
+  if (!p.startsWith("bot:")) return null;
+  const key = p.slice(4).trim().toLowerCase();
+  return BROADCAST_BOT_ACTIONS[key] || null;
+}
 
 function parseFilter(raw: string): BroadcastFilter {
   try {
@@ -65,23 +82,39 @@ function parseButtonsJson(raw: string): BroadcastButton[] {
     return v
       .filter((b) => b?.text?.trim() && typeof b.path === "string")
       .slice(0, 6)
-      .map((b) => ({
-        text: b.text.trim().slice(0, 64),
-        path: b.path.trim().replace(/^\//, ""),
-      }));
+      .map((b) => {
+        const path = b.path.trim().replace(/^\//, "");
+        // Drop unknown bot: keys — never send arbitrary callback_data.
+        if (path.startsWith("bot:") && !resolveBroadcastBotCallback(path)) {
+          return null;
+        }
+        return {
+          text: b.text.trim().slice(0, 64),
+          path,
+        };
+      })
+      .filter((b): b is BroadcastButton => Boolean(b));
   } catch {
     return [];
   }
 }
 
+type InlineBtn =
+  | { text: string; web_app: { url: string } }
+  | { text: string; callback_data: string };
+
 function buttonsMarkup(buttons: BroadcastButton[]) {
   if (!buttons.length) return undefined;
-  const rows: Array<Array<{ text: string; web_app: { url: string } }>> = [];
+  const rows: InlineBtn[][] = [];
   for (let i = 0; i < buttons.length; i += 2) {
-    const row = buttons.slice(i, i + 2).map((b) => ({
-      text: b.text,
-      web_app: { url: tgMiniAppUrl(b.path.replace(/^\//, "")) },
-    }));
+    const row = buttons.slice(i, i + 2).map((b): InlineBtn => {
+      const cb = resolveBroadcastBotCallback(b.path);
+      if (cb) return { text: b.text, callback_data: cb };
+      return {
+        text: b.text,
+        web_app: { url: tgMiniAppUrl(b.path.replace(/^\//, "")) },
+      };
+    });
     rows.push(row);
   }
   return { inline_keyboard: rows };
@@ -282,8 +315,9 @@ export async function sendTestBroadcast(opts: {
   await deliverBroadcastPayload(chatId, text, media, buttons);
 }
 
-/** Suggested Mini App button presets for the ops UI. */
+/** Suggested button presets for the ops UI (Mini App + in-bot). */
 export const BROADCAST_BUTTON_PRESETS: BroadcastButton[] = [
+  { text: "Раздеть по 1 фото", path: "bot:undress" },
   { text: "Лента", path: "" },
   { text: "Фото по образу", path: "photo" },
   { text: "Видео", path: "video" },

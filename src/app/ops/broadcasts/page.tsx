@@ -16,6 +16,7 @@ type MediaItem = { type: "photo" | "video"; url: string };
 type Btn = { text: string; path: string };
 
 const DEFAULT_PRESETS: Btn[] = [
+  { text: "Раздеть по 1 фото", path: "bot:undress" },
   { text: "Лента", path: "" },
   { text: "Фото по образу", path: "photo" },
   { text: "Видео", path: "video" },
@@ -24,6 +25,11 @@ const DEFAULT_PRESETS: Btn[] = [
   { text: "Галерея", path: "gallery" },
   { text: "Пополнить", path: "topup" },
 ];
+
+function buttonTargetLabel(path: string): string {
+  if (path.startsWith("bot:")) return `бот → ${path}`;
+  return `/tg/${path}`;
+}
 
 export default function OpsBroadcastsPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -306,14 +312,19 @@ export default function OpsBroadcastsPage() {
 
         <div className="rounded-xl border border-white/10 p-3">
           <p className="text-xs text-zinc-500">
-            Кнопки → разделы мини-аппа (web_app). Пресеты или свой path.
+            Кнопки: мини-апп (path) или бот (`bot:undress` = как «Раздеть по 1
+            фото» в меню). Пресеты или свой path.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {presets.map((p) => (
               <button
                 key={`${p.text}-${p.path}`}
                 type="button"
-                className="rounded-full border border-white/15 px-2.5 py-1 text-xs"
+                className={
+                  p.path.startsWith("bot:")
+                    ? "rounded-full border border-peach/40 px-2.5 py-1 text-xs text-peach"
+                    : "rounded-full border border-white/15 px-2.5 py-1 text-xs"
+                }
                 onClick={() => {
                   if (buttons.length >= 6) return;
                   if (buttons.some((b) => b.path === p.path && b.text === p.text))
@@ -333,7 +344,7 @@ export default function OpsBroadcastsPage() {
             />
             <input
               id="btnPath"
-              placeholder='path: photo / video?templateId=… / characters'
+              placeholder="photo / bot:undress / characters?section=train"
               className="flex-1 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
             />
             <button
@@ -358,7 +369,10 @@ export default function OpsBroadcastsPage() {
               {buttons.map((b, i) => (
                 <li key={`${b.path}-${i}`} className="flex justify-between gap-2">
                   <span>
-                    {b.text} → <code className="text-zinc-500">/tg/{b.path}</code>
+                    {b.text} →{" "}
+                    <code className="text-zinc-500">
+                      {buttonTargetLabel(b.path)}
+                    </code>
                   </span>
                   <button
                     type="button"

@@ -105,7 +105,7 @@ export async function ensurePlaceholderWorkers() {
       costRubPerHour: 80,
       metaJson: JSON.stringify({
         role: "burst",
-        needs: ["RUNPOD_API_KEY", "RUNPOD_TEMPLATE_ID", "RUNPOD_VOLUME_ID"],
+        needs: ["RUNPOD_API_KEY", "RUNPOD_NETWORK_VOLUME_ID", "RUNPOD_TEMPLATE_ID|RUNPOD_IMAGE_NAME"],
       }),
     },
     update: {},

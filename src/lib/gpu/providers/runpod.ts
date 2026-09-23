@@ -2,11 +2,13 @@
  * RunPod Secure burst for peak video.
  * Env:
  *   RUNPOD_API_KEY
- *   RUNPOD_TEMPLATE_ID          — preferred (Comfy image + ports)
- *   RUNPOD_NETWORK_VOLUME_ID    — Secure Network Volume with weights
+ *   RUNPOD_TEMPLATE_ID          — preferred (Comfy image + start cmd)
+ *   RUNPOD_NETWORK_VOLUME_ID    — Secure Network Volume with weights (EU-RO-1)
+ *   RUNPOD_DATA_CENTER_ID       — default EU-RO-1 (must match volume)
  *   RUNPOD_GPU_TYPE_ID          — default NVIDIA GeForce RTX 5090
  *   RUNPOD_CLOUD_TYPE           — SECURE | COMMUNITY | ALL (default SECURE)
  *   RUNPOD_IMAGE_NAME           — fallback if no template
+ *   RUNPOD_DOCKER_START_CMD     — optional override / used with IMAGE_NAME
  *   RUNPOD_COMFY_PORT           — http port exposed (default 8188)
  *   RUNPOD_BURST_DRY_RUN=1      — skip live rent, return fake id
  */
@@ -23,6 +25,10 @@ export type RunpodSpawnResult = {
   message: string;
   raw?: unknown;
 };
+
+/** Default start: Comfy from network-volume copy at /workspace/ComfyUI */
+export const DEFAULT_RUNPOD_DOCKER_START_CMD =
+  "bash -lc 'set -e; cd /workspace/ComfyUI; python3 -m pip install -q --upgrade pip; python3 -m pip install -q -r requirements.txt || true; exec python3 main.py --listen 0.0.0.0 --port 8188'";
 
 function apiKey() {
   return process.env.RUNPOD_API_KEY?.trim() || "";
@@ -75,12 +81,18 @@ export async function spawnRunpodVideoBurst(actorId: string): Promise<RunpodSpaw
 
   const cloudType = (process.env.RUNPOD_CLOUD_TYPE || "SECURE").toUpperCase();
   const gpuTypeId = process.env.RUNPOD_GPU_TYPE_ID?.trim() || "NVIDIA GeForce RTX 5090";
+  const dataCenterId = process.env.RUNPOD_DATA_CENTER_ID?.trim() || "EU-RO-1";
   const templateId = process.env.RUNPOD_TEMPLATE_ID?.trim() || null;
   const networkVolumeId =
     process.env.RUNPOD_NETWORK_VOLUME_ID?.trim() ||
     process.env.RUNPOD_VOLUME_ID?.trim() ||
     null;
-  const imageName = process.env.RUNPOD_IMAGE_NAME?.trim() || null;
+  const imageName =
+    process.env.RUNPOD_IMAGE_NAME?.trim() ||
+    (!templateId ? "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04" : null);
+  const dockerStartCmd =
+    process.env.RUNPOD_DOCKER_START_CMD?.trim() ||
+    (!templateId ? DEFAULT_RUNPOD_DOCKER_START_CMD : null);
   const comfyPort = process.env.RUNPOD_COMFY_PORT?.trim() || "8188";
   const name = `peach-burst-video-${Date.now().toString(36)}`;
 
@@ -104,14 +116,17 @@ export async function spawnRunpodVideoBurst(actorId: string): Promise<RunpodSpaw
     name,
     volumeMountPath: "/workspace",
     ports: `${comfyPort}/http,22/tcp`,
+    dataCenterId,
+    startSsh: true,
   };
   if (templateId) input.templateId = templateId;
   if (networkVolumeId) input.networkVolumeId = networkVolumeId;
   if (imageName) input.imageName = imageName;
+  if (dockerStartCmd) input.dockerArgs = dockerStartCmd;
 
   try {
     const data = await gql<{
-      podFindAndDeployOnDemand?: { id?: string; desiredStatus?: string };
+      podFindAndDeployOnDemand?: { id?: string; desiredStatus?: string; costPerHr?: number };
     }>(
       `mutation($input: PodFindAndDeployOnDemandInput!) {
         podFindAndDeployOnDemand(input: $input) {
@@ -147,12 +162,8 @@ export async function terminateRunpodPod(podId: string): Promise<RunpodSpawnResu
     return { ok: true, podId, message: `DRY RUN terminate ${podId}` };
   }
   try {
-    await gql(
-      `mutation($id: String!) {
-        podTerminate(input: { podId: $id }) { id }
-      }`,
-      { id: podId },
-    );
+    // podTerminate returns Void — no selection set
+    await gql(`mutation($id: String!) { podTerminate(input: { podId: $id }) }`, { id: podId });
     return { ok: true, podId, message: `RunPod ${podId} terminated` };
   } catch (e) {
     return {

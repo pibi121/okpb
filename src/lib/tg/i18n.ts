@@ -1097,8 +1097,8 @@ Not sure how to use the bot? Tap the guide button below!`,
   },
 
   earn_dash: {
-    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля ({pct}%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n\nТвоя основная ссылка:\n<code>{link}</code>",
-    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share ({pct}%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n\nYour main link:\n<code>{link}</code>",
+    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля ({pct}%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n\nТвоя основная ссылка (Telegram):\n<code>{link}</code>\n\nПостоянная ссылка-переходник, чтобы трафик шёл в рабочий бот 👉 <code>{bridge}</code>",
+    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share ({pct}%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n\nYour main Telegram link:\n<code>{link}</code>\n\nPermanent bridge link (always opens the live bot) 👉 <code>{bridge}</code>",
   },
 
   earn_open_partner_btn: {

@@ -107,12 +107,13 @@ async function showEarnInPlace(
   messageId?: number,
   hasMedia?: boolean,
 ) {
-  const { getPartnerDashboard, partnerStartLink } = await import(
+  const { getPartnerDashboard, partnerStartLink, partnerBridgeLink } = await import(
     "@/lib/tg/partner-program"
   );
   const { tgAffiliateAttributionNote } = await import("@/lib/tg/rules");
   const dash = await getPartnerDashboard(userId);
   const mainUrl = partnerStartLink(dash.botUsername, dash.profile.code);
+  const bridgeUrl = partnerBridgeLink(dash.profile.code);
   const pct = String(dash.profile.commissionPct || 50);
   const body = [
     tFormat("earn_dash", locale, {
@@ -122,6 +123,7 @@ async function showEarnInPlace(
       earned: String(dash.commissionPeaches),
       balance: String(dash.profile.balancePeaches),
       link: mainUrl,
+      bridge: bridgeUrl,
       pct,
     }),
     "",

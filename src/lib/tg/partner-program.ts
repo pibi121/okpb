@@ -375,3 +375,16 @@ export function partnerStartLink(botUsername: string, code: string, linkSlug?: s
   const payload = linkSlug ? `ref_${code}${LINK_SEP}${linkSlug}` : `ref_${code}`;
   return `https://t.me/${botUsername}?start=${payload}`;
 }
+
+/** Permanent domain bridge (pichbitch.live) — bot nick lives only in bot.txt on host. */
+export const PARTNER_BRIDGE_ORIGIN = (
+  process.env.PARTNER_BRIDGE_ORIGIN?.trim() || "https://pichbitch.live"
+).replace(/\/$/, "");
+
+export function partnerBridgeLink(code: string, linkSlug?: string) {
+  const base = `${PARTNER_BRIDGE_ORIGIN}/ref${encodeURIComponent(code)}`;
+  if (linkSlug && linkSlug !== "main") {
+    return `${base}/${encodeURIComponent(linkSlug)}`;
+  }
+  return base;
+}

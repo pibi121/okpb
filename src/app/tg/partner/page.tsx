@@ -13,6 +13,7 @@ type PartnerData = {
   purchaseGrossPeaches: number;
   commissionPeaches: number;
   mainUrl: string;
+  bridgeUrl: string;
   links: Array<{
     id: string;
     slug: string;
@@ -23,6 +24,7 @@ type PartnerData = {
     purchaseGrossPeaches: number;
     commissionPeaches: number;
     url: string;
+    bridgeUrl?: string;
   }>;
   commissions: Array<{
     id: string;
@@ -156,7 +158,24 @@ export default function TgPartnerPage() {
         <h2>{ru ? "Основная ссылка" : "Main link"}</h2>
         <p className="tg-muted tg-section-hint">{data.mainUrl}</p>
         <button type="button" className="tg-primary-btn" onClick={() => copy(data.mainUrl)}>
-          {ru ? "Скопировать" : "Copy"}
+          {ru ? "Скопировать Telegram" : "Copy Telegram"}
+        </button>
+      </div>
+
+      <div className="tg-section">
+        <h2>{ru ? "Постоянная ссылка-переходник" : "Permanent bridge link"}</h2>
+        <p className="tg-muted tg-section-hint">
+          {ru
+            ? "Чтобы трафик шёл в рабочий бот 👉"
+            : "Keeps traffic on the live bot 👉"}
+        </p>
+        <p className="tg-muted tg-section-hint">{data.bridgeUrl}</p>
+        <button
+          type="button"
+          className="tg-primary-btn"
+          onClick={() => copy(data.bridgeUrl)}
+        >
+          {ru ? "Скопировать переходник" : "Copy bridge link"}
         </button>
       </div>
 
@@ -173,9 +192,20 @@ export default function TgPartnerPage() {
                   {l.commissionPeaches}
                 </small>
               </div>
-              <button type="button" className="badge" onClick={() => copy(l.url)}>
-                Copy
-              </button>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" className="badge" onClick={() => copy(l.url)}>
+                  TG
+                </button>
+                {l.bridgeUrl ? (
+                  <button
+                    type="button"
+                    className="badge"
+                    onClick={() => copy(l.bridgeUrl!)}
+                  >
+                    {ru ? "Переходник" : "Bridge"}
+                  </button>
+                ) : null}
+              </div>
             </div>
           ))}
         </div>

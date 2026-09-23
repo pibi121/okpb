@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import {
   createPartnerLink,
   getPartnerDashboard,
+  partnerBridgeLink,
   partnerStartLink,
   requestPartnerWithdrawal,
 } from "@/lib/tg/partner-program";
@@ -11,10 +12,14 @@ export async function GET() {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const dash = await getPartnerDashboard(user.id);
-  const links = dash.links.map((l) => ({
-    ...l,
-    url: partnerStartLink(dash.botUsername, dash.profile.code, l.slug === "main" ? undefined : l.slug),
-  }));
+  const links = dash.links.map((l) => {
+    const slug = l.slug === "main" ? undefined : l.slug;
+    return {
+      ...l,
+      url: partnerStartLink(dash.botUsername, dash.profile.code, slug),
+      bridgeUrl: partnerBridgeLink(dash.profile.code, slug),
+    };
+  });
   return NextResponse.json({
     profile: dash.profile,
     referrals: dash.referrals,
@@ -22,6 +27,7 @@ export async function GET() {
     withdrawals: dash.withdrawals,
     links,
     mainUrl: partnerStartLink(dash.botUsername, dash.profile.code),
+    bridgeUrl: partnerBridgeLink(dash.profile.code),
   });
 }
 
@@ -40,14 +46,12 @@ export async function POST(req: NextRequest) {
     if (body.action === "create_link") {
       const link = await createPartnerLink(user.id, body.label || "Ссылка", body.slug);
       const dash = await getPartnerDashboard(user.id);
+      const slug = link.slug === "main" ? undefined : link.slug;
       return NextResponse.json({
         link: {
           ...link,
-          url: partnerStartLink(
-            dash.botUsername,
-            dash.profile.code,
-            link.slug === "main" ? undefined : link.slug,
-          ),
+          url: partnerStartLink(dash.botUsername, dash.profile.code, slug),
+          bridgeUrl: partnerBridgeLink(dash.profile.code, slug),
         },
       });
     }

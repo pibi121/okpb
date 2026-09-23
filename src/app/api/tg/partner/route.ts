@@ -3,6 +3,7 @@ import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import {
   createPartnerLink,
   getPartnerDashboard,
+  partnerBridgeLink,
   partnerStartLink,
   requestPartnerWithdrawal,
 } from "@/lib/tg/partner-program";
@@ -12,21 +13,21 @@ export async function GET(req: Request) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const dash = await getPartnerDashboard(userId);
-  const links = dash.links.map((l) => ({
-    id: l.id,
-    slug: l.slug,
-    label: l.label,
-    clicks: l.clicks,
-    signups: l.signups,
-    purchases: l.purchases ?? 0,
-    purchaseGrossPeaches: l.purchaseGrossPeaches ?? 0,
-    commissionPeaches: l.commissionPeaches ?? 0,
-    url: partnerStartLink(
-      dash.botUsername,
-      dash.profile.code,
-      l.slug === "main" ? undefined : l.slug,
-    ),
-  }));
+  const links = dash.links.map((l) => {
+    const slug = l.slug === "main" ? undefined : l.slug;
+    return {
+      id: l.id,
+      slug: l.slug,
+      label: l.label,
+      clicks: l.clicks,
+      signups: l.signups,
+      purchases: l.purchases ?? 0,
+      purchaseGrossPeaches: l.purchaseGrossPeaches ?? 0,
+      commissionPeaches: l.commissionPeaches ?? 0,
+      url: partnerStartLink(dash.botUsername, dash.profile.code, slug),
+      bridgeUrl: partnerBridgeLink(dash.profile.code, slug),
+    };
+  });
 
   return NextResponse.json({
     balancePeaches: dash.profile.balancePeaches,
@@ -39,6 +40,7 @@ export async function GET(req: Request) {
     commissionPeaches: dash.commissionPeaches ?? dash.profile.totalEarnedPeaches,
     links,
     mainUrl: partnerStartLink(dash.botUsername, dash.profile.code),
+    bridgeUrl: partnerBridgeLink(dash.profile.code),
     commissions: dash.commissions.map((c) => ({
       id: c.id,
       amountPeaches: c.amountPeaches,
@@ -72,16 +74,14 @@ export async function POST(req: Request) {
     if (body.action === "create_link") {
       const link = await createPartnerLink(userId, body.label || "Ссылка", body.slug);
       const dash = await getPartnerDashboard(userId);
+      const slug = link.slug === "main" ? undefined : link.slug;
       return NextResponse.json({
         link: {
           id: link.id,
           slug: link.slug,
           label: link.label,
-          url: partnerStartLink(
-            dash.botUsername,
-            dash.profile.code,
-            link.slug === "main" ? undefined : link.slug,
-          ),
+          url: partnerStartLink(dash.botUsername, dash.profile.code, slug),
+          bridgeUrl: partnerBridgeLink(dash.profile.code, slug),
         },
       });
     }

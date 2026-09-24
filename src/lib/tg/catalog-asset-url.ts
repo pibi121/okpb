@@ -43,6 +43,19 @@ function volumeCatalogPath(name: string): string {
   return path.join(galleryRoot(), "tg-catalog", name);
 }
 
+/** Bust year-long browser/TG WebView caches after offline preview swaps. */
+function withCatalogVersion(url: string, name: string): string {
+  if (!url || /[?&]v=/.test(url)) return url;
+  try {
+    const abs = volumeCatalogPath(name);
+    if (!fs.existsSync(abs)) return url;
+    const v = Math.floor(fs.statSync(abs).mtimeMs);
+    return `${url}${url.includes("?") ? "&" : "?"}v=${v}`;
+  } catch {
+    return url;
+  }
+}
+
 /** Prefer static public for seed art; runtime cast covers always use media API.
  * Next.js does not serve files written into `public/` after the image is built,
  * so published `cast-{cuid}.*` covers on the volume must use `/api/media/…`.
@@ -50,26 +63,26 @@ function volumeCatalogPath(name: string): string {
 export function resolveCatalogImageUrl(name: string): string {
   if (SEED_IMAGE_RE.test(name)) {
     if (fs.existsSync(publicCatalogPath(name))) {
-      return `/tg/catalog/${name}`;
+      return withCatalogVersion(`/tg/catalog/${name}`, name);
     }
     if (fs.existsSync(volumeCatalogPath(name))) {
-      return `/api/media/tg-catalog/${name}`;
+      return withCatalogVersion(`/api/media/tg-catalog/${name}`, name);
     }
     return `/tg/catalog/${name}`;
   }
 
   // Published cast / photo stills (and any non-seed catalog image).
   if (/^cast-/i.test(name) || /^photo-/i.test(name) || VOLUME_ASSET_RE.test(name)) {
-    return `/api/media/tg-catalog/${name}`;
+    return withCatalogVersion(`/api/media/tg-catalog/${name}`, name);
   }
 
   if (fs.existsSync(volumeCatalogPath(name))) {
-    return `/api/media/tg-catalog/${name}`;
+    return withCatalogVersion(`/api/media/tg-catalog/${name}`, name);
   }
   if (fs.existsSync(publicCatalogPath(name))) {
-    return `/tg/catalog/${name}`;
+    return withCatalogVersion(`/tg/catalog/${name}`, name);
   }
-  return `/api/media/tg-catalog/${name}`;
+  return withCatalogVersion(`/api/media/tg-catalog/${name}`, name);
 }
 
 export function resolveTgCatalogAssetUrl(
@@ -91,7 +104,7 @@ export function resolveTgCatalogAssetUrl(
 
   // Runtime video (+ frame thumbs): always media API
   if (VOLUME_ASSET_RE.test(name) || /\.(mp4|webm|mov)$/i.test(name)) {
-    return `/api/media/tg-catalog/${name}`;
+    return withCatalogVersion(`/api/media/tg-catalog/${name}`, name);
   }
 
   // Cast / photo stills: public if present, else volume
@@ -99,5 +112,6 @@ export function resolveTgCatalogAssetUrl(
     return resolveCatalogImageUrl(name);
   }
 
-  return `/api/media/tg-catalog/${name}`;
+  // PhotoTemplate previews (pt-*-preview.png) and other volume stills.
+  return withCatalogVersion(`/api/media/tg-catalog/${name}`, name);
 }

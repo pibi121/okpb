@@ -91,12 +91,11 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const size = stat.size;
   const ext = path.extname(abs).toLowerCase();
   const contentType = MIME[ext] || "application/octet-stream";
-  // TG-catalog assets are public thumbnails; user gallery is private — never cache
-  // in shared/CDN stores. "immutable" is dropped to prevent stale cached versions
-  // from leaking between sessions.
+  // TG-catalog: short TTL — previews get swapped (blur/censor) without renaming.
+  // Long immutable caches left Telegram/WebView showing uncensored stills for days.
   const cache =
     isTgCatalog || isOpsBroadcast
-      ? "public, max-age=31536000, immutable"
+      ? "public, max-age=300, must-revalidate"
       : "private, max-age=3600";
 
   // Lightweight JPEG thumb for ops grids / lists (?w=360). Images only; no Range.

@@ -76,16 +76,14 @@ export async function POST(req: Request) {
     /* ignore */
   }
 
-  // If this is a -preview still, also refresh matching -scene when it exists
-  // (often identical twin used in publish).
+  // If this is a -preview still, always refresh matching -scene twin
+  // (feed/publish may fall back to sceneImageUrl).
   let sceneUpdated: string | null = null;
   if (/-preview\.(png|jpe?g|webp)$/i.test(filename)) {
     const sceneName = filename.replace(/-preview\./i, "-scene.");
     const scenePath = path.join(durableDir, sceneName);
-    if (fs.existsSync(scenePath)) {
-      fs.writeFileSync(scenePath, buf);
-      sceneUpdated = sceneName;
-    }
+    fs.writeFileSync(scenePath, buf);
+    sceneUpdated = sceneName;
   }
 
   return NextResponse.json({

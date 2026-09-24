@@ -122,7 +122,7 @@ export async function tgDeliverVideo(opts: {
 
 /** Permanent Telegram fetch failures — do not retry forever. */
 export function isPermanentOutboxMediaError(message: string): boolean {
-  return /failed to get HTTP URL content|wrong type of the web page content|failed to get http url content|media_unavailable|WEBPAGE_MEDIA_EMPTY|wrong file identifier|failed to send message #?photo|failed to send message #?video/i.test(
+  return /failed to get HTTP URL content|wrong type of the web page content|failed to get http url content|media_unavailable|WEBPAGE_MEDIA_EMPTY|WEBPAGE_CURL_FAILED|wrong file identifier|failed to send message #?photo|failed to send message #?video|failed to send message #\d+/i.test(
     message,
   );
 }

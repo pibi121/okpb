@@ -1,14 +1,13 @@
 import { prisma } from "@/lib/db";
 import {
   tgSendMessage,
-  tgSendPhoto,
-  tgSendVideo,
   tgApi,
 } from "@/lib/tg/telegram-api";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { saveOpsSettings } from "@/lib/ops/settings";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { listLiveBots, type LiveBot } from "@/lib/tg/bot-registry";
+import { tgDeliverPhoto, tgDeliverVideo } from "@/lib/tg/deliver-media";
 
 export type BroadcastFilter = {
   who?: "all" | "paid" | "never_paid" | "no_job";
@@ -359,40 +358,41 @@ async function deliverBroadcastPayload(
   token: string,
 ) {
   const markup = buttonsMarkup(buttons);
-  if (media.length >= 2) {
-    await tgApi(
-      "sendMediaGroup",
-      {
-        chat_id: chatId,
-        media: media.map((m, i) => ({
-          type: m.type,
-          media: m.url,
-          ...(i === 0 && text.trim()
-            ? { caption: text, parse_mode: "HTML" }
-            : {}),
-        })),
-      },
-      token,
-    );
-    if (markup) {
+
+  // Never sendMediaGroup by HTTP URL — Telegram often fails with
+  // WEBPAGE_CURL_FAILED on message #2. Upload local bytes (or URL fallback
+  // inside tgDeliver*) one message at a time.
+  if (media.length >= 1) {
+    for (let i = 0; i < media.length; i++) {
+      const m = media[i]!;
+      const caption = i === 0 && text.trim() ? text : undefined;
+      const attachMarkup = Boolean(markup) && media.length === 1 && i === 0;
+      const extra = attachMarkup ? { reply_markup: markup } : {};
+      if (m.type === "video") {
+        await tgDeliverVideo({
+          chatId,
+          url: m.url,
+          caption,
+          extra,
+          token,
+        });
+      } else {
+        await tgDeliverPhoto({
+          chatId,
+          url: m.url,
+          caption,
+          extra,
+          token,
+        });
+      }
+    }
+    if (markup && media.length >= 2) {
       await tgSendMessage(
         chatId,
         buttons.length ? "👇" : text || "·",
         { reply_markup: markup },
         token,
       );
-    } else if (!text.trim()) {
-      /* album only */
-    }
-    return;
-  }
-  if (media.length === 1) {
-    const m = media[0]!;
-    const extra = markup ? { reply_markup: markup } : {};
-    if (m.type === "video") {
-      await tgSendVideo(chatId, m.url, text || undefined, extra, token);
-    } else {
-      await tgSendPhoto(chatId, m.url, text || undefined, extra, token);
     }
     return;
   }

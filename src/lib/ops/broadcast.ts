@@ -48,16 +48,146 @@ export type BroadcastButton = {
   path: string;
 };
 
-/** Allowlisted in-bot actions (must match HUB_CB / menu-routing). */
+/**
+ * Allowlisted in-bot section keys → Telegram callback_data (HUB_CB).
+ * Template deep links use `bot:pt:<id>` / `bot:vt:<id>` → `bc:pt|vt:<id>`.
+ */
 export const BROADCAST_BOT_ACTIONS: Record<string, string> = {
   undress: "hub:ud",
+  photo: "hub:ph",
+  video: "hub:vl",
+  video_look: "hub:vl",
+  video_one: "hub:v1",
+  topup: "hub:tu",
+  help: "hub:hp",
+  earn: "hub:earn",
+  hub: "hub:back",
 };
+
+/** Prisma cuid-ish ids only — never pass arbitrary callback_data. */
+const TEMPLATE_ID_RE = /^[a-z][a-z0-9]{7,39}$/i;
 
 export function resolveBroadcastBotCallback(path: string): string | null {
   const p = path.trim().replace(/^\//, "");
   if (!p.startsWith("bot:")) return null;
-  const key = p.slice(4).trim().toLowerCase();
+  const rest = p.slice(4).trim();
+  const tmpl = rest.match(/^(pt|vt):(.+)$/i);
+  if (tmpl) {
+    const kind = tmpl[1].toLowerCase();
+    const id = tmpl[2].trim();
+    if (!TEMPLATE_ID_RE.test(id)) return null;
+    const cb = `bc:${kind}:${id}`;
+    // Telegram callback_data hard limit.
+    if (cb.length > 64) return null;
+    return cb;
+  }
+  const key = rest.toLowerCase();
   return BROADCAST_BOT_ACTIONS[key] || null;
+}
+
+export type BroadcastButtonOption = {
+  text: string;
+  path: string;
+  group: "bot" | "miniapp" | "photo" | "video";
+  subtitle?: string;
+};
+
+/** Hub sections for the ops picker (in-bot, no Mini App). */
+export const BROADCAST_BOT_SECTION_OPTIONS: BroadcastButtonOption[] = [
+  { text: "Раздеть по 1 фото", path: "bot:undress", group: "bot" },
+  { text: "Фото по образу", path: "bot:photo", group: "bot" },
+  { text: "Видео по образу", path: "bot:video", group: "bot" },
+  { text: "Видео с 1 фото", path: "bot:video_one", group: "bot" },
+  { text: "Пополнить", path: "bot:topup", group: "bot" },
+  { text: "Помощь", path: "bot:help", group: "bot" },
+  { text: "Заработать", path: "bot:earn", group: "bot" },
+  { text: "Главное меню", path: "bot:hub", group: "bot" },
+];
+
+export const BROADCAST_MINIAPP_OPTIONS: BroadcastButtonOption[] = [
+  { text: "Лента", path: "", group: "miniapp" },
+  { text: "Фото (мини-апп)", path: "photo", group: "miniapp" },
+  { text: "Видео (мини-апп)", path: "video", group: "miniapp" },
+  { text: "Витрина моделей", path: "characters", group: "miniapp" },
+  { text: "Обучить свою", path: "characters?section=train", group: "miniapp" },
+  { text: "Галерея", path: "gallery", group: "miniapp" },
+  { text: "Пополнить (мини-апп)", path: "topup", group: "miniapp" },
+  { text: "Гайд", path: "guide", group: "miniapp" },
+  { text: "Профиль", path: "profile", group: "miniapp" },
+];
+
+/** Full catalog for /ops/broadcasts picker (sections + published templates). */
+export async function listBroadcastButtonCatalog(): Promise<
+  BroadcastButtonOption[]
+> {
+  const [photos, videos, lora] = await Promise.all([
+    prisma.photoTemplate.findMany({
+      where: { tgPublished: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        tgDisplayTitle: true,
+        sceneCategory: true,
+      },
+    }),
+    prisma.quickVideoTemplate.findMany({
+      where: { tgPublished: true },
+      orderBy: [{ tgSortOrder: "asc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        tgDisplayTitle: true,
+      },
+    }),
+    prisma.loraI2vTemplate.findMany({
+      where: { tgPublished: true },
+      orderBy: [{ tgSortOrder: "asc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        tgDisplayTitle: true,
+      },
+    }),
+  ]);
+
+  const photoOpts: BroadcastButtonOption[] = photos.map((r) => {
+    const title = (r.tgDisplayTitle.trim() || r.title).slice(0, 64);
+    return {
+      text: title,
+      path: `bot:pt:${r.id}`,
+      group: "photo",
+      subtitle: r.sceneCategory || undefined,
+    };
+  });
+
+  const videoOpts: BroadcastButtonOption[] = [
+    ...videos.map((r) => {
+      const title = (r.tgDisplayTitle.trim() || r.title).slice(0, 64);
+      return {
+        text: title,
+        path: `bot:vt:${r.id}`,
+        group: "video" as const,
+        subtitle: "quick",
+      };
+    }),
+    ...lora.map((r) => {
+      const title = (r.tgDisplayTitle.trim() || r.title).slice(0, 64);
+      return {
+        text: title,
+        path: `bot:vt:${r.id}`,
+        group: "video" as const,
+        subtitle: "best / LoRA",
+      };
+    }),
+  ];
+
+  return [
+    ...BROADCAST_BOT_SECTION_OPTIONS,
+    ...BROADCAST_MINIAPP_OPTIONS,
+    ...photoOpts,
+    ...videoOpts,
+  ];
 }
 
 function parseFilter(raw: string): BroadcastFilter {
@@ -445,15 +575,8 @@ export async function sendTestBroadcast(opts: {
   return { results };
 }
 
-/** Suggested button presets for the ops UI (Mini App + in-bot). */
+/** Suggested button presets for the ops UI (bot sections first, then Mini App). */
 export const BROADCAST_BUTTON_PRESETS: BroadcastButton[] = [
-  { text: "Раздеть по 1 фото", path: "bot:undress" },
-  { text: "Лента", path: "" },
-  { text: "Фото по образу", path: "photo" },
-  { text: "Видео", path: "video" },
-  { text: "Витрина моделей", path: "characters" },
-  { text: "Обучить свою", path: "characters?section=train" },
-  { text: "Галерея", path: "gallery" },
-  { text: "Пополнить", path: "topup" },
-  { text: "Гайд", path: "guide" },
+  ...BROADCAST_BOT_SECTION_OPTIONS.map(({ text, path }) => ({ text, path })),
+  ...BROADCAST_MINIAPP_OPTIONS.map(({ text, path }) => ({ text, path })),
 ];

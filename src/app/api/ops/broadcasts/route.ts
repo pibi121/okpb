@@ -4,6 +4,7 @@ import {
   BROADCAST_BUTTON_PRESETS,
   deleteBroadcast,
   listBroadcastBotOptions,
+  listBroadcastButtonCatalog,
   previewBroadcastAudience,
   runBroadcast,
   sendTestBroadcast,
@@ -12,15 +13,17 @@ import { writeAudit } from "@/lib/ops/audit";
 
 export async function GET() {
   return withOps("broadcasts", async () => {
-    const [rows, bots] = await Promise.all([
+    const [rows, bots, catalog] = await Promise.all([
       prisma.broadcast.findMany({
         orderBy: { createdAt: "desc" },
         take: 30,
       }),
       listBroadcastBotOptions().catch(() => []),
+      listBroadcastButtonCatalog().catch(() => []),
     ]);
     return jsonOk({
       presets: BROADCAST_BUTTON_PRESETS,
+      catalog,
       bots,
       rows: rows.map((r) => ({
         ...r,

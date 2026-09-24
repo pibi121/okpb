@@ -17,20 +17,31 @@ type BotOpt = { id: string; username: string; isPrimary: boolean };
 
 type MediaItem = { type: "photo" | "video"; url: string };
 type Btn = { text: string; path: string };
+type CatalogOpt = Btn & {
+  group: "bot" | "miniapp" | "photo" | "video";
+  subtitle?: string;
+};
 
 const DEFAULT_PRESETS: Btn[] = [
   { text: "Раздеть по 1 фото", path: "bot:undress" },
+  { text: "Фото по образу", path: "bot:photo" },
+  { text: "Видео по образу", path: "bot:video" },
+  { text: "Видео с 1 фото", path: "bot:video_one" },
   { text: "Лента", path: "" },
-  { text: "Фото по образу", path: "photo" },
-  { text: "Видео", path: "video" },
-  { text: "Витрина моделей", path: "characters" },
-  { text: "Обучить свою", path: "characters?section=train" },
-  { text: "Галерея", path: "gallery" },
-  { text: "Пополнить", path: "topup" },
+  { text: "Пополнить", path: "bot:topup" },
 ];
 
+const GROUP_LABEL: Record<CatalogOpt["group"], string> = {
+  bot: "В боте (разделы)",
+  miniapp: "Мини-апп",
+  photo: "Фото-шаблоны",
+  video: "Видео-шаблоны",
+};
+
 function buttonTargetLabel(path: string): string {
-  if (path.startsWith("bot:")) return `бот → ${path}`;
+  if (path.startsWith("bot:pt:")) return `бот → фото ${path.slice(7)}`;
+  if (path.startsWith("bot:vt:")) return `бот → видео ${path.slice(7)}`;
+  if (path.startsWith("bot:")) return `бот → ${path.slice(4)}`;
   return `/tg/${path}`;
 }
 
@@ -59,6 +70,8 @@ export default function OpsBroadcastsPage() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [buttons, setButtons] = useState<Btn[]>([]);
   const [presets, setPresets] = useState<Btn[]>(DEFAULT_PRESETS);
+  const [catalog, setCatalog] = useState<CatalogOpt[]>([]);
+  const [catalogQ, setCatalogQ] = useState("");
   const [bots, setBots] = useState<BotOpt[]>([]);
   const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
   const [testTgId, setTestTgId] = useState("");
@@ -69,14 +82,26 @@ export default function OpsBroadcastsPage() {
   const [urlDraft, setUrlDraft] = useState("");
   const [msgTone, setMsgTone] = useState<"ok" | "err">("ok");
 
+  function addButton(opt: Btn) {
+    if (buttons.length >= 6) {
+      setMsgTone("err");
+      setMsg("Максимум 6 кнопок");
+      return;
+    }
+    if (buttons.some((b) => b.path === opt.path && b.text === opt.text)) return;
+    setButtons((b) => [...b, { text: opt.text.slice(0, 64), path: opt.path }]);
+  }
+
   async function load() {
     const d = await opsFetch<{
       rows: Row[];
       presets?: Btn[];
+      catalog?: CatalogOpt[];
       bots?: BotOpt[];
     }>("/api/ops/broadcasts");
     setRows(d.rows);
     if (d.presets?.length) setPresets(d.presets);
+    if (d.catalog?.length) setCatalog(d.catalog);
     if (d.bots?.length) {
       setBots(d.bots);
       setSelectedBotIds((prev) =>
@@ -401,29 +426,78 @@ export default function OpsBroadcastsPage() {
 
         <div className="rounded-xl border border-white/10 p-3">
           <p className="text-xs text-zinc-500">
-            Кнопки: мини-апп (path) или бот (`bot:undress` = как «Раздеть по 1
-            фото» в меню). Пресеты или свой path.
+            Кнопки (до 6): разделы бота, конкретные шаблоны или мини-апп. Жми в
+            списке — добавится. `bot:…` открывает чат бота, остальное — Mini App.
           </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {presets.map((p) => (
-              <button
-                key={`${p.text}-${p.path}`}
-                type="button"
-                className={
-                  p.path.startsWith("bot:")
-                    ? "rounded-full border border-peach/40 px-2.5 py-1 text-xs text-peach"
-                    : "rounded-full border border-white/15 px-2.5 py-1 text-xs"
-                }
-                onClick={() => {
-                  if (buttons.length >= 6) return;
-                  if (buttons.some((b) => b.path === p.path && b.text === p.text))
-                    return;
-                  setButtons((b) => [...b, p]);
-                }}
-              >
-                + {p.text}
-              </button>
-            ))}
+          <input
+            value={catalogQ}
+            onChange={(e) => setCatalogQ(e.target.value)}
+            placeholder="Поиск: раздел, шаблон…"
+            className="mt-2 w-full rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+          />
+          <div className="mt-2 max-h-72 space-y-3 overflow-y-auto pr-1">
+            {(
+              ["bot", "miniapp", "photo", "video"] as CatalogOpt["group"][]
+            ).map((group) => {
+              const q = catalogQ.trim().toLowerCase();
+              const source =
+                catalog.length > 0
+                  ? catalog.filter((c) => c.group === group)
+                  : presets
+                      .filter((p) => {
+                        if (group === "bot") return p.path.startsWith("bot:");
+                        if (group === "miniapp")
+                          return !p.path.startsWith("bot:");
+                        return false;
+                      })
+                      .map(
+                        (p): CatalogOpt => ({
+                          ...p,
+                          group:
+                            p.path.startsWith("bot:") ? "bot" : "miniapp",
+                        }),
+                      );
+              const items = source.filter((c) => {
+                if (!q) return true;
+                return (
+                  c.text.toLowerCase().includes(q) ||
+                  c.path.toLowerCase().includes(q) ||
+                  (c.subtitle || "").toLowerCase().includes(q)
+                );
+              });
+              if (!items.length) return null;
+              return (
+                <div key={group}>
+                  <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
+                    {GROUP_LABEL[group]} · {items.length}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map((p) => (
+                      <button
+                        key={`${p.group}-${p.path}-${p.text}`}
+                        type="button"
+                        title={buttonTargetLabel(p.path)}
+                        className={
+                          p.group === "bot" ||
+                          p.path.startsWith("bot:pt:") ||
+                          p.path.startsWith("bot:vt:")
+                            ? "max-w-full truncate rounded-full border border-peach/40 px-2.5 py-1 text-xs text-peach"
+                            : "max-w-full truncate rounded-full border border-white/15 px-2.5 py-1 text-xs"
+                        }
+                        onClick={() => addButton(p)}
+                      >
+                        + {p.text}
+                        {p.subtitle ? (
+                          <span className="ml-1 text-[10px] text-zinc-500">
+                            {p.subtitle}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="mt-2 flex gap-2">
             <input
@@ -433,7 +507,7 @@ export default function OpsBroadcastsPage() {
             />
             <input
               id="btnPath"
-              placeholder="photo / bot:undress / characters?section=train"
+              placeholder="bot:undress / bot:pt:cuid / photo?templateId=…"
               className="flex-1 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
             />
             <button
@@ -443,11 +517,12 @@ export default function OpsBroadcastsPage() {
                 const text = (
                   document.getElementById("btnText") as HTMLInputElement
                 )?.value?.trim();
-                const path = (
-                  document.getElementById("btnPath") as HTMLInputElement
-                )?.value?.trim() ?? "";
+                const path =
+                  (
+                    document.getElementById("btnPath") as HTMLInputElement
+                  )?.value?.trim() ?? "";
                 if (!text || buttons.length >= 6) return;
-                setButtons((b) => [...b, { text, path }]);
+                addButton({ text, path });
               }}
             >
               +

@@ -1765,6 +1765,38 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       return;
     }
 
+    if (data.startsWith("bc:pt:") || data.startsWith("bc:vt:")) {
+      const kind = data.startsWith("bc:pt:") ? ("photo" as const) : ("video" as const);
+      const templateId = data.slice(6);
+      if (!templateId) {
+        await tgAnswerCallbackQuery(cq.id, "template?");
+        return;
+      }
+      const meta = await loadTemplateMeta(user.id, kind, templateId);
+      if (!meta) {
+        await tgAnswerCallbackQuery(
+          cq.id,
+          locale === "en" ? "Template unavailable" : "Шаблон недоступен",
+        );
+        return;
+      }
+      await showTemplateConfirm(
+        chatId,
+        platformUserId,
+        user.id,
+        locale,
+        kind,
+        templateId,
+        meta.title,
+        meta.hasSpeech,
+        meta.speechSlots,
+        meta.requiresLora,
+        meta.notes,
+      );
+      await tgAnswerCallbackQuery(cq.id);
+      return;
+    }
+
     {
       const { handleUndressCallback } = await import("@/lib/tg/undress-flow");
       if (

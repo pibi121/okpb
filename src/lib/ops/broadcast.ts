@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/db";
 import {
   tgSendMessage,
-  tgApi,
 } from "@/lib/tg/telegram-api";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { saveOpsSettings } from "@/lib/ops/settings";

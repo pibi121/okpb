@@ -2005,6 +2005,108 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "fix_identity_pack_tg_visibility") {
+    const userId = String(body.userId || "").trim();
+    const characterId = String(body.characterId || "").trim();
+    if (!userId && !characterId) {
+      return NextResponse.json(
+        { error: "userId or characterId required" },
+        { status: 400 },
+      );
+    }
+    const items = await prisma.galleryItem.findMany({
+      where: {
+        ...(userId ? { userId } : {}),
+        ...(characterId ? { characterId } : {}),
+        OR: [
+          { metaJson: { contains: '"identityPack":true' } },
+          { title: { startsWith: "Identity" } },
+        ],
+      },
+      select: { id: true, metaJson: true, resultUrl: true, characterId: true },
+    });
+    let marked = 0;
+    const identityUrls = new Set<string>();
+    for (const it of items) {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(it.metaJson || "{}") as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+      identityUrls.add(it.resultUrl);
+      if (meta.hiddenFromTgGallery === true && meta.identityPack === true) continue;
+      await prisma.galleryItem.update({
+        where: { id: it.id },
+        data: {
+          metaJson: JSON.stringify({
+            ...meta,
+            identityPack: true,
+            hiddenFromTgGallery: true,
+          }),
+        },
+      });
+      marked += 1;
+    }
+
+    const charIds = [
+      ...new Set(
+        items.map((i) => i.characterId).filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const coverFixes: Array<{ characterId: string; from: string; to: string }> =
+      [];
+    for (const cid of charIds) {
+      const ch = await prisma.character.findUnique({
+        where: { id: cid },
+        select: { id: true, userId: true, tgCoverUrl: true },
+      });
+      if (!ch) continue;
+      const cover = (ch.tgCoverUrl || "").trim();
+      const coverIsIdentity =
+        cover &&
+        [...identityUrls].some(
+          (u) => u && (cover === u || cover.includes(u) || u.includes(cover)),
+        );
+      // Also refresh when cover empty — pick latest non-identity photo.
+      if (!coverIsIdentity && cover) continue;
+      const next = await prisma.galleryItem.findFirst({
+        where: {
+          userId: ch.userId,
+          characterId: cid,
+          kind: "photo",
+          resultUrl: { not: "" },
+          NOT: {
+            OR: [
+              { metaJson: { contains: '"identityPack":true' } },
+              { title: { startsWith: "Identity" } },
+            ],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { resultUrl: true },
+      });
+      if (!next?.resultUrl) continue;
+      await prisma.character.update({
+        where: { id: cid },
+        data: { tgCoverUrl: next.resultUrl },
+      });
+      coverFixes.push({
+        characterId: cid,
+        from: cover || "(empty)",
+        to: next.resultUrl,
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      action: "fix_identity_pack_tg_visibility",
+      found: items.length,
+      marked,
+      coverFixes,
+    });
+  }
+
   if (action === "user_recent_gallery") {
     const userId =
       typeof body.userId === "string"

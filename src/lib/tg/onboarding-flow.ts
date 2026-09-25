@@ -357,6 +357,25 @@ export async function confirmRulesAndWelcome(
 }
 
 /** Rules agree nudges: 10m / 3h / 24h after first rules message. */
+/** Stop all rules nudges when user blocked the bot / chat gone. */
+async function silenceRulesNudges(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      tgRulesNudge10mSent: true,
+      tgRulesNudge3hSent: true,
+      tgRulesNudge24hSent: true,
+    },
+  });
+}
+
+function isDeadTelegramChat(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /bot was blocked|chat not found|user is deactivated|Forbidden: bot|PEER_ID_INVALID/i.test(
+    msg,
+  );
+}
+
 export async function maybeSendRulesNudges(
   chatId: number,
   userId: string,
@@ -394,19 +413,27 @@ export async function maybeSendRulesNudges(
     flag: "tgRulesNudge10mSent" | "tgRulesNudge3hSent" | "tgRulesNudge24hSent",
     eventKey: string,
   ) => {
-    await setTgSession(String(chatId), { chatState: "awaiting_rules" });
-    await sendRulesStep(chatId, locale, { userId, nudge: true });
-    await prisma.user.update({
-      where: { id: userId },
-      data: { [flag]: true },
-    });
-    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
-    trackFunnelEventBg({
-      userId,
-      platformUserId: String(chatId),
-      eventKey,
-      surface: "system",
-    });
+    try {
+      await setTgSession(String(chatId), { chatState: "awaiting_rules" });
+      await sendRulesStep(chatId, locale, { userId, nudge: true });
+      await prisma.user.update({
+        where: { id: userId },
+        data: { [flag]: true },
+      });
+      const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+      trackFunnelEventBg({
+        userId,
+        platformUserId: String(chatId),
+        eventKey,
+        surface: "system",
+      });
+    } catch (e) {
+      if (isDeadTelegramChat(e)) {
+        await silenceRulesNudges(userId);
+        return;
+      }
+      throw e;
+    }
   };
 
   if (!user.tgRulesNudge10mSent && ageMs >= MS_10M) {

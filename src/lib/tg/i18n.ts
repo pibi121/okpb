@@ -1092,13 +1092,13 @@ Not sure how to use the bot? Tap the guide button below!`,
   },
 
   earn_text: {
-    ru: "💰 <b>Заработать</b>\n\nКомиссия с оборота пополнений приглашённых пользователей (ставка в твоём кабинете).\nВыплата USDT от 30.",
-    en: "💰 <b>Earn</b>\n\nCommission on top-ups from users you refer (your rate is in the partner cabinet).\nPayout from 30 USDT.",
+    ru: "💰 <b>Заработать</b>\n\nКомиссия с оборота пополнений приглашённых пользователей (ставка в твоём кабинете).\nВыплата USDT от 30.\n\n📌 Подробная инструкция и способы, где брать трафик, чтобы зарабатывать: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>",
+    en: "💰 <b>Earn</b>\n\nCommission on top-ups from users you refer (your rate is in the partner cabinet).\nPayout from 30 USDT.\n\n📌 Full guide & traffic sources to earn: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>",
   },
 
   earn_dash: {
-    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля ({pct}%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n\nТвоя основная ссылка (Telegram):\n<code>{link}</code>\n\nПостоянная ссылка-переходник, чтобы трафик шёл в рабочий бот 👉 <code>{bridge}</code>",
-    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share ({pct}%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n\nYour main Telegram link:\n<code>{link}</code>\n\nPermanent bridge link (always opens the live bot) 👉 <code>{bridge}</code>",
+    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля ({pct}%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n\n📌 Подробная инструкция и способы, где брать трафик, чтобы зарабатывать: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>\n\nТвоя основная ссылка (Telegram):\n<code>{link}</code>\n\nПостоянная ссылка-переходник, чтобы трафик шёл в рабочий бот 👉 <code>{bridge}</code>",
+    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share ({pct}%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n\n📌 Full guide & traffic sources to earn: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>\n\nYour main Telegram link:\n<code>{link}</code>\n\nPermanent bridge link (always opens the live bot) 👉 <code>{bridge}</code>",
   },
 
   earn_open_partner_btn: {

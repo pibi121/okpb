@@ -38,6 +38,10 @@ export async function GET(req: Request) {
   const root = items.filter((i) => {
     const m = parseGalleryMeta(i.metaJson);
     if (typeof m.folderId === "string") return false;
+    // System identity-pack stills (peach/gray studio refs) — not user-facing gallery.
+    if (m.identityPack === true) return false;
+    if (m.hiddenFromTgGallery === true) return false;
+    if (typeof i.title === "string" && /^Identity\s*·/i.test(i.title)) return false;
     return true;
   });
 

@@ -123,8 +123,32 @@ export default function TgPartnerPage() {
   if (loadErr) return <p className="tg-error">{loadErr}</p>;
   if (!data) return <p className="tg-loading">…</p>;
 
+  const kbUrl =
+    "https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24";
+
   return (
     <TgShell locale={locale}>
+      <a
+        className="tg-partner-kb"
+        href={kbUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <span className="tg-partner-kb-pin" aria-hidden>
+          📌
+        </span>
+        <span className="tg-partner-kb-body">
+          <strong>
+            {ru
+              ? "Подробная инструкция и способы, где брать трафик, чтобы зарабатывать"
+              : "Full guide & traffic sources to earn"}
+          </strong>
+          <span className="tg-partner-kb-link">
+            {ru ? "Открыть базу знаний →" : "Open knowledge base →"}
+          </span>
+        </span>
+      </a>
+
       <div className="tg-section">
         <div className="tg-settings">
           <div className="tg-settings-row">

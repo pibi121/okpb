@@ -80,7 +80,19 @@ export async function startTgUndressGeneration(opts: {
         if (!useComfy()) {
           bytes = photoBytes;
         } else {
-          bytes = await runH3UndressBytes(photoBytes);
+          try {
+            bytes = await runH3UndressBytes(photoBytes);
+          } catch (first) {
+            const msg = first instanceof Error ? first.message : String(first);
+            // Soft recover: transient Comfy execution flakes (opaque "Comfy job error").
+            if (/Comfy job error|ECONN|ETIMEDOUT|socket hang|tunnel/i.test(msg)) {
+              console.warn("[undress] retry once after:", msg.slice(0, 160));
+              await new Promise((r) => setTimeout(r, 2500));
+              bytes = await runH3UndressBytes(photoBytes);
+            } else {
+              throw first;
+            }
+          }
         }
         const saved = saveGalleryBinary(
           opts.userId,

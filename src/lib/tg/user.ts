@@ -194,9 +194,28 @@ export async function findOrCreateTelegramUser(
   }
 
   void import("@/lib/ops/ops-telegram")
-    .then(({ notifyOpsSignup }) =>
-      notifyOpsSignup({ userId: user.id, via: "telegram" }),
-    )
+    .then(async ({ notifyOpsSignup }) => {
+      let botUsername: string | null = null;
+      try {
+        const { currentTgBot } = await import("@/lib/tg/bot-context");
+        botUsername = currentTgBot()?.username || null;
+      } catch {
+        /* ignore */
+      }
+      if (!botUsername) {
+        try {
+          const { getPrimaryBotUsername } = await import("@/lib/tg/bot-config");
+          botUsername = await getPrimaryBotUsername();
+        } catch {
+          botUsername = null;
+        }
+      }
+      await notifyOpsSignup({
+        userId: user.id,
+        via: "telegram",
+        botUsername,
+      });
+    })
     .catch(() => undefined);
 
   return user;

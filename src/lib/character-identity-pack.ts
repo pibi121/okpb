@@ -170,6 +170,9 @@ async function buildAnglePrompt(characterId: string, angleId: IdentityPackAngleI
   let scene = ANGLE_TEMPLATES[angleId].scene;
   const pubicLine = showsFrontGenital(angleId) ? shavedPubicPositive(identity.rows) : "";
   if (pubicLine) scene = `${scene}, ${pubicLine}`;
+  if (!isBackAngle(angleId)) {
+    scene = `${scene}, clean-shaven face, smooth jawline, no beard, no mustache, no stubble`;
+  }
   return assembleLockedStillPrompt({ identity, scene });
 }
 
@@ -180,6 +183,8 @@ function identityPackExtraNegative(
   const parts = [
     shavedPubicNegative(rows, { always: true }),
     cleanShavenNegative(rows),
+    // Krea invents beards on side profiles / even on women — always block for pack.
+    "beard, mustache, goatee, stubble, facial hair, five o'clock shadow, sideburns bushy",
     isBackAngle(angleId) ? backViewNegative() : "",
   ].filter(Boolean);
   return parts.join(", ");

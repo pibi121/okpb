@@ -12,6 +12,7 @@ import {
   comfyOutputAbsPath,
   comfyUploadImage,
   ensureComfyReady,
+  isAnatomyLoraMissingError,
   runComfyAndDownload,
   runComfyJob,
   comfyI2VTimeoutMs,
@@ -994,7 +995,7 @@ export async function runI2VFromStill(opts: {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const hasAnatomy = !useOverride && loras.some((l) => !/cumshot/i.test(l.name));
-    if (hasAnatomy && /lora|not found|does not exist|No such file/i.test(msg)) {
+    if (hasAnatomy && isAnatomyLoraMissingError(msg)) {
       console.warn("[peach] anatomy LoRA missing, retry without:", msg.slice(0, 240));
       loras = loras.filter((l) => /cumshot/i.test(l.name));
       clip = await runComfyJob(
@@ -1203,7 +1204,7 @@ export async function runRef2VClip(opts: {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const hasAnatomy = loras.some((l) => !/cumshot/i.test(l.name));
-    if (hasAnatomy && /lora|not found|does not exist|No such file/i.test(msg)) {
+    if (hasAnatomy && isAnatomyLoraMissingError(msg)) {
       console.warn("[peach] anatomy LoRA missing for ref2v, retry without:", msg.slice(0, 240));
       loras = loras.filter((l) => /cumshot/i.test(l.name));
       clip = await runComfyJob(

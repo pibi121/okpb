@@ -271,7 +271,14 @@ export async function pickWorker(
   await ensureFleetWorkers();
 
   const allow = opts?.providers?.map((p) => p.toLowerCase());
-  const deny = opts?.excludeProviders?.map((p) => p.toLowerCase()) || [];
+  // Video = MiniMax H3 on Metalnode. RunPod stock Comfy lacks MiniMaxH3* nodes
+  // (missing_node_type → user fails). Keep excluded until burst image ships H3.
+  const deny = [
+    ...new Set([
+      ...(opts?.excludeProviders?.map((p) => p.toLowerCase()) || []),
+      ...(pool === "video" ? ["runpod"] : []),
+    ]),
+  ];
 
   const deadline = Date.now() + 90_000;
   while (true) {
@@ -301,10 +308,11 @@ export async function pickWorker(
     );
 
     const pickFrom = (pool_: typeof live) => {
-      // Video on burst when available — frees Metalnode for H3 undress/photo.
+      // MiniMax H3 (I2V / Ref2V) lives on Metalnode only — RunPod burst image
+      // does not register MiniMaxH3* custom nodes yet. Prefer Metalnode for video.
       if (pool === "video") {
-        const burst = pool_.find((w) => w.provider === "runpod");
-        if (burst) return burst;
+        const metal = pool_.find((w) => w.provider === "metalnode");
+        if (metal) return metal;
       }
       if (pool === "photo" || pool === "video" || pool === "any") {
         const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(

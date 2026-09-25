@@ -31,6 +31,72 @@ export function isTransientComfyError(err: unknown): boolean {
   );
 }
 
+/** Comfy validation: class type not loaded (restart / import race). */
+export function isMissingNodeTypeError(msg: string): boolean {
+  return /missing_node_type|Node\s+'[^']+'\s+not found/i.test(msg || "");
+}
+
+/**
+ * Anatomy LoRA skip should only fire on real LoRA/file misses —
+ * never on missing Comfy node types (e.g. MiniMaxH3ReferenceToVideo).
+ */
+export function isAnatomyLoraMissingError(msg: string): boolean {
+  if (isMissingNodeTypeError(msg)) return false;
+  return (
+    /lora_name/i.test(msg) ||
+    (/\.safetensors/i.test(msg) &&
+      /not found|does not exist|No such file|not in list/i.test(msg)) ||
+    (/lora/i.test(msg) &&
+      /not found|does not exist|No such file|not in list/i.test(msg))
+  );
+}
+
+function graphClassTypes(graph: Record<string, unknown>): string[] {
+  const types = new Set<string>();
+  for (const node of Object.values(graph)) {
+    if (!node || typeof node !== "object") continue;
+    const ct = (node as { class_type?: unknown }).class_type;
+    if (typeof ct === "string" && ct) types.add(ct);
+  }
+  return [...types];
+}
+
+/** Wait until required custom nodes appear in /object_info (post-restart race). */
+export async function ensureComfyNodeTypes(
+  nodeTypes: string[],
+  attempts = 30,
+  delayMs = 2000,
+): Promise<void> {
+  const needed = [...new Set(nodeTypes.filter(Boolean))];
+  if (!needed.length) return;
+  await ensureComfyReady(Math.min(attempts, 10), delayMs);
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await comfyRequest("/object_info", undefined, 45_000);
+      if (res.status >= 200 && res.status < 300) {
+        const info = JSON.parse(res.body.toString("utf8") || "{}") as Record<
+          string,
+          unknown
+        >;
+        const missing = needed.filter((t) => !(t in info));
+        if (missing.length === 0) return;
+        console.warn(
+          `[peach] Comfy nodes not ready: ${missing.join(",")} (${i + 1}/${attempts})`,
+        );
+      }
+    } catch (e) {
+      console.warn(
+        `[peach] object_info wait ${i + 1}/${attempts}:`,
+        e instanceof Error ? e.message.slice(0, 120) : e,
+      );
+    }
+    if (i < attempts - 1) await sleep(delayMs);
+  }
+  throw new Error(
+    `Comfy nodes not loaded: ${needed.join(", ")}. GPU ещё поднимает пайплайн — подождите ~1 мин и повторите.`,
+  );
+}
+
 const LORA_NAME_ALIASES: Record<string, string> = {
   "krea2/RealisticSnapshotKrea2.safetensors":
     "krea2/realistic_snapshot_krea2.safetensors",
@@ -406,14 +472,18 @@ export async function comfyWaitHistory(
       const hist = JSON.parse(res.body.toString("utf8") || "{}") as Record<
         string,
         {
-          status?: { status_str?: string; completed?: boolean };
+          status?: {
+            status_str?: string;
+            completed?: boolean;
+            messages?: unknown[];
+          };
           outputs?: Record<string, Record<string, unknown>>;
         }
       >;
       const entry = hist[promptId];
       if (entry) {
         const st = entry.status?.status_str;
-        if (st === "error") throw new Error("Comfy job error");
+        if (st === "error") throw new Error(formatComfyHistoryError(entry));
         if (entry.status?.completed || st === "success") {
           const files = collectComfyFiles(entry.outputs);
           const images = files.filter(
@@ -439,7 +509,12 @@ export async function comfyWaitHistory(
         idleSince = null;
       }
     } catch (e) {
-      if (e instanceof Error && e.message === "Comfy job error") throw e;
+      if (
+        e instanceof Error &&
+        (/^Comfy job error/i.test(e.message) || isMissingNodeTypeError(e.message))
+      ) {
+        throw e;
+      }
       lastErr = e;
     }
     await new Promise((r) => setTimeout(r, 2500));
@@ -451,6 +526,63 @@ export async function comfyWaitHistory(
         ? ` (last: ${String(lastErr)})`
         : "";
   throw new Error(`Comfy wait timeout after ${Math.round((Date.now() - t0) / 1000)}s${extra}`);
+}
+
+/** Pull exception_message from Comfy history status.messages (ops-readable, not raw JSON dump). */
+function formatComfyHistoryError(entry: {
+  status?: { messages?: unknown[] };
+}): string {
+  const messages = entry.status?.messages;
+  const bits: string[] = [];
+  if (Array.isArray(messages)) {
+    for (const row of messages) {
+      if (!Array.isArray(row) || row.length < 2) continue;
+      const kind = String(row[0] || "");
+      if (!/execution_error|error/i.test(kind)) continue;
+      const detail = row[1];
+      if (!detail || typeof detail !== "object") continue;
+      const d = detail as Record<string, unknown>;
+      const msg = String(
+        d.exception_message || d.message || d.traceback || "",
+      ).trim();
+      const node = String(d.node_type || d.node_id || "").trim();
+      const et = String(d.exception_type || "").trim();
+      const line = [et, node ? `node=${node}` : "", msg]
+        .filter(Boolean)
+        .join(" · ");
+      if (line) bits.push(line.slice(0, 400));
+    }
+  }
+  if (bits.length) return `Comfy job error: ${bits.join(" | ").slice(0, 700)}`;
+  return "Comfy job error";
+}
+
+/**
+ * User-facing text — no node class names, GPU hosts, keys, or model paths.
+ */
+export function publicComfyErrorMessage(
+  err: unknown,
+  locale: "ru" | "en" = "ru",
+): string {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  if (isMissingNodeTypeError(msg)) {
+    return locale === "en"
+      ? "Video engine is still warming up. Please try again in a minute."
+      : "Движок видео ещё поднимается. Подожди минуту и попробуй снова.";
+  }
+  if (/Comfy wait timeout|недоступен|ECONN|ETIMEDOUT|tunnel|socket hang/i.test(msg)) {
+    return locale === "en"
+      ? "Generation timed out or the GPU dropped. Please try again."
+      : "Генерация зависла или связь с GPU пропала. Попробуй ещё раз.";
+  }
+  if (/Comfy job error/i.test(msg)) {
+    return locale === "en"
+      ? "We failed to render this one — that's on us. You can try again."
+      : "Не получилось собрать кадр — это сбой у нас. Можно запустить ещё раз.";
+  }
+  return locale === "en"
+    ? "Generation failed. Please try again."
+    : "Генерация не удалась. Попробуй ещё раз.";
 }
 
 export async function comfyDownloadImage(ref: ComfyImageRef): Promise<Buffer> {
@@ -589,6 +721,18 @@ export async function runComfyJob(
   definitions?: unknown,
 ): Promise<{ bytes: Buffer; ref: ComfyFileRef; files: ComfyFileRef[] }> {
   await ensureComfyReady();
+  const requiredNodes = graphClassTypes(graph);
+  if (requiredNodes.length) {
+    try {
+      await ensureComfyNodeTypes(requiredNodes, 15, 2000);
+    } catch (e) {
+      // Soft: still attempt queue — history may work if nodes appear mid-flight
+      console.warn(
+        "[peach] ensureComfyNodeTypes:",
+        e instanceof Error ? e.message.slice(0, 160) : e,
+      );
+    }
+  }
   let promptId: string | null = null;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -609,10 +753,20 @@ export async function runComfyJob(
       return { bytes, ref: preferred, files };
     } catch (e) {
       lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isMissingNodeTypeError(msg) && attempt < 5) {
+        console.warn(
+          `[peach] missing node type, waiting reload ${attempt + 1}/6:`,
+          msg.slice(0, 160),
+        );
+        promptId = null;
+        await ensureComfyNodeTypes(requiredNodes, 20, 3000).catch(() => undefined);
+        continue;
+      }
       if (!isTransientComfyError(e) || attempt === 5) throw e;
       console.warn(
         `[peach] comfy job retry ${attempt + 1}/6:`,
-        e instanceof Error ? e.message.slice(0, 160) : e,
+        msg.slice(0, 160),
       );
       await sleep(1000 + attempt * 800);
       await ensureComfyReady(15, 1000);

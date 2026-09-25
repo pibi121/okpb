@@ -1904,3 +1904,53 @@
   border: 1px dashed color-mix(in srgb, var(--tg-apricot) 40%, transparent);
   background: color-mix(in srgb, var(--tg-apricot) 10%, transparent);
 }
+
+/* Partner knowledge-base callout — top of /tg/partner */
+.tg-partner-kb {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.75rem 0.9rem 0.25rem;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  text-decoration: none;
+  color: #1a0f12;
+  background: var(--tg-grad);
+  border: 1px solid color-mix(in srgb, var(--tg-apricot) 55%, white);
+  box-shadow:
+    0 8px 24px color-mix(in srgb, var(--tg-coral) 32%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 35%, transparent);
+}
+
+.tg-partner-kb:active {
+  filter: brightness(0.96);
+  transform: scale(0.99);
+}
+
+.tg-partner-kb-pin {
+  flex-shrink: 0;
+  font-size: 1.45rem;
+  line-height: 1.1;
+  margin-top: 0.05rem;
+}
+
+.tg-partner-kb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.tg-partner-kb-body strong {
+  font-size: 0.92rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.tg-partner-kb-link {
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.85;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}

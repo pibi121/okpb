@@ -54,8 +54,9 @@ export async function notifyTelegramGenerationError(
 ) {
   const acc = await hasTelegramAccount(userId);
   if (!acc) return;
+  const { publicComfyErrorMessage } = await import("@/lib/comfy-client");
   const ourFault =
-    /ECONN|ETIMEDOUT|8188|недоступен|timeout|туннель|GPU|Comfy|Ollama|socket hang|ENOSPC|no space left/i.test(
+    /ECONN|ETIMEDOUT|8188|недоступен|timeout|туннель|GPU|Comfy|Ollama|socket hang|ENOSPC|no space left|missing_node/i.test(
       message,
     );
   let text: string;
@@ -63,12 +64,15 @@ export async function notifyTelegramGenerationError(
     const { formatNotice } = await import("@/lib/ops/notices");
     text =
       (await formatNotice("gen_fail_our_fault", acc.locale)) ||
-      (acc.locale === "en"
-        ? "We failed to render this one — that's on us. You can try again."
-        : "Не получилось собрать кадр — это сбой у нас. Можно запустить ещё раз.");
+      publicComfyErrorMessage(message, acc.locale);
   } else {
-    const { tFormat } = await import("@/lib/tg/i18n");
-    text = tFormat("gen_error", acc.locale, { msg: message });
+    // Never leak internal Comfy JSON / node class names to the user.
+    if (/Comfy|MiniMax|node_type|safetensors|Metalnode|RunPod/i.test(message)) {
+      text = publicComfyErrorMessage(message, acc.locale);
+    } else {
+      const { tFormat } = await import("@/lib/tg/i18n");
+      text = tFormat("gen_error", acc.locale, { msg: message.slice(0, 180) });
+    }
   }
   await enqueueTgOutbox({
     platformUserId: acc.platformUserId,

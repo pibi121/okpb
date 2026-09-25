@@ -458,6 +458,17 @@ export async function pollRulesNudges(limit = 40): Promise<void> {
     try {
       await maybeSendRulesNudges(chatId, u.id);
     } catch (e) {
+      if (isDeadTelegramChat(e)) {
+        await prisma.user.update({
+          where: { id: u.id },
+          data: {
+            tgRulesNudge10mSent: true,
+            tgRulesNudge3hSent: true,
+            tgRulesNudge24hSent: true,
+          },
+        });
+        continue;
+      }
       console.error("[tg-rules-nudge]", u.id, e);
     }
   }

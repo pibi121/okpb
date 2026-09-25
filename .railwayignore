@@ -78,6 +78,7 @@ klein_fix_latest.png
 # large local datasets
 /datasets/
 /samples/
+/tmp-weights/
 
 # optional local presets — ship JSON registries
 /presets/*

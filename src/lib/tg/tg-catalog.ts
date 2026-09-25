@@ -313,7 +313,12 @@ export async function pickCharacterCoverUrl(
   const valid = rows.filter((r) => {
     if (r.resultUrl.startsWith("data:image/svg")) return false;
     try {
-      const m = JSON.parse(r.metaJson || "{}") as { mock?: boolean };
+      const m = JSON.parse(r.metaJson || "{}") as {
+        mock?: boolean;
+        identityPack?: boolean;
+        hiddenFromTgGallery?: boolean;
+      };
+      if (m.identityPack || m.hiddenFromTgGallery) return false;
       if (m.mock && r.resultUrl === GALLERY_PLACEHOLDER_URL) return false;
     } catch {
       /* ignore */

@@ -192,8 +192,36 @@ export function buildKreaEditGraph(opts: {
   width: number;
   height: number;
   seed?: number;
+  /**
+   * Extra MODEL-only LoRAs after Identity Edit (chain order).
+   * Default empty — peach still-edit unchanged.
+   * Undress lab stack: Projector @0.01 → Realism Engine v3.1 @0.7
+   */
+  extraModelLoras?: Array<{ name: string; strength: number }>;
+  filenamePrefix?: string;
 }) {
   const seed = opts.seed ?? Math.floor(Math.random() * 1e15);
+  const extras = (opts.extraModelLoras || []).filter(
+    (l) => l?.name?.trim() && Number.isFinite(l.strength),
+  );
+
+  // MODEL chain: UNET(1) → Identity(5) → extras(14,15,…) → Patch(8)
+  let lastModel: [string, number] = ["5", 0];
+  const extraNodes: Record<string, unknown> = {};
+  let nextId = 14;
+  for (const lora of extras) {
+    const id = String(nextId++);
+    extraNodes[id] = {
+      class_type: "LoraLoaderModelOnly",
+      inputs: {
+        model: lastModel,
+        lora_name: lora.name.trim(),
+        strength_model: lora.strength,
+      },
+    };
+    lastModel = [id, 0];
+  }
+
   return {
     "1": {
       class_type: "UNETLoader",
@@ -223,6 +251,7 @@ export function buildKreaEditGraph(opts: {
         strength_model: 1.0,
       },
     },
+    ...extraNodes,
     "6": {
       class_type: "VAEEncode",
       inputs: { pixels: ["4", 0], vae: ["3", 0] },
@@ -234,7 +263,7 @@ export function buildKreaEditGraph(opts: {
     "8": {
       class_type: "Krea2EditModelPatch",
       inputs: {
-        model: ["5", 0],
+        model: lastModel,
         source_latent: ["6", 0],
         ref_boost: 4.0,
         ref_boost_a: 1.0,
@@ -285,10 +314,24 @@ export function buildKreaEditGraph(opts: {
     },
     "13": {
       class_type: "SaveImage",
-      inputs: { images: ["12", 0], filename_prefix: "peach/krea_edit" },
+      inputs: {
+        images: ["12", 0],
+        filename_prefix: opts.filenamePrefix || "peach/krea_edit",
+      },
     },
   };
 }
+
+/** Undress stack matching `krea2_edit_projector_realism_LAB` (Metalnode). */
+export const KREA_UNDRESS_EXTRA_LORAS: Array<{ name: string; strength: number }> =
+  [
+    { name: "krea2/krea2_turbo_projector_scale.safetensors", strength: 0.01 },
+    { name: "krea2/realism_engine_krea2_v3.1.safetensors", strength: 0.7 },
+  ];
+
+export const KREA_UNDRESS_PROMPT =
+  "completely nude, natural skin texture with visible pores, bare breasts, remove all clothes, no fabric. Keep the exact same face identity, hair, body proportions, pose, camera angle and location/background.";
+
 
 /**
  * Dual-reference identity edit: scene (image A) + person (image B).

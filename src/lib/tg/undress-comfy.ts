@@ -1,28 +1,22 @@
 /**
- * H3 IMAGE_EDIT undress runner for TG.
- * Always /free before (and on black-frame retry) to avoid NaN after video jobs.
+ * TG undress: Krea2 Identity Edit + Projector(0.01) + Realism Engine v3.1
+ * (same stack as workflows/krea2_edit_projector_realism_LAB.json).
+ * Metalnode only — Projector/Realism weights are not on RunPod yet.
  */
-import fs from "node:fs";
-import path from "node:path";
 import {
   comfyFreeMemory,
   comfyUploadImage,
   runComfyAndDownload,
   COMFY_PHOTO_TIMEOUT_MS,
 } from "@/lib/comfy-client";
-
-const UNDRESS_PROMPT =
-  "completely nude, naked, bare breasts, bare skin, remove all clothes. Keep the exact same face, hair, body proportions, pose, camera angle, and location/background from Picture 1. Photorealistic natural skin.";
-
-function loadUndressGraph(): Record<string, unknown> {
-  const p = path.join(process.cwd(), "workflows", "peach_H3_UNDRESS_API.json");
-  return JSON.parse(fs.readFileSync(p, "utf8")) as Record<string, unknown>;
-}
+import {
+  buildKreaEditGraph,
+  KREA_UNDRESS_EXTRA_LORAS,
+  KREA_UNDRESS_PROMPT,
+} from "@/lib/krea-graphs";
 
 function isNearBlackPng(buf: Buffer): boolean {
-  // PNG IHDR is 16 bytes after 8-byte signature; rough: tiny files or all-zero samples.
   if (buf.length < 8_000) return true;
-  // Sample a few bytes in IDAT-ish region — if many zeros in mid file, likely black.
   let zeros = 0;
   const start = Math.min(buf.length - 1, 2_000);
   const end = Math.min(buf.length, start + 4_000);
@@ -32,7 +26,60 @@ function isNearBlackPng(buf: Buffer): boolean {
   return zeros / Math.max(1, end - start) > 0.92;
 }
 
-export async function runH3UndressBytes(input: Buffer): Promise<Buffer> {
+/** Read PNG/JPEG dimensions without sharp. */
+export function undressImageSize(buf: Buffer): { width: number; height: number } {
+  // PNG IHDR
+  if (
+    buf.length >= 24 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+  // JPEG — scan for SOF0/SOF2
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) {
+        i += 1;
+        continue;
+      }
+      const marker = buf[i + 1];
+      if (marker === 0xd9 || marker === 0xda) break;
+      const len = buf.readUInt16BE(i + 2);
+      if (
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf)
+      ) {
+        return {
+          height: buf.readUInt16BE(i + 5),
+          width: buf.readUInt16BE(i + 7),
+        };
+      }
+      i += 2 + len;
+    }
+  }
+  return { width: 888, height: 1176 };
+}
+
+/** Snap to multiple of 8; keep ~1MP sweet spot for Identity Edit. */
+export function undressLatentSize(
+  width: number,
+  height: number,
+): { width: number; height: number } {
+  const w0 = Math.max(64, width || 888);
+  const h0 = Math.max(64, height || 1176);
+  const maxSide = 1280;
+  const scale = Math.min(1, maxSide / Math.max(w0, h0));
+  const round8 = (n: number) => Math.max(64, Math.round((n * scale) / 8) * 8);
+  return { width: round8(w0), height: round8(h0) };
+}
+
+export async function runUndressBytes(input: Buffer): Promise<Buffer> {
   const isJpeg = input.length >= 3 && input[0] === 0xff && input[1] === 0xd8;
   const isPng =
     input.length >= 8 &&
@@ -48,23 +95,24 @@ export async function runH3UndressBytes(input: Buffer): Promise<Buffer> {
     mime,
   );
 
-  const buildGraph = () => {
-    const graph = loadUndressGraph();
-    const load = graph["0"] as { inputs?: Record<string, unknown> };
-    if (load?.inputs) load.inputs.image = uploaded;
-    const prep = graph["5"] as { inputs?: Record<string, unknown> };
-    if (prep?.inputs) prep.inputs.edit_instruction = UNDRESS_PROMPT;
-    const noise = graph["6"] as { inputs?: Record<string, unknown> };
-    if (noise?.inputs) {
-      noise.inputs.noise_seed = Math.floor(Math.random() * 2_147_483_647);
-    }
-    return graph;
-  };
+  const raw = undressImageSize(input);
+  const { width, height } = undressLatentSize(raw.width, raw.height);
+
+  const buildGraph = () =>
+    buildKreaEditGraph({
+      imageName: uploaded,
+      editPrompt: KREA_UNDRESS_PROMPT,
+      width,
+      height,
+      seed: Math.floor(Math.random() * 1e15),
+      extraModelLoras: KREA_UNDRESS_EXTRA_LORAS,
+      filenamePrefix: "peach/undress_krea",
+    });
 
   await comfyFreeMemory();
   let bytes = await runComfyAndDownload(
     buildGraph(),
-    "peach-undress",
+    "peach-undress-krea",
     COMFY_PHOTO_TIMEOUT_MS,
   );
 
@@ -73,7 +121,7 @@ export async function runH3UndressBytes(input: Buffer): Promise<Buffer> {
     await comfyFreeMemory();
     bytes = await runComfyAndDownload(
       buildGraph(),
-      "peach-undress-retry",
+      "peach-undress-krea-retry",
       COMFY_PHOTO_TIMEOUT_MS,
     );
   }
@@ -83,3 +131,6 @@ export async function runH3UndressBytes(input: Buffer): Promise<Buffer> {
   }
   return bytes;
 }
+
+/** @deprecated alias — old name from H3 undress path */
+export const runH3UndressBytes = runUndressBytes;

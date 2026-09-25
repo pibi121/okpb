@@ -11,7 +11,7 @@ import {
   ensureUndressWelcome,
   restoreUndressFree,
 } from "@/lib/tg/undress-entitlement";
-import { runH3UndressBytes } from "@/lib/tg/undress-comfy";
+import { runUndressBytes } from "@/lib/tg/undress-comfy";
 import { debitPeaches, creditPeaches } from "@/lib/tg/wallet";
 import { enqueueTgOutbox } from "@/lib/tg/session";
 import { useComfy } from "@/lib/metalnode-config";
@@ -56,11 +56,11 @@ export async function startTgUndressGeneration(opts: {
       userId: opts.userId,
       kind: "photo",
       title: opts.locale === "en" ? "Undress" : "Раздеть",
-      prompt: "undress_h3",
+      prompt: "undress_krea",
       resultUrl: GALLERY_PLACEHOLDER_URL,
       metaJson: JSON.stringify({
         status: "pending",
-        engine: "h3_undress",
+        engine: "krea2_undress",
         chargedPeaches,
         undressFreeUsed: usedFree,
         source: "tg_undress",
@@ -81,14 +81,14 @@ export async function startTgUndressGeneration(opts: {
           bytes = photoBytes;
         } else {
           try {
-            bytes = await runH3UndressBytes(photoBytes);
+            bytes = await runUndressBytes(photoBytes);
           } catch (first) {
             const msg = first instanceof Error ? first.message : String(first);
             // Soft recover: transient Comfy execution flakes (opaque "Comfy job error").
             if (/Comfy job error|ECONN|ETIMEDOUT|socket hang|tunnel/i.test(msg)) {
               console.warn("[undress] retry once after:", msg.slice(0, 160));
               await new Promise((r) => setTimeout(r, 2500));
-              bytes = await runH3UndressBytes(photoBytes);
+              bytes = await runUndressBytes(photoBytes);
             } else {
               throw first;
             }
@@ -106,7 +106,7 @@ export async function startTgUndressGeneration(opts: {
             resultUrl: saved.publicUrl,
             metaJson: JSON.stringify({
               status: "ready",
-              engine: "h3_undress",
+              engine: "krea2_undress",
               chargedPeaches,
               undressFreeUsed: usedFree,
               source: "tg_undress",
@@ -141,7 +141,7 @@ export async function startTgUndressGeneration(opts: {
           data: {
             metaJson: JSON.stringify({
               status: "error",
-              engine: "h3_undress",
+              engine: "krea2_undress",
               error: e instanceof Error ? e.message.slice(0, 400) : String(e),
               chargedPeaches,
               undressFreeUsed: usedFree,
@@ -170,9 +170,9 @@ export async function startTgUndressGeneration(opts: {
       refType: "galleryItem",
       refId: galleryItemId,
       pool: "photo",
-      // H3 undress needs CLIP type "minimax" — RunPod stock Comfy lacks it.
+      // Projector + Realism v3.1 are on Metalnode only (not on RunPod volume yet).
       providers: ["metalnode"],
-      meta: { undress: true },
+      meta: { undress: true, engine: "krea2_undress" },
     },
   );
 

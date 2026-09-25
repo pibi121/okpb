@@ -367,6 +367,7 @@ export async function pickWorker(
         if (prefer) return prefer;
       }
       // Prefer Metalnode for photo / undress fidelity.
+      // Krea undress (Projector+Realism) stays Metalnode-only until RunPod has those weights.
       if (pool === "photo") {
         const metal = pool_.find((w) => w.provider === "metalnode");
         if (metal) return metal;
@@ -377,7 +378,7 @@ export async function pickWorker(
     if (free.length) return pickFrom(free);
 
     const restricted = Boolean(allow?.length || deny.length);
-    // H3 undress etc.: never pile onto a busy Metalnode (RunPod lacks minimax CLIP).
+    // providers:["metalnode"] (undress): wait for Metalnode — do not spill to RunPod.
     if (restricted) {
       if (Date.now() >= deadline + 8 * 60_000) {
         return ensurePrimaryWorker();

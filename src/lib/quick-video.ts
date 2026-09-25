@@ -661,12 +661,39 @@ async function markQuickVideoRunError(
       }),
     },
   });
+
+  const charged = Number(meta.chargedPeaches) || 0;
+  if (charged > 0 && !meta.refundedPeaches) {
+    const { creditPeaches } = await import("@/lib/tg/wallet");
+    await creditPeaches(userId, charged, "tg_video_refund", {
+      galleryItemId: run.galleryItemId,
+      quickVideoRunId: runId,
+      reason: "generation_failed",
+    }).catch((err) => console.error("[peach] quick-video refund failed:", err));
+    await prisma.galleryItem.update({
+      where: { id: run.galleryItemId },
+      data: {
+        metaJson: JSON.stringify({
+          ...meta,
+          status: "error",
+          error: friendly,
+          quickVideoRunId: runId,
+          refundedPeaches: charged,
+        }),
+      },
+    });
+  }
+
   const { notifyTelegramGenerationError } = await import("@/lib/tg/tg-notify");
   await notifyTelegramGenerationError(userId, friendly).catch(() => undefined);
   void import("@/lib/gpu/orchestrator")
     .then(async ({ noteGpuJobError, currentGpuJobId }) => {
       if (currentGpuJobId()) {
-        await noteGpuJobError(rawMsg, { runId, friendly });
+        await noteGpuJobError(rawMsg, {
+          runId,
+          friendly,
+          refunded: charged || 0,
+        });
         return;
       }
       const { reportOpsError } = await import("@/lib/ops/errors");
@@ -677,7 +704,7 @@ async function markQuickVideoRunError(
         stage: "error",
         refType: "quickVideoRun",
         refId: runId,
-        meta: { runId, friendly },
+        meta: { runId, friendly, refunded: charged || 0 },
       });
     })
     .catch(() => undefined);

@@ -27,7 +27,7 @@ import {
   applyFirstVideoDiscount,
 } from "@/lib/tg-pricing";
 import { getPhotoTemplate } from "@/lib/photo-template";
-import { debitPeaches } from "@/lib/tg/wallet";
+import { debitPeaches, creditPeaches } from "@/lib/tg/wallet";
 import { enqueueTgOutbox } from "@/lib/tg/session";
 import {
   characterReadyForVideo,
@@ -614,6 +614,29 @@ function enqueueLoraI2vJob(opts: {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "ошибка создания видео";
       console.error("[peach] lora_i2v job failed:", e);
+      let charged = 0;
+      try {
+        const prev = await prisma.galleryItem.findUnique({
+          where: { id: itemId },
+          select: { metaJson: true },
+        });
+        const prevMeta = JSON.parse(prev?.metaJson || "{}") as {
+          chargedPeaches?: number;
+        };
+        charged = Number(prevMeta.chargedPeaches) || 0;
+      } catch {
+        /* ignore */
+      }
+      if (charged > 0) {
+        await creditPeaches(userId, charged, "tg_video_refund", {
+          galleryItemId: itemId,
+          jobAction: "lora_i2v",
+          templateId: tpl.id,
+          reason: "generation_failed",
+        }).catch((err) =>
+          console.error("[peach] lora_i2v refund failed:", err),
+        );
+      }
       await prisma.galleryItem.update({
         where: { id: itemId },
         data: {
@@ -622,6 +645,8 @@ function enqueueLoraI2vJob(opts: {
             error: msg,
             jobAction: "lora_i2v",
             loraI2vTemplateId: tpl.id,
+            chargedPeaches: charged,
+            refundedPeaches: charged > 0 ? charged : undefined,
           }),
         },
       });
@@ -630,7 +655,11 @@ function enqueueLoraI2vJob(opts: {
       void import("@/lib/gpu/orchestrator")
         .then(async ({ noteGpuJobError, currentGpuJobId }) => {
           if (currentGpuJobId()) {
-            await noteGpuJobError(msg, { itemId, jobAction: "lora_i2v" });
+            await noteGpuJobError(msg, {
+              itemId,
+              jobAction: "lora_i2v",
+              refunded: charged,
+            });
             return;
           }
           const { reportOpsError } = await import("@/lib/ops/errors");
@@ -641,7 +670,7 @@ function enqueueLoraI2vJob(opts: {
             stage: "error",
             refType: "galleryItem",
             refId: itemId,
-            meta: { jobAction: "lora_i2v", templateId: tpl.id },
+            meta: { jobAction: "lora_i2v", templateId: tpl.id, refunded: charged },
           });
         })
         .catch(() => undefined);

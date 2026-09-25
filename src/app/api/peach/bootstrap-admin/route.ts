@@ -1241,6 +1241,33 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "credit_peaches") {
+    const userId = String(body.userId || "").trim();
+    const amount = Math.round(Number(body.amount) || 0);
+    const reason = String(body.reason || "admin_credit").trim().slice(0, 80);
+    const note = String(body.note || "").trim().slice(0, 240);
+    if (!userId || amount <= 0) {
+      return NextResponse.json(
+        { error: "userId and positive amount required" },
+        { status: 400 },
+      );
+    }
+    const { creditPeaches, getBalancePeaches } = await import("@/lib/tg/wallet");
+    await creditPeaches(userId, amount, reason, {
+      note: note || undefined,
+      via: "bootstrap_admin",
+    });
+    const balance = await getBalancePeaches(userId);
+    return NextResponse.json({
+      ok: true,
+      action: "credit_peaches",
+      userId,
+      amount,
+      reason,
+      balance,
+    });
+  }
+
   if (action === "send_tg_text") {
     const tgId = String(body.telegramUserId || body.tgId || "").trim();
     const text = String(body.text || "").trim();

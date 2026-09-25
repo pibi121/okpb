@@ -2,7 +2,7 @@
  * TG bot + Mini App featured catalog (templates & studio cast sync).
  */
 import { prisma } from "@/lib/db";
-import { GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
+import { GALLERY_PLACEHOLDER_URL, isSystemIdentityPackItem } from "@/lib/gallery-meta";
 import { seedCastCoverUrl } from "@/lib/tg/tg-catalog-seed";
 import { studioCastCoverUrl } from "@/lib/tg/tg-static-previews";
 import { resolveStudioCastCoverUrl } from "@/lib/tg/studio-cast";
@@ -291,6 +291,16 @@ export async function pickCharacterCoverUrl(
   if (ch) {
     const resolved = resolveStudioCastCoverUrl(ch);
     if (resolved) return resolved;
+    // Personal character: prefer explicit cover over random gallery (avoids identity pack).
+    const personalCover = ch.tgCoverUrl?.trim() || "";
+    if (
+      personalCover &&
+      (personalCover.startsWith("/api/media/") ||
+        personalCover.startsWith("/tg/") ||
+        /^https?:\/\//i.test(personalCover))
+    ) {
+      return personalCover;
+    }
   }
   if (ch?.isStudioCast) {
     return (
@@ -308,17 +318,13 @@ export async function pickCharacterCoverUrl(
     },
     orderBy: { createdAt: "desc" },
     take: 24,
-    select: { resultUrl: true, metaJson: true },
+    select: { resultUrl: true, metaJson: true, title: true },
   });
   const valid = rows.filter((r) => {
     if (r.resultUrl.startsWith("data:image/svg")) return false;
+    if (isSystemIdentityPackItem({ metaJson: r.metaJson, title: r.title })) return false;
     try {
-      const m = JSON.parse(r.metaJson || "{}") as {
-        mock?: boolean;
-        identityPack?: boolean;
-        hiddenFromTgGallery?: boolean;
-      };
-      if (m.identityPack || m.hiddenFromTgGallery) return false;
+      const m = JSON.parse(r.metaJson || "{}") as { mock?: boolean };
       if (m.mock && r.resultUrl === GALLERY_PLACEHOLDER_URL) return false;
     } catch {
       /* ignore */

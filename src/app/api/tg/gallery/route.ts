@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { mapGalleryItem, parseGalleryMeta } from "@/lib/gallery-meta";
+import { mapGalleryItem, parseGalleryMeta, isSystemIdentityPackItem } from "@/lib/gallery-meta";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import { cleanupLegacyTgGalleryItems } from "@/lib/tg/tg-gallery-cleanup";
 
@@ -38,10 +38,7 @@ export async function GET(req: Request) {
   const root = items.filter((i) => {
     const m = parseGalleryMeta(i.metaJson);
     if (typeof m.folderId === "string") return false;
-    // System identity-pack stills (peach/gray studio refs) — not user-facing gallery.
-    if (m.identityPack === true) return false;
-    if (m.hiddenFromTgGallery === true) return false;
-    if (typeof i.title === "string" && /^Identity\s*·/i.test(i.title)) return false;
+    if (isSystemIdentityPackItem({ metaJson: i.metaJson, title: i.title })) return false;
     return true;
   });
 

@@ -26,9 +26,48 @@ export type RunpodSpawnResult = {
   raw?: unknown;
 };
 
-/** Boot: official Comfy image + symlink Metalnode weights from network volume */
+/** Boot: baked Comfy (matches image CUDA/python) + volume models/custom_nodes
+ *  + transplant MiniMax H3 core node from the Metalnode-synced volume. */
 export const DEFAULT_RUNPOD_DOCKER_START_CMD =
-  'bash -lc \'set -euo pipefail; TARGET=/workspace/runpod-slim/ComfyUI; if [ ! -f "$TARGET/main.py" ]; then mkdir -p /workspace/runpod-slim; cp -a /opt/comfyui-baked "$TARGET"; fi; rm -rf "$TARGET/models" "$TARGET/custom_nodes"; ln -sfn /workspace/ComfyUI/models "$TARGET/models"; ln -sfn /workspace/ComfyUI/custom_nodes "$TARGET/custom_nodes"; cd "$TARGET"; exec python3 main.py --listen 0.0.0.0 --port 8188 --enable-cors-header\'';
+  "bash -lc 'set -euo pipefail; " +
+  "VOL=/workspace/ComfyUI; " +
+  "TARGET=/workspace/runpod-slim/ComfyUI; " +
+  'if [ ! -f "$TARGET/main.py" ]; then mkdir -p /workspace/runpod-slim; cp -a /opt/comfyui-baked "$TARGET"; fi; ' +
+  'rm -rf "$TARGET/models" "$TARGET/custom_nodes"; ' +
+  'ln -sfn "$VOL/models" "$TARGET/models"; ' +
+  'ln -sfn "$VOL/custom_nodes" "$TARGET/custom_nodes"; ' +
+  'if [ -f "$VOL/comfy_extras/nodes_minimax_h3.py" ]; then ' +
+  'mkdir -p "$TARGET/comfy_extras"; ' +
+  'cp -f "$VOL/comfy_extras/nodes_minimax_h3.py" "$TARGET/comfy_extras/nodes_minimax_h3.py"; ' +
+  'echo "[peach-burst] transplanted nodes_minimax_h3.py"; ' +
+  'else echo "[peach-burst] WARN: no nodes_minimax_h3 on volume — video H3 will fail probe"; fi; ' +
+  'cd "$TARGET"; ' +
+  "exec python3 main.py --listen 0.0.0.0 --port 8188 --enable-cors-header'";
+
+/** Critical MiniMax H3 class types — burst must expose these before taking video jobs. */
+export const RUNPOD_REQUIRED_H3_NODES = [
+  "MiniMaxH3ImageToVideo",
+  "MiniMaxH3ReferenceToVideo",
+] as const;
+
+export async function probeComfyHasNodeTypes(
+  comfyBaseUrl: string,
+  nodeTypes: readonly string[],
+  timeoutMs = 25_000,
+): Promise<{ ok: boolean; missing: string[] }> {
+  const base = comfyBaseUrl.replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/object_info`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return { ok: false, missing: [...nodeTypes] };
+    const info = (await res.json()) as Record<string, unknown>;
+    const missing = nodeTypes.filter((t) => !(t in info));
+    return { ok: missing.length === 0, missing };
+  } catch {
+    return { ok: false, missing: [...nodeTypes] };
+  }
+}
 
 function apiKey() {
   return process.env.RUNPOD_API_KEY?.trim() || "";

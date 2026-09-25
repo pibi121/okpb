@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { mapGalleryItem, parseGalleryMeta } from "@/lib/gallery-meta";
+import { mapGalleryItem, parseGalleryMeta, isSystemIdentityPackItem } from "@/lib/gallery-meta";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
@@ -14,6 +14,7 @@ export async function GET() {
   // Root gallery: folders + standalone items (not children of a film folder)
   const root = items.filter((i) => {
     const m = parseGalleryMeta(i.metaJson);
+    if (isSystemIdentityPackItem({ metaJson: i.metaJson, title: i.title })) return false;
     if (i.kind === "film_folder" || m.isFolder) return true;
     if (typeof m.folderId === "string") return false;
     return true;

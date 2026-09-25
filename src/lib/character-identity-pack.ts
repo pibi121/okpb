@@ -259,6 +259,8 @@ async function createPendingAngleItem(opts: {
         identityPack: true,
         identityPackAngle: opts.angleId,
         jobAction: "identity_pack",
+        // Never surface in TG Mini App gallery / covers.
+        hiddenFromTgGallery: true,
       }),
     },
   });
@@ -292,6 +294,7 @@ async function markAngleReady(
         identityPack: true,
         identityPackAngle: data.angleId,
         jobAction: "identity_pack",
+        hiddenFromTgGallery: true,
         localKey: data.localKey,
         engine: data.engine,
         seed: data.seed,

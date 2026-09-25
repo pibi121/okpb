@@ -4,6 +4,8 @@ export type GalleryMeta = {
   status?: GalleryJobStatus;
   error?: string;
   jobAction?: string;
+  identityPack?: boolean;
+  hiddenFromTgGallery?: boolean;
   [key: string]: unknown;
 };
 
@@ -15,6 +17,23 @@ export function parseGalleryMeta(metaJson: string | null | undefined): GalleryMe
   } catch {
     return {};
   }
+}
+
+/**
+ * System identity-pack stills — never show in user gallery / covers / TG Mini App.
+ * Also matches legacy titles «Identity · …» if meta flag was missing.
+ */
+export function isSystemIdentityPackItem(opts: {
+  metaJson?: string | null;
+  title?: string | null;
+}): boolean {
+  const m = parseGalleryMeta(opts.metaJson);
+  if (m.identityPack === true) return true;
+  if (m.hiddenFromTgGallery === true && m.jobAction === "identity_pack") return true;
+  if (typeof opts.title === "string" && /^Identity\s*·/i.test(opts.title.trim())) {
+    return true;
+  }
+  return false;
 }
 
 export function galleryStatus(metaJson: string | null | undefined): GalleryJobStatus {

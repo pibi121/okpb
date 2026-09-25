@@ -3,7 +3,21 @@ import { comfyBaseUrl, loadMetalnodeConfig } from "@/lib/metalnode-config";
 import type { GpuPool } from "@/lib/gpu/types";
 import { FLEET_EXTRA_GPUS, fleetComfyUrl, fleetConfigured } from "@/lib/gpu/fleet";
 
+import {
+  probeComfyHasNodeTypes,
+  RUNPOD_REQUIRED_H3_NODES,
+} from "@/lib/gpu/providers/runpod";
+
 const PRIMARY_KEY = "metalnode-primary";
+
+function workerH3Ready(metaJson: string): boolean {
+  try {
+    const m = JSON.parse(metaJson || "{}") as { h3Ready?: boolean };
+    return m.h3Ready === true;
+  } catch {
+    return false;
+  }
+}
 
 export async function ensurePrimaryWorker() {
   const cfg = loadMetalnodeConfig();
@@ -234,6 +248,25 @@ export async function heartbeatAllWorkers() {
     if (!ping.ok && tunnel?.error && w.key === "metalnode-primary") {
       lastError = tunnel.error;
     }
+
+    let h3Ready = workerH3Ready(w.metaJson);
+    let h3Missing: string[] = [];
+    if (ping.ok && w.provider === "runpod" && w.comfyUrl) {
+      const probe = await probeComfyHasNodeTypes(
+        w.comfyUrl,
+        RUNPOD_REQUIRED_H3_NODES,
+      );
+      h3Ready = probe.ok;
+      h3Missing = probe.missing;
+      // HTTP up but H3 nodes missing — stay booting so video never lands here.
+      if (!probe.ok && (status === "online" || w.status === "booting")) {
+        status = "booting";
+        lastError = `MiniMax H3 nodes missing: ${probe.missing.join(", ")}`;
+      }
+    } else if (w.provider === "metalnode" && ping.ok) {
+      h3Ready = true;
+    }
+
     await prisma.gpuWorker.update({
       where: { id: w.id },
       data: {
@@ -244,6 +277,9 @@ export async function heartbeatAllWorkers() {
           ...safeJson(w.metaJson),
           lastPing: ping,
           tunnel: tunnel || null,
+          h3Ready,
+          h3Missing,
+          h3ProbedAt: new Date().toISOString(),
         }),
       },
     });
@@ -271,14 +307,12 @@ export async function pickWorker(
   await ensureFleetWorkers();
 
   const allow = opts?.providers?.map((p) => p.toLowerCase());
-  // Video = MiniMax H3 on Metalnode. RunPod stock Comfy lacks MiniMaxH3* nodes
-  // (missing_node_type → user fails). Keep excluded until burst image ships H3.
+  // Video on RunPod only when that worker already probed MiniMax H3 nodes (meta.h3Ready).
+  // Soft deny still applies as default until heartbeat marks the burst slot ready.
   const deny = [
-    ...new Set([
-      ...(opts?.excludeProviders?.map((p) => p.toLowerCase()) || []),
-      ...(pool === "video" ? ["runpod"] : []),
-    ]),
+    ...new Set([...(opts?.excludeProviders?.map((p) => p.toLowerCase()) || [])]),
   ];
+  const requireH3ForRunpodVideo = pool === "video";
 
   const deadline = Date.now() + 90_000;
   while (true) {
@@ -297,6 +331,13 @@ export async function pickWorker(
     if (deny.length) {
       live = live.filter((w) => !deny.includes(w.provider.toLowerCase()));
     }
+    if (requireH3ForRunpodVideo) {
+      // RunPod without probed MiniMax H3 nodes must not take video jobs.
+      live = live.filter(
+        (w) =>
+          w.provider.toLowerCase() !== "runpod" || workerH3Ready(w.metaJson),
+      );
+    }
     if (!live.length) {
       // Hard requirement missed — fall back to primary Metalnode rather than a bad GPU.
       return ensurePrimaryWorker();
@@ -308,11 +349,15 @@ export async function pickWorker(
     );
 
     const pickFrom = (pool_: typeof live) => {
-      // MiniMax H3 (I2V / Ref2V) lives on Metalnode only — RunPod burst image
-      // does not register MiniMaxH3* custom nodes yet. Prefer Metalnode for video.
+      // Prefer Metalnode for MiniMax H3 video; H3-ready RunPod is overflow only.
       if (pool === "video") {
         const metal = pool_.find((w) => w.provider === "metalnode");
         if (metal) return metal;
+        const burstH3 = pool_.find(
+          (w) =>
+            w.provider === "runpod" && workerH3Ready(w.metaJson),
+        );
+        if (burstH3) return burstH3;
       }
       if (pool === "photo" || pool === "video" || pool === "any") {
         const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(

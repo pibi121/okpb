@@ -73,9 +73,13 @@ export async function GET(req: Request) {
     .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
     .catch(() => undefined);
 
+  const { userOnFunnelV2 } = await import("@/lib/tg/funnel-v2/mode");
+  const funnelProShell = await userOnFunnelV2(user);
+
   return NextResponse.json({
     balancePeaches: user.balancePeaches,
     locale: normalizeLocale(user.locale || locale),
+    funnelProShell,
     promos: {
       studioDailyFreeReady: user.tgStudioFreeReady,
       loraWelcomePhotosLeft: user.tgLoraWelcomePhotosLeft,

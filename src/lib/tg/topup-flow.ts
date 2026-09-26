@@ -166,9 +166,14 @@ export async function handleTopupMethod(
   }
 
   try {
+    const { getTgSession, parsePending } = await import("@/lib/tg/session");
+    const sess = await getTgSession(platformUserId);
+    const pend = parsePending(sess?.pendingJson || "{}");
+    const bonus = Number(pend.topupBonusPeaches || pend.funnelV2TopupBonus || 0);
     const pay = await createTopupPayment({
       userId,
       peaches,
+      bonusPeaches: bonus > 0 ? bonus : undefined,
       method,
       locale,
     });

@@ -8,6 +8,8 @@ import { TgTabIcon } from "@/lib/tg/miniapp/tab-icons";
 export type TgMiniAppProfile = {
   balancePeaches: number;
   locale: "ru" | "en";
+  /** Funnel v2 / PRO shell: hide undress, 1-photo video, profile */
+  funnelProShell?: boolean;
   promos: {
     studioDailyFreeReady: boolean;
     loraWelcomePhotosLeft: number;
@@ -48,13 +50,24 @@ export type TgMiniAppProfile = {
 
 /** Filled from /api/tg/me so TgShell footer picks up Railway TG_SUPPORT_CONTACT. */
 let cachedSupportUrl = "https://t.me/peabit1";
+/** Funnel v2 PRO shell (hide undress / 1-photo / profile) — set from /api/tg/me. */
+let cachedFunnelProShell = false;
 let cachedBalancePeaches = 0;
 let cachedTopupHandler: (() => void) | null = null;
 const shellListeners = new Set<() => void>();
 
-function rememberSupportUrl(url?: string) {
+function rememberSupportUrl(url?: string | null) {
   const next = url?.trim();
   if (next) cachedSupportUrl = next;
+}
+
+export function rememberFunnelProShell(on?: boolean) {
+  cachedFunnelProShell = Boolean(on);
+  shellListeners.forEach((fn) => fn());
+}
+
+export function isFunnelProShellCached() {
+  return cachedFunnelProShell;
 }
 
 function rememberShellWallet(balance?: number, topup?: () => void) {
@@ -206,6 +219,7 @@ export function useTgMiniApp() {
     }
     const data = (await res.json()) as TgMiniAppProfile;
     rememberSupportUrl(data.supportUrl);
+    rememberFunnelProShell(data.funnelProShell);
     rememberShellWallet(data.balancePeaches);
     setProfile(data);
     if (data.locale === "en" || data.locale === "ru") setLocale(data.locale);
@@ -348,6 +362,15 @@ function trackMiniAppClient(eventKey: string, meta?: Record<string, unknown>) {
 export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
   const path = usePathname();
   const u = UI[locale];
+  const [proShell, setProShell] = useState(cachedFunnelProShell);
+  useEffect(() => {
+    const sync = () => setProShell(cachedFunnelProShell);
+    shellListeners.add(sync);
+    sync();
+    return () => {
+      shellListeners.delete(sync);
+    };
+  }, []);
   const feedActive = path === "/tg" || path === "/tg/templates";
   const charsActive =
     path.startsWith("/tg/characters") || path === "/tg/casts";
@@ -389,16 +412,18 @@ export function TgTabBar({ locale }: { locale: "ru" | "en" }) {
         </span>
         {u.chars}
       </Link>
-      <Link
-        href="/tg/undress"
-        className={undressActive ? "active" : ""}
-        onClick={() => trackMiniAppClient("miniapp.tab.undress")}
-      >
-        <span className="tg-tab-ico">
-          <TgTabIcon id="undress" active={undressActive} />
-        </span>
-        {u.undress}
-      </Link>
+      {!proShell ? (
+        <Link
+          href="/tg/undress"
+          className={undressActive ? "active" : ""}
+          onClick={() => trackMiniAppClient("miniapp.tab.undress")}
+        >
+          <span className="tg-tab-ico">
+            <TgTabIcon id="undress" active={undressActive} />
+          </span>
+          {u.undress}
+        </Link>
+      ) : null}
       <Link
         href="/tg/photo"
         className={photoActive ? "active" : ""}
@@ -503,6 +528,15 @@ export function TgShell({
 }) {
   const u = UI[locale];
   const { balance: bal, topup } = useShellWallet();
+  const [proShell, setProShell] = useState(cachedFunnelProShell);
+  useEffect(() => {
+    const sync = () => setProShell(cachedFunnelProShell);
+    shellListeners.add(sync);
+    sync();
+    return () => {
+      shellListeners.delete(sync);
+    };
+  }, []);
 
   return (
     <div className="tg-shell">
@@ -527,15 +561,17 @@ export function TgShell({
             </button>
           </div>
           <div className="tg-header-nav-row">
-            <Link
-              href="/tg/profile"
-              className="tg-header-profile"
-              onClick={() =>
-                trackMiniAppClient("miniapp.action", { action: "open_profile" })
-              }
-            >
-              {u.profile}
-            </Link>
+            {!proShell ? (
+              <Link
+                href="/tg/profile"
+                className="tg-header-profile"
+                onClick={() =>
+                  trackMiniAppClient("miniapp.action", { action: "open_profile" })
+                }
+              >
+                {u.profile}
+              </Link>
+            ) : null}
             <Link
               href="/tg/guide"
               className="tg-header-guide"

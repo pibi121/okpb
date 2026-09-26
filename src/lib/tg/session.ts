@@ -15,7 +15,11 @@ export type TgChatState =
   | "awaiting_topup_method"
   | "awaiting_lookbook_custom"
   | "awaiting_video_ref_name"
-  | "awaiting_undress_photo";
+  | "awaiting_undress_photo"
+  | "funnel_v2_awaiting_rules"
+  | "funnel_v2_awaiting_photo"
+  | "funnel_v2_awaiting_edit"
+  | "funnel_v2_awaiting_partner_label";
 
 export type TgPending = {
   templateId?: string;
@@ -59,6 +63,8 @@ export type TgPending = {
   studioCastId?: string;
   /** Pending peach amount while choosing SBP/crypto */
   topupPeaches?: number;
+  /** Bonus peaches credited on top of paid amount (funnel packs). */
+  topupBonusPeaches?: number;
   /** Cast picker page on photo confirm */
   castPage?: number;
   /** Video model/ref picker mode after pose confirm */
@@ -75,6 +81,15 @@ export type TgPending = {
   qcItemId?: string;
   /** QC: success keyboard message id to edit */
   qcSuccessMessageId?: number;
+  funnelV2PhotoUrl?: string;
+  funnelV2PhotoKey?: string;
+  funnelV2AwaitReplace?: boolean;
+  funnelV2PendingConfirm?: { kind: "ud" | "tpl"; id: string };
+  funnelV2PendingVideoConfirm?: { kind: "qv" | "li2v"; id: string };
+  funnelV2ReturnTo?: "video" | "photo";
+  funnelV2EditItemId?: string;
+  funnelV2TopupPeaches?: number;
+  funnelV2TopupBonus?: number;
   /** Last silent message that carries the bottom reply keyboard */
   replyKbCarrierId?: number;
 };
@@ -124,6 +139,21 @@ export async function setTgSession(
     patch.pending?.replyKbCarrierId === undefined
   ) {
     pending.replyKbCarrierId = prevPending.replyKbCarrierId;
+  }
+  // Funnel v2 ref photo must survive hub/menu clears until user replaces it.
+  if (patch.clearPending) {
+    if (
+      prevPending.funnelV2PhotoUrl &&
+      patch.pending?.funnelV2PhotoUrl === undefined
+    ) {
+      pending.funnelV2PhotoUrl = prevPending.funnelV2PhotoUrl;
+    }
+    if (
+      prevPending.funnelV2PhotoKey &&
+      patch.pending?.funnelV2PhotoKey === undefined
+    ) {
+      pending.funnelV2PhotoKey = prevPending.funnelV2PhotoKey;
+    }
   }
 
   return prisma.platformAccount.update({

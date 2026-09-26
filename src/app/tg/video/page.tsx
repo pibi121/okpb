@@ -144,6 +144,11 @@ function VideoPageInner() {
   >({});
   const fileRef = useRef<HTMLInputElement>(null);
   const speechFetchedRef = useRef<Set<string>>(new Set());
+  const proShell = Boolean(profile?.funnelProShell);
+
+  useEffect(() => {
+    if (proShell) setModeTab("video_look");
+  }, [proShell]);
 
   const load = useCallback(async () => {
     const [tRes, rRes, meRes] = await Promise.all([
@@ -210,11 +215,15 @@ function VideoPageInner() {
   }, [status, load]);
 
   const visibleTemplates = useMemo(() => {
-    if (modeTab === "all") return templates;
-    return templates.filter((t) =>
-      modeTab === "video_look" ? isLookVideo(t) : !isLookVideo(t),
-    );
-  }, [templates, modeTab]);
+    const pool = proShell
+      ? templates.filter((t) => isLookVideo(t))
+      : templates;
+    if (proShell || modeTab === "video_look") {
+      return pool.filter((t) => isLookVideo(t));
+    }
+    if (modeTab === "all") return pool;
+    return pool.filter((t) => !isLookVideo(t));
+  }, [templates, modeTab, proShell]);
 
   const tpl = templates.find((t) => t.id === templateId) || null;
   const isLoraI2v = tpl?.templateKind === "lora_i2v" || !!tpl?.requiresLora;
@@ -411,11 +420,13 @@ function VideoPageInner() {
           </div>
           <nav className="tg-tabs tg-tabs--modes" style={{ padding: "0 0.75rem 0.5rem" }}>
             {(
-              [
-                ["all", modeLabels.tabAll],
-                ["video_one", modeLabels.video_one],
-                ["video_look", modeLabels.video_look],
-              ] as const
+              (proShell
+                ? ([["video_look", modeLabels.video_look]] as const)
+                : ([
+                    ["all", modeLabels.tabAll],
+                    ["video_one", modeLabels.video_one],
+                    ["video_look", modeLabels.video_look],
+                  ] as const))
             ).map(([id, label]) => (
               <button
                 key={id}

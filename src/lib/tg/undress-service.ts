@@ -22,6 +22,10 @@ export async function startTgUndressGeneration(opts: {
   platformUserId: string;
   photoBytes: Buffer;
   locale: TgLocale;
+  /** Funnel v2 result keyboard instead of classic undress CTAs */
+  funnelV2?: boolean;
+  /** Funnel v2 trial: apply tease blur; no paid result CTAs */
+  funnelV2Blur?: boolean;
 }): Promise<{
   galleryItemId: string;
   chargedPeaches: number;
@@ -63,7 +67,9 @@ export async function startTgUndressGeneration(opts: {
         engine: "krea2_undress",
         chargedPeaches,
         undressFreeUsed: usedFree,
-        source: "tg_undress",
+        source: opts.funnelV2 || opts.funnelV2Blur ? "funnel_v2" : "tg_undress",
+        funnelV2: Boolean(opts.funnelV2 || opts.funnelV2Blur),
+        blurTrial: Boolean(opts.funnelV2Blur),
       }),
     },
   });
@@ -72,6 +78,8 @@ export async function startTgUndressGeneration(opts: {
   const platformUserId = opts.platformUserId;
   const locale = opts.locale;
   const galleryItemId = item.id;
+  const funnelV2 = Boolean(opts.funnelV2);
+  const funnelV2Blur = Boolean(opts.funnelV2Blur);
 
   void enqueueGpuJob(
     async () => {
@@ -94,6 +102,27 @@ export async function startTgUndressGeneration(opts: {
             }
           }
         }
+        if (funnelV2Blur) {
+          try {
+            const { applyTeaseOverlay } = await import(
+              "@/lib/tease-overlay-apply"
+            );
+            let teasePreset: Record<string, unknown> = { blurPx: 20 };
+            try {
+              const fs = await import("node:fs");
+              const path = await import("node:path");
+              const p = path.join(process.cwd(), "presets", "tease_overlay.json");
+              if (fs.existsSync(p)) {
+                teasePreset = JSON.parse(fs.readFileSync(p, "utf8"));
+              }
+            } catch {
+              /* default */
+            }
+            bytes = await applyTeaseOverlay(bytes, null, teasePreset);
+          } catch (blurErr) {
+            console.warn("[undress] funnel blur failed:", blurErr);
+          }
+        }
         const saved = saveGalleryBinary(
           opts.userId,
           "png",
@@ -109,10 +138,17 @@ export async function startTgUndressGeneration(opts: {
               engine: "krea2_undress",
               chargedPeaches,
               undressFreeUsed: usedFree,
-              source: "tg_undress",
+              source: funnelV2 || funnelV2Blur ? "funnel_v2" : "tg_undress",
+              funnelV2: funnelV2 || funnelV2Blur,
+              blurTrial: funnelV2Blur,
             }),
           },
         });
+        const successKind = funnelV2Blur
+          ? "funnel_v2_blur"
+          : funnelV2
+            ? "funnel_v2_photo"
+            : "undress";
         await enqueueTgOutbox({
           platformUserId,
           userId: opts.userId,
@@ -120,11 +156,13 @@ export async function startTgUndressGeneration(opts: {
           payload: {
             url: saved.publicUrl,
             caption: "",
-            successKind: "undress",
+            successKind,
             galleryItemId,
             chargedPeaches,
             undressFreeUsed: usedFree,
             locale,
+            funnelV2: funnelV2 || funnelV2Blur,
+            blurTrial: funnelV2Blur,
           },
         });
       } catch (e) {

@@ -1006,8 +1006,8 @@ For free undresses: open the feed daily, scroll 20–30 seconds, and claim the b
   },
 
   hub_open_studio_btn: {
-    ru: "Студия",
-    en: "Studio",
+    ru: "⭐️ PRO режим",
+    en: "⭐️ PRO mode",
   },
 
   hub_guide_btn: {

@@ -29,6 +29,17 @@ export async function goToMainMenu(
   opts?: { editMessageId?: number; editHasMedia?: boolean },
 ) {
   await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
+  const { userOnFunnelV2, sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2");
+  const user = await import("@/lib/db").then(({ prisma }) =>
+    prisma.user.findUnique({ where: { id: userId } }),
+  );
+  if (user && (await userOnFunnelV2(user))) {
+    await sendFunnelV2Hub(chatId, userId, locale, {
+      editMessageId: opts?.editMessageId,
+      editHasMedia: opts?.editHasMedia,
+    });
+    return;
+  }
   await sendMainMenuHub(chatId, userId, locale, {
     // Always restore bottom reply keyboard (edit-in-place cannot set it alone).
     attachReplyKeyboard: true,

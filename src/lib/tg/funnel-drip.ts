@@ -35,6 +35,15 @@ async function silenceFunnelDrip(userId: string): Promise<void> {
 
 /** Anchor drip timers at welcome-after-rules. welcome_free_push text is disabled. */
 export async function scheduleFunnelDrip(userId: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tgFunnelV2Preview: true },
+  });
+  const { isFunnelV2Live } = await import("@/lib/tg/funnel-v2/mode");
+  if (user?.tgFunnelV2Preview || (await isFunnelV2Live())) {
+    // New funnel: no marketing drips (payment reminders stay elsewhere).
+    return;
+  }
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -273,9 +282,12 @@ export async function maybeSendFunnelDrips(
       tgFunnel10mIdleSent: true,
       tgFunnel40mSent: true,
       tgFunnel6hSent: true,
+      tgFunnelV2Preview: true,
     },
-  })) as FunnelUser | null;
+  })) as (FunnelUser & { tgFunnelV2Preview?: boolean }) | null;
   if (!user?.tgFunnelAnchorAt) return;
+  const { isFunnelV2Live } = await import("@/lib/tg/funnel-v2/mode");
+  if (user.tgFunnelV2Preview || (await isFunnelV2Live())) return;
 
   const anchor = user.tgFunnelAnchorAt.getTime();
   const now = Date.now();
@@ -421,24 +433,59 @@ export async function pollRulesNudges(limit = 40): Promise<void> {
   const users = await prisma.user.findMany({
     where: {
       source: "telegram",
-      ageConfirmed: false,
       OR: [
+        // Classic: not age-confirmed
         {
-          tgRulesShownAt: { not: null, lte: due10 },
-          tgRulesNudge10mSent: false,
+          ageConfirmed: false,
+          OR: [
+            {
+              tgRulesShownAt: { not: null, lte: due10 },
+              tgRulesNudge10mSent: false,
+            },
+            {
+              tgRulesShownAt: {
+                not: null,
+                lte: new Date(Date.now() - 3 * 60 * 60_000),
+              },
+              tgRulesNudge3hSent: false,
+            },
+            {
+              tgRulesShownAt: {
+                not: null,
+                lte: new Date(Date.now() - 24 * 60 * 60_000),
+              },
+              tgRulesNudge24hSent: false,
+            },
+            {
+              tgRulesShownAt: null,
+              createdAt: { lte: due10 },
+            },
+          ],
         },
+        // Funnel v2 preview awaiting rules accept
         {
-          tgRulesShownAt: { not: null, lte: new Date(Date.now() - 3 * 60 * 60_000) },
-          tgRulesNudge3hSent: false,
-        },
-        {
-          tgRulesShownAt: { not: null, lte: new Date(Date.now() - 24 * 60 * 60_000) },
-          tgRulesNudge24hSent: false,
-        },
-        // Legacy: never got shownAt stamped — use account age
-        {
-          tgRulesShownAt: null,
-          createdAt: { lte: due10 },
+          tgFunnelV2Preview: true,
+          tgFunnelV2RulesOk: false,
+          OR: [
+            {
+              tgRulesShownAt: { not: null, lte: due10 },
+              tgRulesNudge10mSent: false,
+            },
+            {
+              tgRulesShownAt: {
+                not: null,
+                lte: new Date(Date.now() - 3 * 60 * 60_000),
+              },
+              tgRulesNudge3hSent: false,
+            },
+            {
+              tgRulesShownAt: {
+                not: null,
+                lte: new Date(Date.now() - 24 * 60 * 60_000),
+              },
+              tgRulesNudge24hSent: false,
+            },
+          ],
         },
       ],
     },

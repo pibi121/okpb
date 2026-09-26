@@ -29,6 +29,16 @@ export const TOPUP_PAYMENT_METHODS: Array<{
 
 export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
 
+/**
+ * Peaches returned to cover payment-provider fee (user pays fee; we rebate in 🍑).
+ * Set TG_TOPUP_FEE_REBATE_PCT (e.g. "1.5" for 1.5%). Default 0 until configured.
+ */
+export function topupFeeRebatePeaches(peaches: number): number {
+  const pct = Number(process.env.TG_TOPUP_FEE_REBATE_PCT || "0");
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  return Math.max(0, Math.ceil((Math.floor(peaches) * pct) / 100));
+}
+
 export function isActiveTopupMethod(
   method: string,
 ): method is Exclude<CasheraPaymentMethod, "card"> {
@@ -50,6 +60,8 @@ export function formatTopupPriceLine(
 export async function createTopupPayment(opts: {
   userId: string;
   peaches: number;
+  /** Extra peaches credited on fulfill (pack bonus). Paid amount stays `peaches`. */
+  bonusPeaches?: number;
   method: CasheraPaymentMethod;
   locale?: "ru" | "en";
 }): Promise<{
@@ -68,18 +80,22 @@ export async function createTopupPayment(opts: {
     throw new Error("Этот способ оплаты недоступен. Выбери СБП или крипту.");
   }
   const peaches = Math.floor(opts.peaches);
+  const packBonus = Math.max(0, Math.floor(opts.bonusPeaches || 0));
+  const feeRebate = topupFeeRebatePeaches(peaches);
+  const bonus = packBonus + feeRebate;
   if (peaches < TG_MIN_TOPUP_PEACHES) {
     throw new Error(`Минимум ${TG_MIN_TOPUP_PEACHES} 🍑`);
   }
 
   const rub = peachesToRub(peaches);
   const amountMinor = rubToMinor(rub);
+  const creditPeaches = peaches + bonus;
 
   const order = await prisma.paymentOrder.create({
     data: {
       externalId: `pb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
       userId: opts.userId,
-      peaches,
+      peaches: creditPeaches,
       amountMinor,
       currency: "RUB",
       paymentMethod: opts.method,
@@ -99,6 +115,9 @@ export async function createTopupPayment(opts: {
       metadata: {
         userId: opts.userId,
         peaches,
+        packBonus,
+        feeRebate,
+        creditPeaches,
         orderId: order.id,
         method: opts.method,
       },
@@ -120,7 +139,7 @@ export async function createTopupPayment(opts: {
       paymentUrl: String(tx.payment_url),
       casheraUuid: tx.uuid,
       amountMinor,
-      peaches,
+      peaches: creditPeaches,
       priceLine: formatTopupPriceLine(peaches, opts.locale || "ru"),
     };
   } catch (e) {
@@ -200,6 +219,14 @@ export async function fulfillPaidTopup(opts: {
     paymentMethod: order.paymentMethod,
     amountMinor: order.amountMinor,
   });
+
+  // Funnel blur trials reset after any successful top-up.
+  await prisma.user
+    .update({
+      where: { id: order.userId },
+      data: { tgFunnelV2BlurTrialsUsed: 0 },
+    })
+    .catch(() => undefined);
 
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({

@@ -17,6 +17,7 @@ export type OpsSettings = {
   tgFunnelNoteCapture: string;
   ageGateEnabled: boolean;
   ageGateJson: string;
+  tgFunnelV2Live: boolean;
 };
 
 const DEFAULT_MAINT_RU =
@@ -59,6 +60,9 @@ export async function getOpsSettings(): Promise<OpsSettings> {
     tgFunnelNoteCapture: row.tgFunnelNoteCapture || "",
     ageGateEnabled: row.ageGateEnabled !== false,
     ageGateJson: row.ageGateJson || "{}",
+    tgFunnelV2Live: Boolean(
+      (row as { tgFunnelV2Live?: boolean }).tgFunnelV2Live,
+    ),
   };
   cache = { at: Date.now(), value };
   return value;

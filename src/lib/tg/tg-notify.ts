@@ -31,6 +31,34 @@ export async function notifyTelegramMediaReady(opts: {
   // Prefer relative /api/media/… so outbox can upload bytes (private gallery
   // URLs return 401 to Telegram's HTTP fetch).
   const rel = mediaRelativePath(opts.mediaUrl) || opts.mediaUrl.trim();
+
+  let successKind: string = opts.kind;
+  let funnelV2 = false;
+  let offerSave = opts.offerSaveCharacterId;
+  if (opts.galleryItemId) {
+    try {
+      const gi = await prisma.galleryItem.findUnique({
+        where: { id: opts.galleryItemId },
+        select: { metaJson: true },
+      });
+      const meta = JSON.parse(gi?.metaJson || "{}") as {
+        funnelV2?: boolean;
+        source?: string;
+        successKind?: string;
+        blurTrial?: boolean;
+      };
+      if (meta.funnelV2 || meta.source === "funnel_v2") {
+        funnelV2 = true;
+        offerSave = undefined;
+        if (meta.blurTrial) successKind = "funnel_v2_blur";
+        else if (meta.successKind) successKind = String(meta.successKind);
+        else successKind = opts.kind === "video" ? "funnel_v2_video" : "funnel_v2_photo";
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   await enqueueTgOutbox({
     platformUserId: acc.platformUserId,
     userId: opts.userId,
@@ -38,12 +66,11 @@ export async function notifyTelegramMediaReady(opts: {
     payload: {
       url: rel,
       caption: opts.caption,
-      successKind: opts.kind,
+      successKind,
       locale: acc.locale,
       ...(opts.galleryItemId ? { galleryItemId: opts.galleryItemId } : {}),
-      ...(opts.offerSaveCharacterId
-        ? { offerSaveCharacterId: opts.offerSaveCharacterId }
-        : {}),
+      ...(offerSave ? { offerSaveCharacterId: offerSave } : {}),
+      ...(funnelV2 ? { funnelV2: true } : {}),
     },
   });
 }

@@ -1578,6 +1578,40 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 
   const { trackBotCallback, trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackBotCallback(user.id, platformUserId, data);
+
+  // Funnel v2 callbacks (preview / live)
+  {
+    const {
+      handleFunnelV2Callback,
+      isFunnelV2Callback,
+      rejectLegacyForFunnelV2,
+      userOnFunnelV2,
+    } = await import("@/lib/tg/funnel-v2");
+    if (isFunnelV2Callback(data)) {
+      await handleFunnelV2Callback({
+        chatId,
+        userId: user.id,
+        platformUserId,
+        locale,
+        data,
+        callbackId: cq.id,
+        messageId: cq.message?.message_id,
+      });
+      return;
+    }
+    if (await userOnFunnelV2(user)) {
+      if (
+        data.startsWith("hub:") ||
+        data.startsWith("ud:") ||
+        data.startsWith("tpl:") ||
+        data.startsWith("vid:")
+      ) {
+        await rejectLegacyForFunnelV2(chatId, cq.id);
+        return;
+      }
+    }
+  }
+
   // Don't interleave auto-rules while the user is tapping «agree».
   if (!user.ageConfirmed && data !== CB.rulesAgree && data !== "rules:agree") {
     await maybeSendAutoRules(chatId, user.id);
@@ -1716,7 +1750,9 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       );
       return;
     }
-    const peaches = Number(pending.topupPeaches || 0);
+    const peaches = Number(
+      pending.topupPeaches || pending.funnelV2TopupPeaches || 0,
+    );
     if (peaches <= 0) {
       await sendTopupPrompt(chatId, locale);
       return;
@@ -1919,6 +1955,21 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   }
 
   if (text) {
+    const { tryFunnelV2Codeword } = await import("@/lib/tg/funnel-v2");
+    if (
+      await tryFunnelV2Codeword({
+        chatId,
+        platformUserId,
+        userId: user.id,
+        locale,
+        text,
+      })
+    ) {
+      return;
+    }
+  }
+
+  if (text) {
     const promo = await tryRedeemPromoMessage(user.id, text, locale);
     if (promo.handled) {
       if (promo.ok) {
@@ -1939,12 +1990,51 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   if (text.startsWith("/start")) {
     const payload = text.split(/\s+/)[1];
     await handleStart(chatId, from, payload);
+    const u2 = await prisma.user.findUnique({ where: { id: user.id } });
+    if (u2) {
+      const { userOnFunnelV2, sendFunnelV2Hub, funnelV2RulesAccepted } =
+        await import("@/lib/tg/funnel-v2");
+      if (await userOnFunnelV2(u2)) {
+        if (!funnelV2RulesAccepted(u2)) {
+          const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+          await sendFunnelV2Rules(chatId, user.id, locale);
+        } else {
+          await sendFunnelV2Hub(chatId, user.id, locale);
+        }
+      }
+    }
     return;
   }
 
   const session = await getTgSession(platformUserId);
   const pending = parsePending(session?.pendingJson || "{}");
   const chatState = session?.chatState || "idle";
+
+  {
+    const { userOnFunnelV2, routeFunnelV2MenuText } = await import(
+      "@/lib/tg/funnel-v2"
+    );
+    const { funnelV2RulesAccepted } = await import("@/lib/tg/funnel-v2/mode");
+    if (await userOnFunnelV2(user)) {
+      if (
+        text &&
+        (await routeFunnelV2MenuText({
+          chatId,
+          platformUserId,
+          userId: user.id,
+          locale,
+          text,
+        }))
+      ) {
+        return;
+      }
+      if (!funnelV2RulesAccepted(user) || chatState === "funnel_v2_awaiting_rules") {
+        const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+        await sendFunnelV2Rules(chatId, user.id, locale);
+        return;
+      }
+    }
+  }
 
   if (user.ageConfirmed && text && (await routeMenuText(chatId, platformUserId, user.id, locale, text))) {
     return;
@@ -1975,6 +2065,38 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     tgSendMessage(chatId, body, extra),
   );
   await maybeSendFunnelDrips(chatId, user.id);
+
+  if (chatState === "funnel_v2_awaiting_partner_label" && text?.trim()) {
+    const { handleFunnelV2EarnNewLabel } = await import(
+      "@/lib/tg/funnel-v2/earn-help"
+    );
+    await handleFunnelV2EarnNewLabel({
+      chatId,
+      userId: user.id,
+      platformUserId,
+      locale,
+      label: text.trim(),
+    });
+    return;
+  }
+
+  if (chatState === "funnel_v2_awaiting_edit" && text?.trim()) {
+    const itemId = pending.funnelV2EditItemId;
+    if (itemId) {
+      const { handleFunnelV2EditText } = await import(
+        "@/lib/tg/funnel-v2/animate-edit"
+      );
+      await handleFunnelV2EditText({
+        chatId,
+        userId: user.id,
+        platformUserId,
+        locale,
+        text: text.trim(),
+        galleryItemId: itemId,
+      });
+      return;
+    }
+  }
 
   if (chatState === "onboarding_awaiting_name" && text) {
     await onOnboardNameEntered(
@@ -2047,6 +2169,18 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 
   if (msg.photo?.length) {
     const largest = msg.photo[msg.photo.length - 1]!;
+    if (chatState === "funnel_v2_awaiting_photo") {
+      const buf = await tgDownloadFile(largest.file_id);
+      const { handleFunnelV2PhotoUpload } = await import("@/lib/tg/funnel-v2");
+      await handleFunnelV2PhotoUpload({
+        chatId,
+        userId: user.id,
+        platformUserId,
+        locale,
+        photoBytes: buf,
+      });
+      return;
+    }
     if (chatState === "awaiting_undress_photo") {
       const buf = await tgDownloadFile(largest.file_id);
       await tgSendMessage(chatId, t("undress_busy", locale));
@@ -2280,7 +2414,13 @@ export async function flushTgOutbox() {
         caption?: string;
         text?: string;
         mock?: boolean;
-        successKind?: "photo" | "video" | "undress";
+        successKind?:
+          | "photo"
+          | "video"
+          | "undress"
+          | "funnel_v2_photo"
+          | "funnel_v2_blur"
+          | "funnel_v2_video";
         galleryItemId?: string;
         undressFreeUsed?: boolean;
         locale?: TgLocale;
@@ -2288,6 +2428,8 @@ export async function flushTgOutbox() {
         botInstanceId?: string;
         attempts?: number;
         mediaSent?: boolean;
+        funnelV2?: boolean;
+        blurTrial?: boolean;
       };
       const chatId = Number(row.platformUserId);
       const locale = payload.locale || "ru";
@@ -2347,7 +2489,27 @@ export async function flushTgOutbox() {
       }
 
       if ((row.kind === "photo" || row.kind === "video") && payload.successKind) {
-        if (payload.successKind === "undress" && payload.galleryItemId) {
+        if (payload.successKind === "funnel_v2_photo" || payload.successKind === "funnel_v2_blur" || payload.successKind === "funnel_v2_video" || payload.funnelV2) {
+          const { funnelV2PhotoReadyKeyboard, funnelV2PhotoBlurKeyboard, funnelV2VideoReadyKeyboard } =
+            await import("@/lib/tg/funnel-v2/result-keyboards");
+          if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
+            await sendMessage(
+              "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс.\nКстати, сейчас тебя ждёт много бонусных 🍑 за пополнение баланса",
+              { reply_markup: funnelV2PhotoBlurKeyboard(locale) },
+            );
+          } else if (row.kind === "video" || payload.successKind === "funnel_v2_video") {
+            await sendMessage("❤️ Готово! Как тебе? 💦", {
+              reply_markup: funnelV2VideoReadyKeyboard(locale),
+            });
+          } else if (payload.galleryItemId) {
+            await sendMessage("❤️ Готово! Как тебе? 💦\n\nТеперь ты можешь:\n\n👉 Отредактировать фото, добавить в него что-то своё\n👉 Превратить это фото в горячее видео в 1 клик\n👉 Попробовать другой шаблон", {
+              reply_markup: funnelV2PhotoReadyKeyboard(
+                locale,
+                String(payload.galleryItemId),
+              ),
+            });
+          }
+        } else if (payload.successKind === "undress" && payload.galleryItemId) {
           const { undressSuccessKeyboard } = await import(
             "@/lib/tg/undress-flow"
           );

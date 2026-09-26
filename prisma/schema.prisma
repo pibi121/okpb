@@ -49,6 +49,13 @@ model User {
   tgRulesNudge10mSent Boolean @default(false)
   tgRulesNudge3hSent Boolean @default(false)
   tgRulesNudge24hSent Boolean @default(false)
+  /// Funnel v2 preview branch (codeword) — separate wallet + rules gate
+  tgFunnelV2Preview Boolean @default(false)
+  tgFunnelV2PreviewBalance Int @default(0)
+  /// Blurred photo trials used without balance (reset on real/preview topup)
+  tgFunnelV2BlurTrialsUsed Int @default(0)
+  /// Accepted v2 rules in preview (independent of ageConfirmed)
+  tgFunnelV2RulesOk Boolean @default(false)
   /// Undress: unused free credits (max stack 1)
   tgUndressFreeCredits Int @default(0)
   /// Undress: welcome free already granted (existing + new users)
@@ -1193,6 +1200,8 @@ model OpsSetting {
   ageGateEnabled         Boolean  @default(true)
   /// JSON: blockBuckets, faceThresh, failClosed
   ageGateJson            String   @default("{}")
+  /// New TG funnel live for everyone (after QA via FUNNEL_PREVIEW)
+  tgFunnelV2Live         Boolean  @default(false)
   updatedAt              DateTime @updatedAt
 }
 

@@ -390,9 +390,63 @@ export async function maybeSendRulesNudges(
       tgRulesNudge10mSent: true,
       tgRulesNudge3hSent: true,
       tgRulesNudge24hSent: true,
+      tgFunnelV2Preview: true,
+      tgFunnelV2RulesOk: true,
     },
   });
-  if (!user || user.ageConfirmed) return;
+  if (!user) return;
+
+  // Funnel v2 preview: nudge until tgFunnelV2RulesOk (even if age already confirmed).
+  if (user.tgFunnelV2Preview && !user.tgFunnelV2RulesOk) {
+    const locale: TgLocale = user.locale === "en" ? "en" : "ru";
+    const anchor = user.tgRulesShownAt?.getTime() || user.createdAt.getTime();
+    const ageMs = Date.now() - anchor;
+    const MS_10M = 10 * 60_000;
+    const MS_3H = 3 * 60 * 60_000;
+    const MS_24H = 24 * 60 * 60_000;
+
+    const sendV2 = async (
+      flag: "tgRulesNudge10mSent" | "tgRulesNudge3hSent" | "tgRulesNudge24hSent",
+      eventKey: string,
+    ) => {
+      try {
+        const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+        await sendFunnelV2Rules(chatId, userId, locale);
+        await prisma.user.update({
+          where: { id: userId },
+          data: { [flag]: true },
+        });
+        const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+        trackFunnelEventBg({
+          userId,
+          platformUserId: String(chatId),
+          eventKey,
+          surface: "system",
+        });
+      } catch (e) {
+        if (isDeadTelegramChat(e)) {
+          await silenceRulesNudges(userId);
+          return;
+        }
+        throw e;
+      }
+    };
+
+    if (!user.tgRulesNudge10mSent && ageMs >= MS_10M) {
+      await sendV2("tgRulesNudge10mSent", "bot.rules.nudge_10m");
+      return;
+    }
+    if (!user.tgRulesNudge3hSent && ageMs >= MS_3H) {
+      await sendV2("tgRulesNudge3hSent", "bot.rules.nudge_3h");
+      return;
+    }
+    if (!user.tgRulesNudge24hSent && ageMs >= MS_24H) {
+      await sendV2("tgRulesNudge24hSent", "bot.rules.nudge_24h");
+    }
+    return;
+  }
+
+  if (user.ageConfirmed) return;
 
   const locale: TgLocale = user.locale === "en" ? "en" : "ru";
   const anchor = user.tgRulesShownAt?.getTime() || user.createdAt.getTime();

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { copyAssetToTgCatalog } from "@/lib/tg/tg-publish";
 import { ensureTgCatalog } from "@/lib/tg/tg-catalog";
 import { formatPhotoSceneCategories } from "@/lib/tg/feed-order";
+import { formatVideoFunnelCategories } from "@/lib/photo-template-animate";
 import { priceForLoraI2vTemplate } from "@/lib/template-pricing";
 import {
   buildLoraI2vShotsPlan,
@@ -200,6 +201,9 @@ export async function createLoraI2vTemplate(opts: {
   sourceVideoId?: string;
   previewIdentityKey?: string;
   scrub?: { triggerWord?: string | null; characterName?: string | null };
+  /** false = one-photo funnel (no LoRA pick in bot) */
+  requiresLora?: boolean;
+  tgDisplayTitle?: string;
 }) {
   const title = opts.title.trim().slice(0, 120);
   if (!title) throw new Error("Укажи название");
@@ -244,14 +248,18 @@ export async function createLoraI2vTemplate(opts: {
   if (!stillPrompt) throw new Error("Нужен still-промпт (Krea)");
   if (!i2vPrompt) throw new Error("Нужен I2V-промпт (движение)");
 
-  const sceneCategory = Array.isArray(opts.sceneCategory)
-    ? formatPhotoSceneCategories(opts.sceneCategory)
-    : formatPhotoSceneCategories(
-        String(opts.sceneCategory || "")
+  const sceneCategory = (() => {
+    const raw = Array.isArray(opts.sceneCategory)
+      ? opts.sceneCategory
+      : String(opts.sceneCategory || "")
           .split(/[,|;]+/)
           .map((s) => s.trim())
-          .filter(Boolean),
-      );
+          .filter(Boolean);
+    if (opts.requiresLora === false) {
+      return formatVideoFunnelCategories(raw);
+    }
+    return formatPhotoSceneCategories(raw);
+  })();
 
   const durationSec = clampLoraI2vDurationSec(
     shotsPlan?.totalDurationSec || opts.durationSec || 6,
@@ -285,7 +293,8 @@ export async function createLoraI2vTemplate(opts: {
       sourceVideoId: opts.sourceVideoId || "",
       previewIdentityKey: opts.previewIdentityKey || opts.userId,
       published: false,
-      requiresLora: true,
+      requiresLora: opts.requiresLora !== false,
+      tgDisplayTitle: (opts.tgDisplayTitle || title).trim().slice(0, 80),
     },
   });
   return mapRow(row);

@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "./logout-button";
 import { usePeachUiMode } from "./peach-ui-mode-provider";
-import { ADMIN_NAV, displayUserName, USER_NAV } from "@/lib/peach-nav";
+import {
+  ADMIN_NAV,
+  LAB2_NAV,
+  displayUserName,
+  USER_NAV,
+} from "@/lib/peach-nav";
 import { DEFAULT_PLAN_ID, planById } from "@/lib/peach-plans";
 
 type SidebarUser = {
@@ -16,11 +21,15 @@ type SidebarUser = {
 
 export function PeachSidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname() || "/peach";
-  const { mode, setMode, isAdmin, labAccess } = usePeachUiMode();
+  const { mode, setMode, isAdmin, isLab2, labAccess } = usePeachUiMode();
   const plan = planById(DEFAULT_PLAN_ID);
   const nick = displayUserName(user.name, user.email);
 
-  const links = isAdmin ? [...USER_NAV, ...ADMIN_NAV] : USER_NAV;
+  const links = isLab2
+    ? LAB2_NAV
+    : isAdmin
+      ? [...USER_NAV, ...ADMIN_NAV]
+      : USER_NAV;
 
   return (
     <>
@@ -39,11 +48,6 @@ export function PeachSidebar({ user }: { user: SidebarUser }) {
               active={isActive(pathname, l.href, l.exact)}
             />
           ))}
-          {isAdmin ? (
-            <p className="mt-3 px-3 text-[10px] uppercase tracking-widest text-zinc-600">
-              Lab
-            </p>
-          ) : null}
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 border-t border-white/8 px-4 py-4">
@@ -127,32 +131,46 @@ function UiModeToggle({
   mode,
   setMode,
 }: {
-  mode: "user" | "admin";
-  setMode: (m: "user" | "admin") => void;
+  mode: "user" | "admin" | "lab2";
+  setMode: (m: "user" | "admin" | "lab2") => void;
 }) {
+  const btn = (
+    id: "user" | "admin" | "lab2",
+    label: string,
+    activeClass: string,
+  ) => (
+    <button
+      type="button"
+      onClick={() => setMode(id)}
+      className={
+        mode === id
+          ? `mt-0.5 w-full rounded-lg py-1.5 text-[11px] first:mt-0 ${activeClass}`
+          : "mt-0.5 w-full rounded-lg py-1.5 text-[11px] text-zinc-500 hover:text-foreground first:mt-0"
+      }
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="rounded-xl border border-dashed border-white/12 p-1">
+      {btn("user", "Парень", "bg-white/10 text-foreground")}
+      {btn("admin", "Лаборатория", "bg-peach/15 text-peach")}
       <button
         type="button"
-        onClick={() => setMode("user")}
+        onClick={() => {
+          setMode("lab2");
+          if (typeof window !== "undefined") {
+            window.location.assign("/peach/lab2");
+          }
+        }}
         className={
-          mode === "user"
-            ? "w-full rounded-lg bg-white/10 py-1.5 text-[11px] text-foreground"
-            : "w-full rounded-lg py-1.5 text-[11px] text-zinc-500 hover:text-foreground"
-        }
-      >
-        Как видит пользователь
-      </button>
-      <button
-        type="button"
-        onClick={() => setMode("admin")}
-        className={
-          mode === "admin"
-            ? "mt-0.5 w-full rounded-lg bg-peach/15 py-1.5 text-[11px] text-peach"
+          mode === "lab2"
+            ? "mt-0.5 w-full rounded-lg bg-peach/25 py-1.5 text-[11px] text-peach"
             : "mt-0.5 w-full rounded-lg py-1.5 text-[11px] text-zinc-500 hover:text-foreground"
         }
       >
-        Как вижу я
+        Лаборатория 2.0
       </button>
     </div>
   );

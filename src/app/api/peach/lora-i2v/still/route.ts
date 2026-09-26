@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { enqueuePhotoJob } from "@/lib/gallery-jobs";
+import { enqueuePhotoEditLabJob } from "@/lib/photo-edit-lab";
 import { kreaStillSize } from "@/lib/video-orientation";
 
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ function usableLora(ch: {
   return ch.triggerWord === "olh_person";
 }
 
-const schema = z.object({
+const jsonSchema = z.object({
   characterId: z.string().min(1),
   stillPrompt: z.string().min(2).max(8000),
   negativePrompt: z.string().max(2000).optional(),
@@ -32,7 +33,39 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 
   try {
-    const body = schema.parse(await req.json());
+    const contentType = req.headers.get("content-type") || "";
+
+    // Lab 2.0: one-photo Identity Edit still (no LoRA character)
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const stillPrompt = String(form.get("stillPrompt") || "").trim();
+      const title = String(form.get("title") || "").trim();
+      const photo = form.get("photo");
+      if (stillPrompt.length < 2) {
+        return NextResponse.json({ error: "Нужен still-промпт" }, { status: 400 });
+      }
+      if (!photo || typeof photo !== "object" || !("arrayBuffer" in photo)) {
+        return NextResponse.json(
+          { error: "Нужно фото для Identity Edit" },
+          { status: 400 },
+        );
+      }
+      const file = photo as File;
+      const photoBytes = Buffer.from(await file.arrayBuffer());
+      const { galleryItemId } = await enqueuePhotoEditLabJob({
+        userId: user.id,
+        photoBytes,
+        editPrompt: stillPrompt,
+        useUndressStack: true,
+        title: title || "I2V still · 1 photo",
+      });
+      const item = await prisma.galleryItem.findUnique({
+        where: { id: galleryItemId },
+      });
+      return NextResponse.json({ item, galleryItemId, mode: "one_photo" });
+    }
+
+    const body = jsonSchema.parse(await req.json());
     const ch = await prisma.character.findFirst({
       where: {
         id: body.characterId,
@@ -53,7 +86,13 @@ export async function POST(req: NextRequest) {
     const size = kreaStillSize(orient);
     const trigger = ch.triggerWord?.trim();
     let composed = body.stillPrompt.trim();
-    if (trigger && !new RegExp(`\\b${trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(composed)) {
+    if (
+      trigger &&
+      !new RegExp(
+        `\\b${trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+        "i",
+      ).test(composed)
+    ) {
       composed = `${trigger}, ${composed}`;
     }
 

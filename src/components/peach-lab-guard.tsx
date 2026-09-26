@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { ADMIN_NAV } from "@/lib/peach-nav";
+import { ALL_LAB_HREFS } from "@/lib/peach-nav";
 
 export function PeachLabGuard({
   labAccess,
@@ -13,8 +13,8 @@ export function PeachLabGuard({
 }) {
   const pathname = usePathname() || "";
   const router = useRouter();
-  const isLab = ADMIN_NAV.some(
-    (l) => pathname === l.href || pathname.startsWith(l.href + "/"),
+  const isLab = ALL_LAB_HREFS.some(
+    (href) => pathname === href || pathname.startsWith(href + "/"),
   );
 
   useEffect(() => {

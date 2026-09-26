@@ -9,14 +9,22 @@ import {
   useState,
 } from "react";
 
-export type PeachUiMode = "user" | "admin";
+/** user = парень · admin = лаборатория 1.0 · lab2 = лаборатория 2.0 (воронка) */
+export type PeachUiMode = "user" | "admin" | "lab2";
 
 const STORAGE_KEY = "peach-ui-mode";
 
 type Ctx = {
   mode: PeachUiMode;
   setMode: (m: PeachUiMode) => void;
+  /** Lab 1.0 full menu */
   isAdmin: boolean;
+  /** Lab 2.0 funnel menu */
+  isLab2: boolean;
+  /** Either lab mode — show lab chrome */
+  showLabNav: boolean;
+  /** Can edit lab tools (templates, publish) in Lab 1 or 2.0 */
+  canLabEdit: boolean;
   labAccess: boolean;
 };
 
@@ -26,7 +34,7 @@ function readInitial(): PeachUiMode {
   if (typeof window === "undefined") return "user";
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v === "admin" || v === "user") return v;
+    if (v === "admin" || v === "user" || v === "lab2") return v;
   } catch {
     /* ignore */
   }
@@ -57,21 +65,27 @@ export function PeachUiModeProvider({
     setReady(true);
   }, [labAccess]);
 
-  const setMode = useCallback((m: PeachUiMode) => {
-    if (!labAccess) return;
-    setModeState(m);
-    try {
-      localStorage.setItem(STORAGE_KEY, m);
-    } catch {
-      /* ignore */
-    }
-  }, [labAccess]);
+  const setMode = useCallback(
+    (m: PeachUiMode) => {
+      if (!labAccess) return;
+      setModeState(m);
+      try {
+        localStorage.setItem(STORAGE_KEY, m);
+      } catch {
+        /* ignore */
+      }
+    },
+    [labAccess],
+  );
 
   const value = useMemo(
     () => ({
       mode,
       setMode,
       isAdmin: labAccess && mode === "admin",
+      isLab2: labAccess && mode === "lab2",
+      showLabNav: labAccess && (mode === "admin" || mode === "lab2"),
+      canLabEdit: labAccess && (mode === "admin" || mode === "lab2"),
       labAccess,
     }),
     [mode, setMode, labAccess],

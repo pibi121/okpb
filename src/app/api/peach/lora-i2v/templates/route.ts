@@ -43,6 +43,8 @@ const createSchema = z.object({
   sourceStillId: z.string().max(64).optional(),
   sourceVideoId: z.string().max(64).optional(),
   characterId: z.string().max(64).optional(),
+  requiresLora: z.boolean().optional(),
+  tgDisplayTitle: z.string().max(80).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -87,6 +89,8 @@ export async function POST(req: NextRequest) {
       sourceStillId: body.sourceStillId,
       sourceVideoId: body.sourceVideoId,
       scrub,
+      requiresLora: body.requiresLora,
+      tgDisplayTitle: body.tgDisplayTitle,
     });
     return NextResponse.json({ template });
   } catch (e) {

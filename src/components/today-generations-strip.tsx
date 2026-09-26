@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RestoreToEditorButton } from "@/components/restore-to-editor-button";
+import type { RestoreEditorTarget } from "@/components/restore-to-editor-button";
 import { ImageGeneration } from "@/components/image-generation";
 import { PhotoSaveTemplateModal } from "@/components/photo-save-template-modal";
 
@@ -80,15 +81,21 @@ export function TodayGenerationsStrip({
   refreshKey = 0,
   forceStoryRestore,
   onlyStoryH3,
+  hideSaveTemplate,
+  onPickItem,
 }: {
   kind: "photo" | "video";
-  editor: "photo" | "video";
+  editor: RestoreEditorTarget;
   pollMs?: number;
   /** Bump after enqueue — triggers immediate refresh + faster polling. */
   refreshKey?: number;
   forceStoryRestore?: boolean;
   /** Story lab: show only Story H3 runs in the strip. */
   onlyStoryH3?: boolean;
+  /** Lab 2.0 photo-edit: funnel save panel, not legacy Peach template modal. */
+  hideSaveTemplate?: boolean;
+  /** Click ready result → parent (e.g. funnel save). */
+  onPickItem?: (item: TodayItem) => void;
 }) {
   const [items, setItems] = useState<TodayItem[]>([]);
 
@@ -201,8 +208,18 @@ export function TodayGenerationsStrip({
                 compact
                 forceStoryRestore={forceStoryRestore}
               />
-              {kind === "photo" ? (
+              {kind === "photo" && !hideSaveTemplate ? (
                 <SavePhotoTemplateButton item={item} compact />
+              ) : null}
+              {onPickItem && item.status === "ready" ? (
+                <button
+                  type="button"
+                  className="rounded-full border border-white/20 bg-black/40 px-2 py-1 text-[10px] text-white"
+                  onClick={() => onPickItem(item)}
+                  title="Взять для шаблона воронки"
+                >
+                  В шаблон
+                </button>
               ) : null}
             </div>
           </div>

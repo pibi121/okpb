@@ -6,11 +6,17 @@ import { TodayGenerationsStrip } from "@/components/today-generations-strip";
 import { TgPublishControls } from "@/components/tg-publish-controls";
 import { OrientationSelect } from "@/components/orientation-select";
 import { PhotoEditPromptPicker } from "@/components/photo-edit-prompt-picker";
+import { usePeachUiMode } from "@/components/peach-ui-mode-provider";
 import {
   PHOTO_SCENE_CATEGORIES,
   formatPhotoSceneCategories,
   parsePhotoSceneCategories,
 } from "@/lib/tg/feed-order";
+import {
+  VIDEO_FUNNEL_CATEGORIES,
+  formatVideoFunnelCategories,
+  parseVideoFunnelCategories,
+} from "@/lib/photo-template-animate";
 import type { VideoOrientationId } from "@/lib/video-orientation";
 import {
   emptyLoraI2vShot,
@@ -45,6 +51,7 @@ type Tpl = {
   tgDisplayTitle: string;
   sceneCategory: string;
   published: boolean;
+  requiresLora?: boolean;
 };
 
 type ShotForm = LoraI2vShotSpec & {
@@ -63,6 +70,7 @@ type LabDraft = {
   orientation: VideoOrientationId;
   categories: string[];
   editingId: string;
+  sourceMode?: "lora" | "one_photo";
   shots: ShotForm[];
   stitchedVideoItemId: string;
   stitchedVideoUrl: string;
@@ -112,6 +120,7 @@ async function readJson(res: Response) {
 
 export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   const searchParams = useSearchParams();
+  const { isLab2 } = usePeachUiMode();
   const presetTemplateId =
     searchParams.get("templateId") || searchParams.get("id") || "";
 
@@ -129,6 +138,10 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
   const [stripRefresh, setStripRefresh] = useState(0);
 
   const [characterId, setCharacterId] = useState(loraChars[0]?.id || "");
+  /** Lab 2.0: only one_photo. Lab 1.0 may still use Legacy LoRA. */
+  const [sourceMode, setSourceMode] = useState<"lora" | "one_photo">("one_photo");
+  const [faceFile, setFaceFile] = useState<File | null>(null);
+  const [tgDisplayTitle, setTgDisplayTitle] = useState("");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [orientation, setOrientation] = useState<VideoOrientationId>("9_16");
@@ -198,6 +211,11 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     void refreshDraftShelf();
   }, [refreshDraftShelf]);
 
+  // Lab 2.0: воронка только «по 1 фото» — Legacy LoRA остаётся в Lab 1.0.
+  useEffect(() => {
+    if (isLab2 && sourceMode !== "one_photo") setSourceMode("one_photo");
+  }, [isLab2, sourceMode]);
+
   function applyDraft(d: LabDraft, label: string) {
     setCharacterId(d.characterId || characterId || loraChars[0]?.id || "");
     setTitle(d.title || "");
@@ -205,6 +223,8 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     setOrientation(d.orientation || "9_16");
     setCategories(Array.isArray(d.categories) ? d.categories : []);
     setEditingId(d.editingId || "");
+    if (!isLab2 && d.sourceMode) setSourceMode(d.sourceMode);
+    else setSourceMode("one_photo");
     setShots(
       (d.shots?.length ? d.shots : [emptyShotForm()]).map((s) =>
         emptyShotForm(s),
@@ -238,6 +258,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
       orientation,
       categories,
       editingId,
+      sourceMode: isLab2 ? "one_photo" : sourceMode,
       shots,
       stitchedVideoItemId,
       stitchedVideoUrl,
@@ -270,6 +291,8 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     orientation,
     categories,
     editingId,
+    sourceMode,
+    isLab2,
     shots,
     stitchedVideoItemId,
     stitchedVideoUrl,
@@ -351,22 +374,38 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     setBusy("still");
     setBusyShotId(shotId);
     try {
-      const res = await fetch("/api/peach/lora-i2v/still", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          characterId,
-          stillPrompt: shot.stillPrompt,
-          negativePrompt: shot.negativePrompt || undefined,
-          orientationId: orientation,
-          title: title || undefined,
-        }),
-      });
+      let res: Response;
+      if (sourceMode === "one_photo") {
+        if (!faceFile) throw new Error("Загрузи фото для Identity Edit");
+        const form = new FormData();
+        form.set("photo", faceFile);
+        form.set("stillPrompt", shot.stillPrompt);
+        form.set("title", title || "I2V still · 1 photo");
+        res = await fetch("/api/peach/lora-i2v/still", {
+          method: "POST",
+          body: form,
+        });
+      } else {
+        res = await fetch("/api/peach/lora-i2v/still", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            characterId,
+            stillPrompt: shot.stillPrompt,
+            negativePrompt: shot.negativePrompt || undefined,
+            orientationId: orientation,
+            title: title || undefined,
+          }),
+        });
+      }
       const data = await readJson(res);
       if (!res.ok) throw new Error(String(data.error || "ошибка"));
       const item = data.item as { id: string };
+      const galleryItemId = String(
+        (data as { galleryItemId?: string }).galleryItemId || item?.id || "",
+      );
       updateShot(shotId, {
-        stillItemId: item.id,
+        stillItemId: galleryItemId || item.id,
         stillUrl: "",
         videoItemId: "",
         videoUrl: "",
@@ -376,7 +415,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
       setStitchedDurationSec(0);
       setStripRefresh((n) => n + 1);
       setMsg(`Шот: still в очереди GPU…`);
-      const ready = await pollItem(item.id, {
+      const ready = await pollItem(galleryItemId || item.id, {
         maxAttempts: 120,
         intervalMs: 4000,
         label: "Ждём still",
@@ -656,8 +695,9 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           recipeShots.reduce((sum, s) => sum + (s.durationSec || 6), 0)
         : first.durationSec || 6;
       const payload = {
-        title: title.trim() || "LoRA I2V",
+        title: title.trim() || (sourceMode === "one_photo" ? "Видео по 1 фото" : "LoRA I2V"),
         notes,
+        tgDisplayTitle: (tgDisplayTitle || title).trim(),
         stillPrompt: first.stillPrompt,
         i2vPrompt: recipeShots.map((s) => s.i2vPrompt).join("\n\n"),
         negativePrompt: first.negativePrompt || "",
@@ -671,12 +711,16 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
         orientation,
         durationSec,
         pricePeaches: 0,
-        sceneCategory: formatPhotoSceneCategories(categories),
+        sceneCategory:
+          sourceMode === "one_photo"
+            ? formatVideoFunnelCategories(categories)
+            : formatPhotoSceneCategories(categories),
         previewImageUrl,
         previewVideoUrl,
         sourceStillId,
         sourceVideoId,
-        characterId,
+        characterId: sourceMode === "lora" ? characterId : undefined,
+        requiresLora: sourceMode === "lora",
       };
       const res = await fetch(
         editingId
@@ -719,8 +763,12 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     setEditingId(t.id);
     setTitle(t.title);
     setNotes(t.notes);
+    setTgDisplayTitle(t.tgDisplayTitle || t.title);
     setOrientation((t.orientation as VideoOrientationId) || "9_16");
     setCategories(parsePhotoSceneCategories(t.sceneCategory));
+    // Lab 2.0 всегда one_photo; в Lab 1.0 уважаем requiresLora шаблона.
+    if (isLab2) setSourceMode("one_photo");
+    else setSourceMode(t.requiresLora === false ? "one_photo" : "lora");
     const plan = parseLoraI2vShotsPlan(t.shotsJson);
     if (plan?.shots.length) {
       setShots(
@@ -768,11 +816,13 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
     setEditingId("");
     setTitle("");
     setNotes("");
+    setTgDisplayTitle("");
     setShots([emptyShotForm()]);
     setCategories([]);
     setStitchedVideoItemId("");
     setStitchedVideoUrl("");
     setStitchedDurationSec(0);
+    setSourceMode("one_photo");
     setMsg("");
     setError("");
     try {
@@ -850,11 +900,37 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
         <div>
           <h2 className="text-sm font-medium text-zinc-200">Сборка рецепта</h2>
           <p className="mt-1 text-[11px] text-zinc-500">
-            На каждый шот: still (Krea+LoRA) → оживление MiniMax → при нескольких
-            шотах «Склеить» → сохранить шаблон → справа «В Telegram». Форма
-            стартует пустой — черновики только из колонки рядом.
+            {isLab2
+              ? "Lab 2.0: сюжет / диалоги по 1 фото (Identity Edit → I2V). Без выбора LoRA — это новый формат воронки."
+              : "Lab 1.0: можно Legacy LoRA или «по 1 фото»."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
+            {!isLab2 ? (
+              <>
+                <button
+                  type="button"
+                  className={
+                    sourceMode === "one_photo"
+                      ? "rounded-full bg-peach/20 px-3 py-1 text-[11px] text-peach"
+                      : "rounded-full border border-white/15 px-3 py-1 text-[11px] text-zinc-300"
+                  }
+                  onClick={() => setSourceMode("one_photo")}
+                >
+                  По 1 фото
+                </button>
+                <button
+                  type="button"
+                  className={
+                    sourceMode === "lora"
+                      ? "rounded-full bg-peach/20 px-3 py-1 text-[11px] text-peach"
+                      : "rounded-full border border-white/15 px-3 py-1 text-[11px] text-zinc-300"
+                  }
+                  onClick={() => setSourceMode("lora")}
+                >
+                  Legacy LoRA
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               className="rounded-full border border-white/15 px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5"
@@ -866,7 +942,17 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
           </div>
         </div>
 
-        {!loraChars.length ? (
+        {sourceMode === "one_photo" ? (
+          <label className="block text-xs text-zinc-500">
+            Фото для Identity Edit (вход всех шотов)
+            <input
+              type="file"
+              accept="image/*"
+              className="mt-1 block w-full text-xs text-zinc-400"
+              onChange={(e) => setFaceFile(e.target.files?.[0] || null)}
+            />
+          </label>
+        ) : !loraChars.length ? (
           <p className="text-sm text-amber-400">
             Нет персонажей с lora_ready — обучи LoRA в Characters.
           </p>
@@ -899,7 +985,17 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
         </label>
 
         <label className="block text-xs text-zinc-500">
-          Заметки
+          Название кнопки в боте
+          <input
+            className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
+            value={tgDisplayTitle}
+            onChange={(e) => setTgDisplayTitle(e.target.value)}
+            placeholder="Поза 1 🍓"
+          />
+        </label>
+
+        <label className="block text-xs text-zinc-500">
+          Описание / заметки
           <input
             className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-2 text-sm"
             value={notes}
@@ -924,11 +1020,18 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
 
         <div>
           <div className="mb-1 text-[10px] text-zinc-500">
-            Категории фильтра TG (как у фото)
+            {sourceMode === "one_photo"
+              ? "Категории кнопки воронки 🍓🍿💬"
+              : "Категории фильтра TG (как у фото)"}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {PHOTO_SCENE_CATEGORIES.map((c) => {
+            {(sourceMode === "one_photo"
+              ? VIDEO_FUNNEL_CATEGORIES
+              : PHOTO_SCENE_CATEGORIES
+            ).map((c) => {
               const on = categories.includes(c.id);
+              const label =
+                "emoji" in c ? `${c.emoji} ${c.ru}` : c.ru;
               return (
                 <button
                   key={c.id}
@@ -940,7 +1043,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
                       : "border-white/10 text-zinc-400"
                   }`}
                 >
-                  {c.ru}
+                  {label}
                 </button>
               );
             })}
@@ -1033,7 +1136,9 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
                 <button
                   type="button"
                   disabled={
-                    !!busy || !characterId || !shot.stillPrompt.trim()
+                    !!busy ||
+                    (sourceMode === "lora" ? !characterId : !faceFile) ||
+                    !shot.stillPrompt.trim()
                   }
                   onClick={() => void onStill(shot.id)}
                   className="rounded-full bg-peach px-3 py-1.5 text-xs font-medium text-black disabled:opacity-40"
@@ -1230,12 +1335,13 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
 
         <TodayGenerationsStrip
           kind="photo"
-          editor="photo"
+          editor="lora-i2v"
           refreshKey={stripRefresh}
+          hideSaveTemplate
         />
         <TodayGenerationsStrip
           kind="video"
-          editor="video"
+          editor="lora-i2v"
           refreshKey={stripRefresh}
         />
       </div>
@@ -1368,6 +1474,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
                 <div className="truncate text-sm font-medium">{t.title}</div>
                 <div className="text-[11px] text-zinc-500">
                   {t.pricePeaches} 🍑 · {t.durationSec}с ·{" "}
+                  {t.requiresLora === false ? "1 фото" : "LoRA"} ·{" "}
                   {t.tgPublished ? "в TG" : "черновик"}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">

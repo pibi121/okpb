@@ -8,9 +8,16 @@ import {
   isStoryH3Meta,
   requestStoryVideoRestore,
   requestVideoRestore,
+  savePhotoEditRestore,
   savePhotoRestore,
   saveStoryVideoRestore,
 } from "@/lib/generation-restore";
+
+export type RestoreEditorTarget =
+  | "photo"
+  | "photo-edit"
+  | "video"
+  | "lora-i2v";
 
 export function RestoreToEditorButton({
   item,
@@ -19,7 +26,7 @@ export function RestoreToEditorButton({
   forceStoryRestore,
 }: {
   item: TodayItem;
-  editor: "photo" | "video";
+  editor: RestoreEditorTarget;
   compact?: boolean;
   /** Story lab strip: always restore into /peach/story-video */
   forceStoryRestore?: boolean;
@@ -28,6 +35,27 @@ export function RestoreToEditorButton({
 
   function restore() {
     const meta = item.meta || {};
+
+    if (editor === "photo-edit") {
+      const editPrompt = String(
+        meta.editPrompt ||
+          meta.legoQuery ||
+          meta.userNote ||
+          item.prompt ||
+          item.title ||
+          "",
+      );
+      savePhotoEditRestore({ editPrompt });
+      router.push("/peach/photo-edit");
+      return;
+    }
+
+    if (editor === "lora-i2v") {
+      // Черновик I2V уже в localStorage/server — не уводим в /peach/photo.
+      router.push("/peach/lora-i2v");
+      return;
+    }
+
     if (editor === "photo") {
       savePhotoRestore({
         legoQuery: String(meta.legoQuery || meta.userNote || item.title || ""),

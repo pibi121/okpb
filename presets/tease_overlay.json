@@ -1,0 +1,11 @@
+﻿{
+  "version": 1,
+  "blurPx": 20,
+  "overlayScale": 0.83,
+  "overlayOpacity": 0.42,
+  "overlayX": 0.5,
+  "overlayY": 0.7,
+  "overlayFile": "tease_cta.png",
+  "updatedAt": "2026-09-26T04:09:22.094Z",
+  "notes": "Owner-tuned in /peach/tease-lab — wire into TG no-balance funnel"
+}

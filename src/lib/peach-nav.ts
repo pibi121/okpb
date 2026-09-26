@@ -13,10 +13,12 @@ export const USER_NAV: NavLink[] = [
   { href: "/peach/characters", label: "Персонажи" },
 ];
 
-/** Dev / lab — только в режиме «Как вижу Я» */
+/** Dev / lab 1.0 — режим «Лаборатория» (Как вижу я) */
 export const ADMIN_NAV: NavLink[] = [
   { href: "/peach/tg-catalog", label: "TG каталог" },
   { href: "/peach/tg-photo", label: "TG фото (тест)" },
+  { href: "/peach/photo-edit", label: "Photo Edit Lab" },
+  { href: "/peach/tease-lab", label: "Tease Lab" },
   { href: "/peach/lora-i2v", label: "LoRA → I2V" },
   { href: "/peach/story-video", label: "Story H3 видео" },
   { href: "/peach/video-lego", label: "Video LEGO" },
@@ -30,6 +32,29 @@ export const ADMIN_NAV: NavLink[] = [
   { href: "/peach/social", label: "Social (admin)" },
   { href: "/peach/video/legacy", label: "Video legacy" },
   { href: "/peach/stories", label: "Stories" },
+];
+
+/**
+ * Lab 2.0 — только разделы под новую TG-воронку (позы / видео / tease / каталог).
+ * Старые eval/legacy сюда не тащим.
+ */
+export const LAB2_NAV: NavLink[] = [
+  { href: "/peach/lab2", label: "Обзор 2.0", exact: true },
+  { href: "/peach/photo-edit", label: "Позы (новый Edit)" },
+  { href: "/peach/tg-photo", label: "TG фото-шаблоны" },
+  { href: "/peach/tg-catalog", label: "TG каталог" },
+  { href: "/peach/tease-lab", label: "Tease (blur)" },
+  { href: "/peach/story-video", label: "Видео по 1 фото" },
+  { href: "/peach/lora-i2v", label: "Сюжет I2V (1 фото)" },
+  { href: "/peach/gallery", label: "Галерея" },
+  { href: "/peach/characters", label: "Персонажи (PRO)" },
+];
+
+/** All peach paths that require labAccess (Lab 1 + Lab 2 hubs). */
+export const ALL_LAB_HREFS: string[] = [
+  ...ADMIN_NAV.map((l) => l.href),
+  ...LAB2_NAV.map((l) => l.href),
+  "/peach/lab2",
 ];
 
 export function displayUserName(name: string | null, email: string): string {

@@ -3,6 +3,7 @@ import type { PeachPhotoTemplateApplyPayload } from "@/lib/peach-photo-template-
 import type { QuickVideoTemplateApplyPayload } from "@/lib/quick-video-template-shared";
 
 const PHOTO_KEY = "peach-restore-photo";
+const PHOTO_EDIT_KEY = "peach-restore-photo-edit";
 const STORY_VIDEO_KEY = "peach-restore-story-video";
 
 export const PEACH_VIDEO_RESTORE_EVENT = "peach-video-restore";
@@ -34,6 +35,11 @@ export type PhotoRestorePayload = {
   styleId?: string;
   skinDetail?: boolean;
   skinDetailStrength?: number;
+};
+
+/** Lab 2.0 /peach/photo-edit — Identity Edit, без старой формы с LoRA. */
+export type PhotoEditRestorePayload = {
+  editPrompt: string;
 };
 
 export type VideoRestorePayload = {
@@ -94,6 +100,21 @@ export function loadPhotoRestore(): PhotoRestorePayload | null {
     if (!raw) return null;
     sessionStorage.removeItem(PHOTO_KEY);
     return JSON.parse(raw) as PhotoRestorePayload;
+  } catch {
+    return null;
+  }
+}
+
+export function savePhotoEditRestore(payload: PhotoEditRestorePayload) {
+  sessionStorage.setItem(PHOTO_EDIT_KEY, JSON.stringify(payload));
+}
+
+export function loadPhotoEditRestore(): PhotoEditRestorePayload | null {
+  try {
+    const raw = sessionStorage.getItem(PHOTO_EDIT_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(PHOTO_EDIT_KEY);
+    return JSON.parse(raw) as PhotoEditRestorePayload;
   } catch {
     return null;
   }

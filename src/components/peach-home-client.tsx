@@ -12,7 +12,24 @@ type AdminStats = {
 };
 
 export function PeachHomeClient({ stats }: { stats: AdminStats }) {
-  const { isAdmin } = usePeachUiMode();
+  const { isAdmin, isLab2 } = usePeachUiMode();
+
+  if (isLab2) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-2xl text-foreground">Лаборатория 2.0</h1>
+        <p className="text-sm text-zinc-500">
+          Открой обзор воронки — там все нужные разделы.
+        </p>
+        <Link
+          href="/peach/lab2"
+          className="w-fit rounded-xl border border-peach/40 bg-peach/10 px-4 py-2 text-sm text-peach"
+        >
+          Перейти в Обзор 2.0 →
+        </Link>
+      </div>
+    );
+  }
 
   if (isAdmin) {
     return <AdminDashboard stats={stats} />;
@@ -93,7 +110,8 @@ function AdminDashboard({ stats }: { stats: AdminStats }) {
         <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-peach">Peach lab</p>
         <h1 className="font-display text-glow mt-2 text-4xl md:text-5xl">Кабинет (dev)</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          Режим «Как вижу я» — все lab-разделы в меню слева.
+          Режим «Лаборатория» — все lab-разделы 1.0 в меню слева. Для воронки
+          переключись на «Лаборатория 2.0».
         </p>
       </div>
 

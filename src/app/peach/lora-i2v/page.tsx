@@ -27,10 +27,10 @@ export default async function LoraI2vLabPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-lg font-medium">LoRA → I2V шаблоны</h1>
+        <h1 className="text-lg font-medium">Сюжет / диалоги · видео по 1 фото</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Рецепт: still на LoRA (Krea 2) → оживление Minimax I2V → сохранить →
-          перенести в Telegram. Режим админа: «Как вижу Я».
+          Lab 2.0: фото → Identity Edit still → I2V по шотам → шаблон с кнопкой,
+          категорией 🍓🍿💬 и тизером. Legacy LoRA — переключателем в форме.
         </p>
       </div>
       <Suspense fallback={<p className="text-sm text-zinc-500">…</p>}>

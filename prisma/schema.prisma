@@ -837,6 +837,8 @@ model QuickVideoTemplate {
   tgDisplayTitle      String   @default("")
   tgSortOrder         Int      @default(0)
   previewIdentityKey  String   @default("")
+  /// sex | story | dialogue — funnel button emojis 🍓🍿💬
+  sceneCategory       String   @default("")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -1344,6 +1346,10 @@ model PhotoTemplate {
   sceneCategory   String   @default("")
   /// Author character id (feed: don't show same identity twice in a row)
   previewIdentityKey String @default("")
+  /// Short demo / teaser video for TG confirm screen
+  previewVideoUrl String @default("")
+  /// Animate prompts for 3/7/12s: { mode, sharedPrompt, byDuration, coverUrl }
+  animateJson     String   @default("")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -40,7 +40,7 @@ export const ADMIN_NAV: NavLink[] = [
  */
 export const LAB2_NAV: NavLink[] = [
   { href: "/peach/lab2", label: "Обзор 2.0", exact: true },
-  { href: "/peach/lab2/transfer", label: "Перенос шаблонов" },
+  { href: "/peach/lab2/transfer", label: "Перенос Funnel v2" },
   { href: "/peach/photo-edit", label: "Позы (новый Edit)" },
   { href: "/peach/tg-photo", label: "TG фото-шаблоны" },
   { href: "/peach/tg-catalog", label: "TG каталог" },

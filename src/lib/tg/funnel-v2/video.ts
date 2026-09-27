@@ -95,12 +95,13 @@ async function sendFunnelRefPhoto(
 async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]> {
   const [qv, li2v] = await Promise.all([
     prisma.quickVideoTemplate.findMany({
-      where: { tgPublished: true },
+      where: { funnelV2Published: true },
       orderBy: [{ tgSortOrder: "asc" }, { updatedAt: "desc" }],
       take: 40,
     }),
     prisma.loraI2vTemplate.findMany({
-      where: { tgPublished: true },
+      // Funnel v2 bot: only one-photo I2V (no LoRA character)
+      where: { funnelV2Published: true, requiresLora: false },
       orderBy: [{ tgSortOrder: "asc" }, { updatedAt: "desc" }],
       take: 40,
     }),
@@ -379,7 +380,11 @@ async function runFunnelV2VideoGen(opts: {
     if (opts.kind === "li2v") {
       // One-photo I2V: use uploaded still + template i2v prompt (no LoRA).
       const tpl = await prisma.loraI2vTemplate.findFirst({
-        where: { id: opts.templateId, tgPublished: true },
+        where: {
+          id: opts.templateId,
+          funnelV2Published: true,
+          requiresLora: false,
+        },
       });
       if (!tpl) throw new Error("Шаблон не найден");
       const stillSaved = saveGalleryBinary(

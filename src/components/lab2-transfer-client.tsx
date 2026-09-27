@@ -17,7 +17,7 @@ type TransferItem = {
   title: string;
   notes: string;
   displayTitle: string;
-  tgPublished: boolean;
+  funnelV2Published: boolean;
   sceneCategory: string;
   previewImageUrl: string;
   previewVideoUrl: string;
@@ -29,7 +29,7 @@ type TransferItem = {
 };
 
 type Draft = {
-  tgPublished: boolean;
+  funnelV2Published: boolean;
   displayTitle: string;
   notes: string;
   sceneCategory: string;
@@ -41,23 +41,23 @@ const TABS: Array<{ id: Kind; label: string; hint: string }> = [
   {
     id: "photo",
     label: "Фото (позы)",
-    hint: "Photo Edit · Identity Edit",
+    hint: "Identity Edit · по 1 фото",
   },
   {
     id: "video",
     label: "Видео · MiniMax",
-    hint: "Story H3 / по 1 фото",
+    hint: "Story H3 · по 1 фото",
   },
   {
     id: "lora_i2v",
     label: "Видео · Krea→MiniMax",
-    hint: "I2V still → motion",
+    hint: "только без LoRA · по 1 фото",
   },
 ];
 
 function draftFromItem(it: TransferItem): Draft {
   return {
-    tgPublished: it.tgPublished,
+    funnelV2Published: it.funnelV2Published,
     displayTitle: it.displayTitle || "",
     notes: it.notes || "",
     sceneCategory: it.sceneCategory || "",
@@ -72,7 +72,7 @@ function draftKey(kind: Kind, id: string) {
 
 function isDirty(base: Draft, cur: Draft): boolean {
   return (
-    base.tgPublished !== cur.tgPublished ||
+    base.funnelV2Published !== cur.funnelV2Published ||
     base.displayTitle.trim() !== cur.displayTitle.trim() ||
     base.notes.trim() !== cur.notes.trim() ||
     formatVideoFunnelCategories(parseVideoFunnelCategories(base.sceneCategory)) !==
@@ -172,7 +172,8 @@ export function Lab2TransferClient() {
 
   const publishedOnTab = useMemo(
     () =>
-      items.filter((it) => drafts[draftKey(it.kind, it.id)]?.tgPublished).length,
+      items.filter((it) => drafts[draftKey(it.kind, it.id)]?.funnelV2Published)
+        .length,
     [items, drafts],
   );
 
@@ -256,7 +257,7 @@ export function Lab2TransferClient() {
     const payload: Array<{
       kind: Kind;
       id: string;
-      tgPublished: boolean;
+      funnelV2Published: boolean;
       displayTitle: string;
       notes: string;
       sceneCategory: string;
@@ -273,7 +274,7 @@ export function Lab2TransferClient() {
         payload.push({
           kind,
           id: it.id,
-          tgPublished: d.tgPublished,
+          funnelV2Published: d.funnelV2Published,
           displayTitle: d.displayTitle.trim(),
           notes: d.notes.trim(),
           sceneCategory: d.sceneCategory,
@@ -332,11 +333,12 @@ export function Lab2TransferClient() {
             Lab 2.0
           </p>
           <h1 className="mt-1 text-xl font-medium text-foreground">
-            Перенос шаблонов в воронку
+            Перенос в новую воронку (бот)
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-500">
-            Галочка = показывать в боте. Быстрое редактирование: название
-            кнопки, категория видео, превью, описание. Потом «Сохранить».
+            Только Funnel v2 · по 1 фото. Галочка не трогает старую воронку и
+            Mini App (для них будет отдельный раздел). LoRA-шаблоны сюда не
+            попадают.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -367,7 +369,7 @@ export function Lab2TransferClient() {
         {TABS.map((t) => {
           const count = lists[t.id].length;
           const on = lists[t.id].filter(
-            (it) => drafts[draftKey(t.id, it.id)]?.tgPublished,
+            (it) => drafts[draftKey(t.id, it.id)]?.funnelV2Published,
           ).length;
           return (
             <button
@@ -384,7 +386,7 @@ export function Lab2TransferClient() {
                 {t.label}
               </div>
               <div className="text-[11px] text-zinc-500">
-                {t.hint} · в TG {on}/{count}
+                {t.hint} · в Funnel {on}/{count}
               </div>
             </button>
           );
@@ -399,7 +401,7 @@ export function Lab2TransferClient() {
           onChange={(e) => setQ(e.target.value)}
         />
         <span className="text-[12px] text-zinc-500">
-          На вкладке в TG: {publishedOnTab}/{items.length}
+          На вкладке в Funnel: {publishedOnTab}/{items.length}
           {dirtyCount ? ` · черновик ${dirtyCount}` : ""}
         </span>
       </div>
@@ -450,10 +452,10 @@ export function Lab2TransferClient() {
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-[#f5a97f]"
-                    checked={d.tgPublished}
+                    checked={d.funnelV2Published}
                     onChange={(e) =>
                       setDraft(it.kind, it.id, {
-                        tgPublished: e.target.checked,
+                        funnelV2Published: e.target.checked,
                       })
                     }
                   />
@@ -480,9 +482,9 @@ export function Lab2TransferClient() {
                     <p className="truncate text-[14px] font-medium text-foreground">
                       {d.displayTitle.trim() || it.title}
                     </p>
-                    {d.tgPublished ? (
+                    {d.funnelV2Published ? (
                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                        в TG
+                        в Funnel v2
                       </span>
                     ) : (
                       <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">

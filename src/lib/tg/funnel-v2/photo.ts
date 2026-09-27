@@ -35,7 +35,7 @@ type PhotoTpl = {
 
 async function listPhotoTemplates(): Promise<PhotoTpl[]> {
   const rows = await prisma.photoTemplate.findMany({
-    where: { tgPublished: true, published: true },
+    where: { funnelV2Published: true },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
     take: 60,
   });
@@ -329,7 +329,7 @@ export async function handleFunnelV2PhotoCallback(opts: {
   if (tplM) {
     const id = tplM[1]!;
     const row = await prisma.photoTemplate.findFirst({
-      where: { id, tgPublished: true },
+      where: { id, funnelV2Published: true },
     });
     if (!row) {
       if (opts.callbackId) {

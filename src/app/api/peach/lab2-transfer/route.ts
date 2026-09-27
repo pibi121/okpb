@@ -8,16 +8,7 @@ import {
   formatVideoFunnelCategories,
   parseVideoFunnelCategories,
 } from "@/lib/photo-template-animate";
-import {
-  publishPhotoTemplateToTg,
-  unpublishPhotoTemplateFromTg,
-  publishQuickVideoTemplateToTg,
-  unpublishQuickVideoTemplateFromTg,
-} from "@/lib/tg/tg-publish";
-import {
-  publishLoraI2vTemplateToTg,
-  unpublishLoraI2vTemplateFromTg,
-} from "@/lib/lora-i2v-template";
+import { copyAssetToTgCatalog } from "@/lib/tg/tg-publish";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -47,7 +38,11 @@ async function assertLab() {
   return { user };
 }
 
-/** Lab 2.0 — списки шаблонов для переноса в TG-воронку. */
+/**
+ * Lab 2.0 — перенос в Funnel v2 bot (новая воронка).
+ * Не трогает tgPublished / старую воронку / Mini App.
+ * Списки: только шаблоны «по 1 фото» (без LoRA).
+ */
 export async function GET() {
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
@@ -55,7 +50,7 @@ export async function GET() {
   const [photos, videos, loraI2v] = await Promise.all([
     prisma.photoTemplate.findMany({
       orderBy: [
-        { tgPublished: "desc" },
+        { funnelV2Published: "desc" },
         { sortOrder: "asc" },
         { updatedAt: "desc" },
       ],
@@ -65,7 +60,7 @@ export async function GET() {
         title: true,
         notes: true,
         tgDisplayTitle: true,
-        tgPublished: true,
+        funnelV2Published: true,
         sceneCategory: true,
         previewImageUrl: true,
         previewVideoUrl: true,
@@ -76,7 +71,7 @@ export async function GET() {
     }),
     prisma.quickVideoTemplate.findMany({
       orderBy: [
-        { tgPublished: "desc" },
+        { funnelV2Published: "desc" },
         { tgSortOrder: "asc" },
         { updatedAt: "desc" },
       ],
@@ -86,7 +81,7 @@ export async function GET() {
         title: true,
         notes: true,
         tgDisplayTitle: true,
-        tgPublished: true,
+        funnelV2Published: true,
         sceneCategory: true,
         previewPhotoUrl: true,
         previewVideoUrl: true,
@@ -95,9 +90,11 @@ export async function GET() {
         updatedAt: true,
       },
     }),
+    // Только one-photo I2V — LoRA-шаблоны в бот-воронку не идут
     prisma.loraI2vTemplate.findMany({
+      where: { requiresLora: false },
       orderBy: [
-        { tgPublished: "desc" },
+        { funnelV2Published: "desc" },
         { tgSortOrder: "asc" },
         { updatedAt: "desc" },
       ],
@@ -107,7 +104,7 @@ export async function GET() {
         title: true,
         notes: true,
         tgDisplayTitle: true,
-        tgPublished: true,
+        funnelV2Published: true,
         sceneCategory: true,
         previewImageUrl: true,
         previewVideoUrl: true,
@@ -126,7 +123,7 @@ export async function GET() {
       title: r.title,
       notes: r.notes || "",
       displayTitle: r.tgDisplayTitle || "",
-      tgPublished: r.tgPublished,
+      funnelV2Published: r.funnelV2Published,
       sceneCategory: r.sceneCategory || "",
       previewImageUrl: resolveTgCatalogAssetUrl(
         firstUrl(r.previewImageUrl, r.sceneImageUrl),
@@ -143,7 +140,7 @@ export async function GET() {
       title: r.title,
       notes: r.notes || "",
       displayTitle: r.tgDisplayTitle || "",
-      tgPublished: r.tgPublished,
+      funnelV2Published: r.funnelV2Published,
       sceneCategory: r.sceneCategory || "",
       previewImageUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewPhotoUrl)),
       previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
@@ -158,7 +155,7 @@ export async function GET() {
       title: r.title,
       notes: r.notes || "",
       displayTitle: r.tgDisplayTitle || "",
-      tgPublished: r.tgPublished,
+      funnelV2Published: r.funnelV2Published,
       sceneCategory: r.sceneCategory || "",
       previewImageUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewImageUrl)),
       previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
@@ -174,7 +171,7 @@ export async function GET() {
 const itemPatchSchema = z.object({
   kind: z.enum(["photo", "video", "lora_i2v"]),
   id: z.string().min(1).max(80),
-  tgPublished: z.boolean().optional(),
+  funnelV2Published: z.boolean().optional(),
   displayTitle: z.string().max(80).optional(),
   notes: z.string().max(2000).optional(),
   sceneCategory: z.string().max(120).optional(),
@@ -186,7 +183,7 @@ const batchSchema = z.object({
   items: z.array(itemPatchSchema).min(1).max(120),
 });
 
-/** Batch save: галочки + мета TG (название кнопки, категория, описание, превью URL). */
+/** Batch save — только Funnel v2; tgPublished не меняем. */
 export async function PATCH(req: NextRequest) {
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
@@ -217,7 +214,8 @@ async function applyItemPatch(
   item: z.infer<typeof itemPatchSchema>,
 ): Promise<void> {
   const displayTitle = item.displayTitle?.trim();
-  const notes = item.notes !== undefined ? item.notes.trim().slice(0, 2000) : undefined;
+  const notes =
+    item.notes !== undefined ? item.notes.trim().slice(0, 2000) : undefined;
   const sceneCategory =
     item.sceneCategory !== undefined
       ? formatVideoFunnelCategories(
@@ -236,17 +234,31 @@ async function applyItemPatch(
     if (item.previewVideoUrl !== undefined) {
       data.previewVideoUrl = item.previewVideoUrl.trim();
     }
-    if (Object.keys(data).length) {
-      await prisma.photoTemplate.update({ where: { id: item.id }, data });
+    if (item.funnelV2Published !== undefined) {
+      data.funnelV2Published = item.funnelV2Published;
+      if (item.funnelV2Published) {
+        const row = await prisma.photoTemplate.findUnique({
+          where: { id: item.id },
+        });
+        if (row) {
+          const slug = `fv2-pt-${item.id.slice(0, 10)}`;
+          const img = copyAssetToTgCatalog(
+            item.previewImageUrl?.trim() ||
+              row.previewImageUrl ||
+              row.sceneImageUrl,
+            `${slug}-preview`,
+            ".jpg",
+          );
+          if (img) data.previewImageUrl = img;
+          const vidSrc = item.previewVideoUrl?.trim() || row.previewVideoUrl;
+          if (vidSrc) {
+            const vid = copyAssetToTgCatalog(vidSrc, `${slug}-teaser`, ".mp4");
+            if (vid) data.previewVideoUrl = vid;
+          }
+        }
+      }
     }
-    if (item.tgPublished === true) {
-      await publishPhotoTemplateToTg(item.id, {
-        displayTitle,
-        sceneCategory,
-      });
-    } else if (item.tgPublished === false) {
-      await unpublishPhotoTemplateFromTg(item.id);
-    }
+    await prisma.photoTemplate.update({ where: { id: item.id }, data });
     return;
   }
 
@@ -261,24 +273,38 @@ async function applyItemPatch(
     if (item.previewVideoUrl !== undefined) {
       data.previewVideoUrl = item.previewVideoUrl.trim();
     }
-    if (Object.keys(data).length) {
-      await prisma.quickVideoTemplate.update({ where: { id: item.id }, data });
-    }
-    if (item.tgPublished === true) {
-      await publishQuickVideoTemplateToTg(item.id, { displayTitle });
-      if (sceneCategory !== undefined) {
-        await prisma.quickVideoTemplate.update({
+    if (item.funnelV2Published !== undefined) {
+      data.funnelV2Published = item.funnelV2Published;
+      if (item.funnelV2Published) {
+        const row = await prisma.quickVideoTemplate.findUnique({
           where: { id: item.id },
-          data: { sceneCategory },
         });
+        if (row) {
+          const slug = `fv2-qv-${item.id.slice(0, 10)}`;
+          const vidSrc = item.previewVideoUrl?.trim() || row.previewVideoUrl;
+          if (vidSrc) {
+            const vid = copyAssetToTgCatalog(vidSrc, `${slug}-preview`, ".mp4");
+            if (vid) data.previewVideoUrl = vid;
+          }
+          const imgSrc = item.previewImageUrl?.trim() || row.previewPhotoUrl;
+          if (imgSrc) {
+            const img = copyAssetToTgCatalog(imgSrc, `${slug}-thumb`, ".jpg");
+            if (img) data.previewPhotoUrl = img;
+          }
+        }
       }
-    } else if (item.tgPublished === false) {
-      await unpublishQuickVideoTemplateFromTg(item.id);
     }
+    await prisma.quickVideoTemplate.update({ where: { id: item.id }, data });
     return;
   }
 
   if (item.kind === "lora_i2v") {
+    const existing = await prisma.loraI2vTemplate.findFirst({
+      where: { id: item.id, requiresLora: false },
+    });
+    if (!existing) {
+      throw new Error("Только шаблоны по 1 фото (без LoRA)");
+    }
     const data: Record<string, unknown> = {};
     if (displayTitle !== undefined) data.tgDisplayTitle = displayTitle;
     if (notes !== undefined) data.notes = notes;
@@ -289,16 +315,22 @@ async function applyItemPatch(
     if (item.previewVideoUrl !== undefined) {
       data.previewVideoUrl = item.previewVideoUrl.trim();
     }
-    if (Object.keys(data).length) {
-      await prisma.loraI2vTemplate.update({ where: { id: item.id }, data });
+    if (item.funnelV2Published !== undefined) {
+      data.funnelV2Published = item.funnelV2Published;
+      if (item.funnelV2Published) {
+        const slug = `fv2-li2v-${item.id.slice(0, 10)}`;
+        const vidSrc = item.previewVideoUrl?.trim() || existing.previewVideoUrl;
+        if (vidSrc) {
+          const vid = copyAssetToTgCatalog(vidSrc, `${slug}-preview`, ".mp4");
+          if (vid) data.previewVideoUrl = vid;
+        }
+        const imgSrc = item.previewImageUrl?.trim() || existing.previewImageUrl;
+        if (imgSrc) {
+          const img = copyAssetToTgCatalog(imgSrc, `${slug}-thumb`, ".jpg");
+          if (img) data.previewImageUrl = img;
+        }
+      }
     }
-    if (item.tgPublished === true) {
-      await publishLoraI2vTemplateToTg(item.id, {
-        displayTitle,
-        sceneCategory,
-      });
-    } else if (item.tgPublished === false) {
-      await unpublishLoraI2vTemplateFromTg(item.id);
-    }
+    await prisma.loraI2vTemplate.update({ where: { id: item.id }, data });
   }
 }

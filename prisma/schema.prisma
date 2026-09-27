@@ -840,6 +840,8 @@ model QuickVideoTemplate {
   durationSec         Int      @default(6)
   /// Published to Telegram bot + Mini App catalog
   tgPublished         Boolean  @default(false)
+  /// Lab 2.0 Funnel v2 bot (1-photo) — independent of tgPublished / Mini App
+  funnelV2Published   Boolean  @default(false)
   /// Override title shown in TG (empty = use title)
   tgDisplayTitle      String   @default("")
   tgSortOrder         Int      @default(0)
@@ -855,6 +857,7 @@ model QuickVideoTemplate {
   @@index([userId])
   @@index([category, published])
   @@index([tgPublished, tgSortOrder])
+  @@index([funnelV2Published, tgSortOrder])
 }
 
 /// One-time template unlock — no per-use template fee after purchase.
@@ -942,6 +945,8 @@ model LoraI2vTemplate {
   pricePeaches     Int      @default(180)
   published        Boolean  @default(false)
   tgPublished      Boolean  @default(false)
+  /// Lab 2.0 Funnel v2 bot — only one-photo (requiresLora=false) templates
+  funnelV2Published Boolean @default(false)
   tgDisplayTitle   String   @default("")
   tgSortOrder      Int      @default(0)
   /// sex|display|… comma-separated (same as photo filter)
@@ -961,6 +966,7 @@ model LoraI2vTemplate {
   @@index([userId])
   @@index([published, updatedAt])
   @@index([tgPublished, tgSortOrder])
+  @@index([funnelV2Published, tgSortOrder])
 }
 
 // ─── PeachBitch Telegram ───────────────────────────────────────────────────
@@ -1349,6 +1355,8 @@ model PhotoTemplate {
   sortOrder       Int      @default(0)
   /// Published to Telegram bot + Mini App catalog
   tgPublished     Boolean  @default(false)
+  /// Lab 2.0 Funnel v2 bot (позы по 1 фото) — independent of tgPublished
+  funnelV2Published Boolean @default(false)
   /// Override title shown in TG (empty = use title)
   tgDisplayTitle  String   @default("")
   /// sex | display | dirt | public | humiliation | empty = uncategorized
@@ -1364,6 +1372,7 @@ model PhotoTemplate {
 
   @@index([published, sortOrder])
   @@index([tgPublished, sortOrder])
+  @@index([funnelV2Published, sortOrder])
 }
 
 /// TG delivery queue — bot polls and sends to chat.

@@ -12,6 +12,7 @@ import {
   restoreUndressFree,
 } from "@/lib/tg/undress-entitlement";
 import { runUndressBytes } from "@/lib/tg/undress-comfy";
+import { comfyFreeMemory } from "@/lib/comfy-client";
 import { debitPeaches, creditPeaches } from "@/lib/tg/wallet";
 import { enqueueTgOutbox } from "@/lib/tg/session";
 import { useComfy } from "@/lib/metalnode-config";
@@ -92,10 +93,19 @@ export async function startTgUndressGeneration(opts: {
             bytes = await runUndressBytes(photoBytes);
           } catch (first) {
             const msg = first instanceof Error ? first.message : String(first);
-            // Soft recover: transient Comfy execution flakes (opaque "Comfy job error").
-            if (/Comfy job error|ECONN|ETIMEDOUT|socket hang|tunnel/i.test(msg)) {
+            const isOom = /OutOfMemory|CUDA out of memory|ran out of memory/i.test(
+              msg,
+            );
+            // Soft recover: transient Comfy flakes / brief VRAM pressure.
+            // Keep Funnel v2 hooks above; owner OOM path frees VRAM before retry.
+            if (
+              isOom ||
+              /Comfy job error|ECONN|ETIMEDOUT|socket hang|tunnel/i.test(msg)
+            ) {
               console.warn("[undress] retry once after:", msg.slice(0, 160));
-              await new Promise((r) => setTimeout(r, 2500));
+              await comfyFreeMemory();
+              await new Promise((r) => setTimeout(r, isOom ? 12_000 : 2500));
+              await comfyFreeMemory();
               bytes = await runUndressBytes(photoBytes);
             } else {
               throw first;
@@ -104,21 +114,10 @@ export async function startTgUndressGeneration(opts: {
         }
         if (funnelV2Blur) {
           try {
-            const { applyTeaseOverlay } = await import(
+            const { applyTeaseFromLabPreset } = await import(
               "@/lib/tease-overlay-apply"
             );
-            let teasePreset: Record<string, unknown> = { blurPx: 20 };
-            try {
-              const fs = await import("node:fs");
-              const path = await import("node:path");
-              const p = path.join(process.cwd(), "presets", "tease_overlay.json");
-              if (fs.existsSync(p)) {
-                teasePreset = JSON.parse(fs.readFileSync(p, "utf8"));
-              }
-            } catch {
-              /* default */
-            }
-            bytes = await applyTeaseOverlay(bytes, null, teasePreset);
+            bytes = await applyTeaseFromLabPreset(bytes);
           } catch (blurErr) {
             console.warn("[undress] funnel blur failed:", blurErr);
           }

@@ -503,18 +503,9 @@ async function runFunnelV2PhotoGen(opts: {
     const { enqueueGpuJob } = await import("@/lib/gallery-jobs");
     const { GALLERY_PLACEHOLDER_URL } = await import("@/lib/gallery-meta");
     const { runPhotoEditLabBytes } = await import("@/lib/photo-edit-lab");
-    const { applyTeaseOverlay } = await import("@/lib/tease-overlay-apply");
-    let teasePreset: Record<string, unknown> = { blurPx: 20 };
-    try {
-      const fs = await import("node:fs");
-      const path = await import("node:path");
-      const p = path.join(process.cwd(), "presets", "tease_overlay.json");
-      if (fs.existsSync(p)) {
-        teasePreset = JSON.parse(fs.readFileSync(p, "utf8"));
-      }
-    } catch {
-      /* default blur */
-    }
+    const { applyTeaseFromLabPreset } = await import(
+      "@/lib/tease-overlay-apply"
+    );
 
     const item = await prisma.galleryItem.create({
       data: {
@@ -543,7 +534,7 @@ async function runFunnelV2PhotoGen(opts: {
         });
         if (useBlur) {
           try {
-            out = await applyTeaseOverlay(out, null, teasePreset);
+            out = await applyTeaseFromLabPreset(out);
           } catch {
             /* keep clear if tease fails */
           }

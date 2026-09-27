@@ -1,9 +1,48 @@
+import fs from "fs";
+import path from "path";
 import sharp from "sharp";
 import {
   clampTeasePreset,
   teaseBlurSigma,
+  TEASE_PRESET_PATH,
+  TEASE_OVERLAY_DEFAULT_FILE,
   type TeaseOverlayPreset,
 } from "@/lib/tease-overlay";
+
+/** Load lab preset + watermark PNG (presets/ or public/tg/media/). */
+export function loadTeaseAssets(): {
+  preset: TeaseOverlayPreset;
+  overlayBytes: Buffer | null;
+} {
+  let preset = clampTeasePreset(null);
+  try {
+    const p = path.join(process.cwd(), TEASE_PRESET_PATH);
+    if (fs.existsSync(p)) {
+      preset = clampTeasePreset(
+        JSON.parse(fs.readFileSync(p, "utf8")) as Partial<TeaseOverlayPreset>,
+      );
+    }
+  } catch {
+    /* defaults */
+  }
+  const file = preset.overlayFile || TEASE_OVERLAY_DEFAULT_FILE;
+  const candidates = [
+    path.join(process.cwd(), "presets", file),
+    path.join(process.cwd(), "public", "tg", "media", file),
+  ];
+  let overlayBytes: Buffer | null = null;
+  for (const abs of candidates) {
+    try {
+      if (fs.existsSync(abs)) {
+        overlayBytes = fs.readFileSync(abs);
+        break;
+      }
+    } catch {
+      /* next */
+    }
+  }
+  return { preset, overlayBytes };
+}
 
 /** Apply tease blur + PNG overlay (server / TG path). */
 export async function applyTeaseOverlay(
@@ -63,4 +102,12 @@ export async function applyTeaseOverlay(
     ])
     .png()
     .toBuffer();
+}
+
+/** Convenience: blur + watermark from saved lab preset (used by Funnel TG trials). */
+export async function applyTeaseFromLabPreset(
+  photoBytes: Buffer,
+): Promise<Buffer> {
+  const { preset, overlayBytes } = loadTeaseAssets();
+  return applyTeaseOverlay(photoBytes, overlayBytes, preset);
 }

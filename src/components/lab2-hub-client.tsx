@@ -15,7 +15,7 @@ const CARDS: Card[] = [
     href: "/peach/photo-edit",
     title: "Позы (новый Photo Edit)",
     blurb:
-      "Новый генератор воронки: Identity Edit → TG-шаблон (кнопка, описание, тизер, оживление 3/7/12). Без старой формы с LoRA.",
+      "Новый генератор воронки: Identity Edit → TG-шаблон (кнопка, описание, тизер, оживление 4/7/12). Без старой формы с LoRA.",
     status: "ready",
   },
   {
@@ -66,14 +66,14 @@ const CARDS: Card[] = [
     href: "/ops/prices",
     title: "Цены 🍑 (ops)",
     blurb:
-      "video_sec_animate и остальные тарифы. Оживление 3/7/12 сек = цена×секунды.",
+      "video_sec_animate и остальные тарифы. Оживление 4/7/12 сек = цена×секунды.",
     status: "ready",
     external: true,
   },
 ];
 
 const ROADMAP = [
-  "Наполнить контент: позы + тизеры + оживление 3/7/12",
+  "Наполнить контент: позы + тизеры + оживление 4/7/12",
   "Наполнить Story H3 и I2V one_photo с категориями",
   "Технарь: воронка читает PhotoTemplate.animateJson / previewVideoUrl / LoraI2v requiresLora=false",
 ];

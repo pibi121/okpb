@@ -258,7 +258,7 @@ export async function handleFunnelV2PhotoCallback(opts: {
       notes: "Снять одежду с фото максимально реалистично.",
       price: undressPeaches(),
       hasPhoto,
-      previewImageUrl: "/tg/media/undress-example.png",
+      previewVideoUrl: "/tg/media/funnel-undress-preview.mp4",
     });
     return true;
   }

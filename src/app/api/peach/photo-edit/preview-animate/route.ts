@@ -9,7 +9,7 @@ export const maxDuration = 900;
 
 const schema = z.object({
   i2vPrompt: z.string().min(2).max(8000),
-  durationSec: z.union([z.literal(3), z.literal(7), z.literal(12)]),
+  durationSec: z.union([z.literal(4), z.literal(7), z.literal(12)]),
   stillItemId: z.string().min(1).optional(),
   templateId: z.string().min(1).optional(),
 });

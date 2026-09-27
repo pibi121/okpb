@@ -1,7 +1,8 @@
 /**
- * PhotoTemplate animate prompts (TG «оживить» 3/7/12 сек).
+ * PhotoTemplate animate prompts (TG «оживить» 4/7/12 сек).
+ * MiniMax I2V clamp is 4–12s — funnel uses 4 instead of TZ’s 3.
  */
-export const ANIMATE_DURATIONS_SEC = [3, 7, 12] as const;
+export const ANIMATE_DURATIONS_SEC = [4, 7, 12] as const;
 export type AnimateDurationSec = (typeof ANIMATE_DURATIONS_SEC)[number];
 
 export type PhotoAnimateConfig = {
@@ -32,6 +33,11 @@ export function parsePhotoAnimateConfig(raw?: string | null): PhotoAnimateConfig
       const v = String((src as Record<string, unknown>)[String(d)] || "").trim();
       if (v) byDuration[String(d) as `${AnimateDurationSec}`] = v.slice(0, 4000);
     }
+    // Migrate TZ 3s slot → 4s (MiniMax floor).
+    if (!byDuration["4"]) {
+      const legacy3 = String((src as Record<string, unknown>)["3"] || "").trim();
+      if (legacy3) byDuration["4"] = legacy3.slice(0, 4000);
+    }
     return {
       mode,
       sharedPrompt: String(j.sharedPrompt || "").trim().slice(0, 4000),
@@ -57,8 +63,14 @@ export function animatePromptForDuration(
   sec: number,
 ): string {
   if (cfg.mode === "per_duration") {
-    const hit = cfg.byDuration[String(sec) as `${AnimateDurationSec}`]?.trim();
+    const key = String(sec) as `${AnimateDurationSec}`;
+    const hit = cfg.byDuration[key]?.trim();
     if (hit) return hit;
+    // Legacy TZ stored 3s prompts before MiniMax min became 4s.
+    if (sec === 4) {
+      const legacy3 = (cfg.byDuration as Record<string, string>)["3"]?.trim();
+      if (legacy3) return legacy3;
+    }
   }
   return cfg.sharedPrompt.trim();
 }

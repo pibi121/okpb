@@ -1,5 +1,6 @@
 /**
- * Funnel v2 — оживить фото (3 / 7 / 12 сек) from PhotoTemplate.animateJson.
+ * Funnel v2 — оживить фото (4 / 7 / 12 сек) from PhotoTemplate.animateJson.
+ * 4s is the MiniMax I2V minimum (TZ had 3s).
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/photo-template-animate";
 import { enqueuePhotoEditAnimatePreview } from "@/lib/photo-edit-preview-animate";
 import { parseGalleryMeta } from "@/lib/gallery-meta";
+import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 
 function priceLine(peaches: number): string {
   return `${peaches}🍑 (${peaches} рублей / ${peachesToUsdt(peaches)}$)`;
@@ -81,8 +83,8 @@ export async function sendFunnelV2AnimatePicker(opts: {
   const rows: Array<Array<Record<string, unknown>>> = [
     [
       {
-        text: "3 секунды",
-        callback_data: `fv2:ph:anok:${opts.galleryItemId}:3`,
+        text: "4 секунды",
+        callback_data: `fv2:ph:anok:${opts.galleryItemId}:4`,
       },
       {
         text: "7 секунд",
@@ -128,8 +130,8 @@ export async function startFunnelV2Animate(opts: {
   durationSec: number;
 }) {
   const sec = opts.durationSec;
-  if (![3, 7, 12].includes(sec)) {
-    await tgSendMessage(opts.chatId, "Выбери 3, 7 или 12 секунд.");
+  if (![4, 7, 12].includes(sec)) {
+    await tgSendMessage(opts.chatId, "Выбери 4, 7 или 12 секунд.");
     return;
   }
 
@@ -236,7 +238,7 @@ export async function sendFunnelV2EditPrompt(opts: {
   locale: TgLocale;
   galleryItemId: string;
 }) {
-  const price = videoPeachesForSec("animate", 3); // placeholder — use photo edit flat
+  const price = videoPeachesForSec("animate", 4); // floor option for UI hints
   const { undressPeaches } = await import("@/lib/tg-pricing");
   const editPrice = undressPeaches();
 

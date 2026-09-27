@@ -4,7 +4,7 @@
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 
 const COVERS = {
-  hub: ["/tg/media/funnel-hub-cover.png", "/tg/media/onboard-2.mp4"],
+  hub: ["/tg/media/funnel-hub-cover.mp4", "/tg/media/onboard-2.mp4"],
   photoPlaceholder: [
     "/tg/media/funnel-photo-placeholder.png",
     "/tg/media/undress-example.png",
@@ -21,6 +21,11 @@ const COVERS = {
   topup: ["/tg/media/funnel-topup-cover.png", "/tg/media/topup.jpg"],
   videoPlaceholder: [
     "/tg/media/funnel-photo-placeholder.png",
+    "/tg/media/undress-example.png",
+  ],
+  /** Confirm screen for «Раздеть полностью» (pose not in Lab). */
+  undressPreview: [
+    "/tg/media/funnel-undress-preview.mp4",
     "/tg/media/undress-example.png",
   ],
 } as const;

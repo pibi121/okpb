@@ -16,7 +16,7 @@ export default async function PeachPhotoEditLabPage() {
         <h1 className="text-lg font-medium">Позы · Photo Edit (воронка)</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Identity Edit → сохранить шаблон с названием кнопки, описанием,
-          видео-тизером и промптами оживления 3 / 7 / 12 сек.
+          видео-тизером и промптами оживления 4 / 7 / 12 сек.
         </p>
       </div>
       <PhotoEditLabClient

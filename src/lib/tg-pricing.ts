@@ -19,8 +19,9 @@ export const TG_PHOTO_PEACHES = {
 /**
  * Video price = ceil(billableSec × 🍑/sec).
  * billableSec = max(durationSec, TG_VIDEO_MIN_SEC).
+ * MiniMax I2V floor is 4s — keep billing min in sync.
  */
-export const TG_VIDEO_MIN_SEC = 3;
+export const TG_VIDEO_MIN_SEC = 4;
 
 export const TG_VIDEO_SEC_PEACHES = {
   /** Оживление фото (юзер задаёт длительность) */

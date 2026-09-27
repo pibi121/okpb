@@ -370,15 +370,14 @@ export function PhotoFunnelSavePanel({
         className="w-fit rounded-lg border border-white/15 px-3 py-1.5 text-xs hover:border-peach/40"
         onClick={() => setShowAnimate((v) => !v)}
       >
-        {showAnimate ? "▾" : "▸"} Настроить промпт оживления (3 / 7 / 12 сек)
+        {showAnimate ? "▾" : "▸"} Настроить промпт оживления (4 / 7 / 12 сек)
       </button>
 
       {showAnimate ? (
         <div className="flex flex-col gap-2 rounded-xl border border-dashed border-white/15 p-3">
           <p className="text-[11px] text-zinc-500">
             Прогони I2V по промпту на кадре шаблона. Если ролик ок — сохрани
-            промпты кнопкой ниже. Движок MiniMax: минимум 4 сек (запрос 3с →
-            ~4с).
+            промпты кнопкой ниже. Движок MiniMax: минимум 4 сек.
           </p>
           <div className="flex flex-wrap gap-2 text-xs">
             <button
@@ -403,7 +402,7 @@ export function PhotoFunnelSavePanel({
                 setAnimate((a) => ({ ...a, mode: "per_duration" }))
               }
             >
-              Отдельный на 3 / 7 / 12
+              Отдельный на 4 / 7 / 12
             </button>
           </div>
           {animate.mode === "shared" ? (

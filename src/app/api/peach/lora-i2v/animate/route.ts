@@ -12,7 +12,7 @@ const schema = z.object({
   stillItemId: z.string().min(1),
   i2vPrompt: z.string().min(2).max(8000),
   /** 3 allowed for funnel parity; engine clamps to 4–12. */
-  durationSec: z.number().int().min(3).max(12).optional(),
+  durationSec: z.number().int().min(4).max(12).optional(),
   withMusic: z.boolean().optional(),
 });
 

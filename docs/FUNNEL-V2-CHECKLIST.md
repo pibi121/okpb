@@ -12,19 +12,20 @@
 
 | Имя файла | Куда в боте | Формат |
 |-----------|-------------|--------|
-| `funnel-hub-cover.png` | Главное меню (обложка) | PNG / JPG; можно mp4 — тогда переименуйте логику или дайте png |
+| `funnel-hub-cover.mp4` | Главное меню (обложка) | MP4 |
 | `funnel-photo-placeholder.png` | «Раздеть и фото» / «Видео», пока нет своего фото | PNG / JPG |
 | `funnel-need-topup.png` | Блок после 2 пробных генераций (нужно пополнить) | PNG / JPG |
 | `funnel-animate-cover.png` | Экран «Оживить» (если у шаблона нет своей обложки) | PNG / JPG |
 | `funnel-edit-demo.mp4` | Экран «Редактировать фото» | MP4 (короткое демо) |
 | `funnel-topup-cover.png` | Баланс и пополнение | PNG / JPG |
+| `funnel-undress-preview.mp4` | Подтверждение «Раздеть полностью» | MP4 |
 
 Пока файлов нет — бот берёт запасные (`onboard-2`, `undress-example`, `topup.jpg` и т.д.).
 
 **Обложки шаблонов** (поза / видео / оживление) — **не сюда**, а в Lab:
 - фото-позы: Peach → photo-edit / PhotoTemplate → preview image/video + `tgPublished`
 - видео: QuickVideo / Lora I2V → preview + `tgPublished`
-- оживление: в `animateJson` шаблона фото (cover + промпты на 3/7/12 сек)
+- оживление: в `animateJson` шаблона фото (cover + промпты на 4/7/12 сек)
 
 ---
 
@@ -57,7 +58,7 @@ Reply-клава в v2: только **🏠 Главное меню**.
 
 - Hub, фото, видео 1 фото, PRO, топап с бонусами пакетов, earn + метки, help  
 - Blur-триалы ×2, потом блок  
-- Edit / animate 3·7·12  
+- Edit / animate 4·7·12  
 - Отдельный preview-баланс (не трогает обычный)  
 - Старые drips у preview выключены  
 

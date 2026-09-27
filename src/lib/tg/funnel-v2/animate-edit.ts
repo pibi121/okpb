@@ -19,7 +19,7 @@ import {
   parsePhotoAnimateConfig,
 } from "@/lib/photo-template-animate";
 import { enqueuePhotoEditAnimatePreview } from "@/lib/photo-edit-preview-animate";
-import { parseGalleryMeta } from "@/lib/gallery-meta";
+import { parseGalleryMeta, GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
@@ -61,16 +61,12 @@ export async function sendFunnelV2AnimatePicker(opts: {
     opts.userId,
     opts.galleryItemId,
   );
-  let cover = "";
   let cfg = parsePhotoAnimateConfig("");
   if (templateId) {
     const tpl = await prisma.photoTemplate.findUnique({
       where: { id: templateId },
     });
-    if (tpl) {
-      cfg = parsePhotoAnimateConfig(tpl.animateJson);
-      cover = cfg.coverUrl || tpl.previewImageUrl || "";
-    }
+    if (tpl) cfg = parsePhotoAnimateConfig(tpl.animateJson);
   }
 
   const lines = ANIMATE_DURATIONS_SEC.map((sec) => {
@@ -101,26 +97,39 @@ export async function sendFunnelV2AnimatePicker(opts: {
     [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
   ];
 
+  const markup = { inline_keyboard: rows };
+  const stillUrl = (item.resultUrl || "").trim();
   const platformUserId = String(opts.chatId);
   await funnelV2ReplaceUi(platformUserId, opts.chatId, async () => {
-    if (cover) {
+    // Show the generated still that will be animated — not the template teaser.
+    if (stillUrl && stillUrl !== GALLERY_PLACEHOLDER_URL) {
+      try {
+        const { tgDeliverPhoto } = await import("@/lib/tg/deliver-media");
+        return await tgDeliverPhoto({
+          chatId: opts.chatId,
+          url: stillUrl,
+          caption: text,
+          extra: { reply_markup: markup },
+        });
+      } catch {
+        /* fall through */
+      }
       try {
         const { tgSendPhoto } = await import("@/lib/tg/telegram-api");
         return (await tgSendPhoto(
           opts.chatId,
-          cover.startsWith("http") ? cover : tgAbsoluteUrl(cover),
+          stillUrl.startsWith("http") ? stillUrl : tgAbsoluteUrl(stillUrl),
           text,
-          { reply_markup: { inline_keyboard: rows } },
+          { reply_markup: markup },
         )) as { message_id?: number };
       } catch {
         /* fall through */
       }
     }
-    return sendCoverPhoto(opts.chatId, "animate", text, {
-      inline_keyboard: rows,
-    });
+    return sendCoverPhoto(opts.chatId, "animate", text, markup);
   });
   void cfg;
+  void opts.locale;
 }
 
 export async function startFunnelV2Animate(opts: {

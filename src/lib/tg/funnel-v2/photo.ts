@@ -220,6 +220,7 @@ async function sendConfirm(
     `${emoji} <b>${opts.title}</b>\n\n` +
     notesBlock +
     `Стоимость: ${priceLine(opts.price)}\n\n` +
+    `Просто загрузи фотографию любой девушки и получи своё фото!\n\n` +
     `<a href="${tgAbsoluteUrl("/tg/guide")}">🔗 Инструкция, как использовать шаблон и примеры</a>`;
 
   const kb = {

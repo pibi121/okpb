@@ -58,32 +58,31 @@ export async function tgDeliverPhoto(opts: {
   caption?: string;
   extra?: Record<string, unknown>;
   token?: string;
-}): Promise<void> {
+}): Promise<{ message_id?: number } | undefined> {
   const rel = mediaRelativePath(opts.url);
   const bytes = rel ? localBytesFromResultUrl(rel) : null;
   if (bytes?.length) {
-    await tgSendPhotoFile(
+    return (await tgSendPhotoFile(
       opts.chatId,
       bytes,
       filenameFromPath(opts.url, "photo.jpg"),
       opts.caption,
       opts.extra || {},
       opts.token,
-    );
-    return;
+    )) as { message_id?: number };
   }
   if (isPrivateGalleryPath(opts.url)) {
     throw new Error(
       "media_unavailable: private gallery file missing on disk",
     );
   }
-  await tgSendPhoto(
+  return (await tgSendPhoto(
     opts.chatId,
     tgAbsoluteUrl(opts.url),
     opts.caption,
     opts.extra || {},
     opts.token,
-  );
+  )) as { message_id?: number };
 }
 
 export async function tgDeliverVideo(opts: {

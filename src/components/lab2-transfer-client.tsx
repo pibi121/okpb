@@ -98,6 +98,12 @@ export function Lab2TransferClient() {
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [uploadBusy, setUploadBusy] = useState("");
+  const [orderDirty, setOrderDirty] = useState<Record<Kind, boolean>>({
+    photo: false,
+    video: false,
+    lora_i2v: false,
+  });
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const hydrate = useCallback((data: {
     photo: TransferItem[];
@@ -121,6 +127,7 @@ export function Lab2TransferClient() {
     }
     setDrafts(nextDrafts);
     setBaseline(nextBase);
+    setOrderDirty({ photo: false, video: false, lora_i2v: false });
   }, []);
 
   const load = useCallback(async () => {
@@ -167,8 +174,11 @@ export function Lab2TransferClient() {
       const b = baseline[k];
       if (b && isDirty(b, d)) n += 1;
     }
+    for (const kind of ["photo", "video", "lora_i2v"] as Kind[]) {
+      if (orderDirty[kind]) n += 1;
+    }
     return n;
-  }, [drafts, baseline]);
+  }, [drafts, baseline, orderDirty]);
 
   const publishedOnTab = useMemo(
     () =>
@@ -176,6 +186,23 @@ export function Lab2TransferClient() {
         .length,
     [items, drafts],
   );
+
+  const canDrag = !q.trim();
+
+  const reorder = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setLists((prev) => {
+      const arr = [...prev[tab]];
+      const from = arr.findIndex((x) => x.id === fromId);
+      const to = arr.findIndex((x) => x.id === toId);
+      if (from < 0 || to < 0) return prev;
+      const [row] = arr.splice(from, 1);
+      arr.splice(to, 0, row!);
+      return { ...prev, [tab]: arr };
+    });
+    setOrderDirty((prev) => ({ ...prev, [tab]: true }));
+    setOkMsg("");
+  };
 
   const setDraft = (kind: Kind, id: string, patch: Partial<Draft>) => {
     const k = draftKey(kind, id);
@@ -257,30 +284,41 @@ export function Lab2TransferClient() {
     const payload: Array<{
       kind: Kind;
       id: string;
-      funnelV2Published: boolean;
-      displayTitle: string;
-      notes: string;
-      sceneCategory: string;
-      previewImageUrl: string;
-      previewVideoUrl: string;
+      funnelV2Published?: boolean;
+      displayTitle?: string;
+      notes?: string;
+      sceneCategory?: string;
+      previewImageUrl?: string;
+      previewVideoUrl?: string;
+      sortOrder?: number;
     }> = [];
+    const seen = new Set<string>();
 
     for (const kind of ["photo", "video", "lora_i2v"] as Kind[]) {
       for (const it of lists[kind]) {
         const k = draftKey(kind, it.id);
         const d = drafts[k];
         const b = baseline[k];
-        if (!d || !b || !isDirty(b, d)) continue;
-        payload.push({
+        const metaDirty = Boolean(d && b && isDirty(b, d));
+        const ordDirty = orderDirty[kind];
+        if (!metaDirty && !ordDirty) continue;
+        const idx = lists[kind].findIndex((x) => x.id === it.id);
+        const row: (typeof payload)[number] = {
           kind,
           id: it.id,
-          funnelV2Published: d.funnelV2Published,
-          displayTitle: d.displayTitle.trim(),
-          notes: d.notes.trim(),
-          sceneCategory: d.sceneCategory,
-          previewImageUrl: d.previewImageUrl,
-          previewVideoUrl: d.previewVideoUrl,
-        });
+        };
+        if (metaDirty && d) {
+          row.funnelV2Published = d.funnelV2Published;
+          row.displayTitle = d.displayTitle.trim();
+          row.notes = d.notes.trim();
+          row.sceneCategory = d.sceneCategory;
+          row.previewImageUrl = d.previewImageUrl;
+          row.previewVideoUrl = d.previewVideoUrl;
+        }
+        if (ordDirty && idx >= 0) row.sortOrder = idx;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        payload.push(row);
       }
     }
 
@@ -403,6 +441,7 @@ export function Lab2TransferClient() {
         <span className="text-[12px] text-zinc-500">
           На вкладке в Funnel: {publishedOnTab}/{items.length}
           {dirtyCount ? ` · черновик ${dirtyCount}` : ""}
+          {canDrag ? " · перетащи для порядка кнопок" : " · сбрось поиск, чтобы менять порядок"}
         </span>
       </div>
 
@@ -429,7 +468,7 @@ export function Lab2TransferClient() {
       ) : null}
 
       <div className="grid gap-2">
-        {filtered.map((it) => {
+        {filtered.map((it, index) => {
           const k = draftKey(it.kind, it.id);
           const d = drafts[k] || draftFromItem(it);
           const dirty = baseline[k] ? isDirty(baseline[k]!, d) : false;
@@ -441,13 +480,43 @@ export function Lab2TransferClient() {
           return (
             <article
               key={k}
+              draggable={canDrag && !open}
+              onDragStart={() => {
+                if (!canDrag) return;
+                setDragId(it.id);
+              }}
+              onDragEnd={() => setDragId(null)}
+              onDragOver={(e) => {
+                if (!canDrag || !dragId) return;
+                e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (!canDrag || !dragId) return;
+                reorder(dragId, it.id);
+                setDragId(null);
+              }}
               className={`rounded-2xl border p-3 ${
-                dirty
+                dirty || orderDirty[tab]
                   ? "border-peach/35 bg-peach/[0.04]"
                   : "border-white/10 bg-[#121214]/70"
+              } ${dragId === it.id ? "opacity-60" : ""} ${
+                canDrag && !open ? "cursor-grab active:cursor-grabbing" : ""
               }`}
             >
               <div className="flex items-start gap-3">
+                {canDrag ? (
+                  <span
+                    className="mt-2 select-none text-[11px] text-zinc-600"
+                    title="Перетащить"
+                    aria-hidden
+                  >
+                    ⋮⋮
+                  </span>
+                ) : null}
+                <span className="mt-2 w-5 shrink-0 text-center text-[11px] text-zinc-600">
+                  {index + 1}
+                </span>
                 <label className="mt-1 flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"

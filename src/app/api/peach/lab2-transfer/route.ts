@@ -50,7 +50,6 @@ export async function GET() {
   const [photos, videos, loraI2v] = await Promise.all([
     prisma.photoTemplate.findMany({
       orderBy: [
-        { funnelV2Published: "desc" },
         { sortOrder: "asc" },
         { updatedAt: "desc" },
       ],
@@ -71,7 +70,6 @@ export async function GET() {
     }),
     prisma.quickVideoTemplate.findMany({
       orderBy: [
-        { funnelV2Published: "desc" },
         { tgSortOrder: "asc" },
         { updatedAt: "desc" },
       ],
@@ -94,7 +92,6 @@ export async function GET() {
     prisma.loraI2vTemplate.findMany({
       where: { requiresLora: false },
       orderBy: [
-        { funnelV2Published: "desc" },
         { tgSortOrder: "asc" },
         { updatedAt: "desc" },
       ],
@@ -177,6 +174,8 @@ const itemPatchSchema = z.object({
   sceneCategory: z.string().max(120).optional(),
   previewImageUrl: z.string().max(2000).optional(),
   previewVideoUrl: z.string().max(2000).optional(),
+  /** Button order in Funnel v2 (PhotoTemplate.sortOrder / tgSortOrder). */
+  sortOrder: z.number().int().min(0).max(9999).optional(),
 });
 
 const batchSchema = z.object({
@@ -228,6 +227,7 @@ async function applyItemPatch(
     if (displayTitle !== undefined) data.tgDisplayTitle = displayTitle;
     if (notes !== undefined) data.notes = notes;
     if (sceneCategory !== undefined) data.sceneCategory = sceneCategory;
+    if (item.sortOrder !== undefined) data.sortOrder = item.sortOrder;
     if (item.previewImageUrl !== undefined) {
       data.previewImageUrl = item.previewImageUrl.trim();
     }
@@ -267,6 +267,7 @@ async function applyItemPatch(
     if (displayTitle !== undefined) data.tgDisplayTitle = displayTitle;
     if (notes !== undefined) data.notes = notes;
     if (sceneCategory !== undefined) data.sceneCategory = sceneCategory;
+    if (item.sortOrder !== undefined) data.tgSortOrder = item.sortOrder;
     if (item.previewImageUrl !== undefined) {
       data.previewPhotoUrl = item.previewImageUrl.trim();
     }
@@ -309,6 +310,7 @@ async function applyItemPatch(
     if (displayTitle !== undefined) data.tgDisplayTitle = displayTitle;
     if (notes !== undefined) data.notes = notes;
     if (sceneCategory !== undefined) data.sceneCategory = sceneCategory;
+    if (item.sortOrder !== undefined) data.tgSortOrder = item.sortOrder;
     if (item.previewImageUrl !== undefined) {
       data.previewImageUrl = item.previewImageUrl.trim();
     }

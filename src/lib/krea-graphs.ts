@@ -330,7 +330,7 @@ export const KREA_UNDRESS_EXTRA_LORAS: Array<{ name: string; strength: number }>
   ];
 
 export const KREA_UNDRESS_PROMPT =
-  "completely nude, natural skin texture with visible pores, bare breasts, remove all clothes, no fabric. Keep the exact same face identity, hair, body proportions, pose, camera angle and location/background.";
+  "completely nude, natural skin texture with visible pores, keep the exact same face identity, hair, body proportions, pose, camera angle and location, no clothes, no fabric";
 
 
 /**

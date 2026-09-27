@@ -48,19 +48,21 @@ export function TeaseLabClient() {
           preset?: TeaseOverlayPreset;
           hasOverlayFile?: boolean;
           overlayUrl?: string | null;
+          overlayDataUrl?: string | null;
         }) => {
           if (d.preset) setPreset({ ...DEFAULT_TEASE_PRESET, ...d.preset });
-          if (d.hasOverlayFile && d.overlayUrl) {
+          const src = d.overlayDataUrl || d.overlayUrl || null;
+          if (d.hasOverlayFile && src) {
             if (overlayUrlRef.current?.startsWith("blob:")) {
               URL.revokeObjectURL(overlayUrlRef.current);
             }
-            overlayUrlRef.current = d.overlayUrl;
-            setOverlayUrl(d.overlayUrl);
+            overlayUrlRef.current = src;
+            setOverlayUrl(src);
             setOverlayReady(true);
-            setMsg("Вотермарк загружен с сервера (сохранённый пресет).");
+            setMsg("Вотермарк с сервера подключён к превью.");
           } else if (d.hasOverlayFile === false) {
             setMsg(
-              "Пресет есть, но PNG вотермарка нет на диске — загрузи снова и сохрани.",
+              "Пресет есть, но PNG вотермарка нет на диске — загрузи PNG и нажми «Сохранить пресет».",
             );
           }
         },
@@ -279,12 +281,15 @@ export function TeaseLabClient() {
             onChange={(e) => onOverlay(e.target.files?.[0] || null)}
             className="text-xs text-zinc-400"
           />
-          {overlayFile ? (
+          {overlayUrl ? (
             <span className="text-xs text-peach">
-              {overlayReady ? "на превью ✓" : "грузим…"} · {overlayFile.name}
+              {overlayReady ? "вотермарк на превью ✓" : "грузим вотермарк…"}
+              {overlayFile ? ` · ${overlayFile.name}` : " · с сервера"}
             </span>
           ) : (
-            <span className="text-xs text-zinc-600">файл ещё не выбран</span>
+            <span className="text-xs text-zinc-600">
+              файл ещё не выбран и на сервере PNG нет
+            </span>
           )}
         </label>
 

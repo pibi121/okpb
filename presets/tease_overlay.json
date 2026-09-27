@@ -1,11 +1,11 @@
 ﻿{
   "version": 1,
-  "blurPx": 20,
+  "blurPx": 24,
   "overlayScale": 0.83,
-  "overlayOpacity": 0.42,
+  "overlayOpacity": 0.85,
   "overlayX": 0.5,
   "overlayY": 0.7,
   "overlayFile": "tease_cta.png",
-  "updatedAt": "2026-09-26T04:09:22.094Z",
-  "notes": "Owner-tuned in /peach/tease-lab — wire into TG no-balance funnel"
+  "updatedAt": "2026-09-27T02:35:00.000Z",
+  "notes": "Owner-tuned — blur +20%, overlay visible in lab via data URL"
 }

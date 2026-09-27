@@ -20,7 +20,12 @@ function presetAbs() {
 function overlayAbs(file: string) {
   const safe =
     file.replace(/[/\\]/g, "").slice(0, 120) || TEASE_OVERLAY_DEFAULT_FILE;
-  return path.join(process.cwd(), "presets", safe);
+  const primary = path.join(process.cwd(), "presets", safe);
+  if (fs.existsSync(primary)) return primary;
+  // Deployed fallback (committed under public/)
+  const pub = path.join(process.cwd(), "public", "tg", "media", safe);
+  if (fs.existsSync(pub)) return pub;
+  return primary;
 }
 
 function readPreset(): TeaseOverlayPreset {
@@ -64,6 +69,10 @@ export async function GET(req: NextRequest) {
     hasOverlayFile,
     overlayUrl: hasOverlayFile
       ? `/api/peach/tease-lab/preset?overlay=1&t=${encodeURIComponent(preset.updatedAt || "1")}`
+      : null,
+    // Data URL so canvas preview works without a second cookie'd Image() fetch.
+    overlayDataUrl: hasOverlayFile
+      ? `data:image/png;base64,${fs.readFileSync(overlayPath).toString("base64")}`
       : null,
   });
 }
@@ -109,12 +118,16 @@ export async function POST(req: NextRequest) {
   }
   fs.writeFileSync(presetAbs(), JSON.stringify(preset, null, 2), "utf8");
   const hasOverlayFile = fs.existsSync(overlayAbs(preset.overlayFile));
+  const overlayPath = overlayAbs(preset.overlayFile);
   return NextResponse.json({
     preset,
     ok: true,
     hasOverlayFile,
     overlayUrl: hasOverlayFile
       ? `/api/peach/tease-lab/preset?overlay=1&t=${encodeURIComponent(preset.updatedAt || "1")}`
+      : null,
+    overlayDataUrl: hasOverlayFile
+      ? `data:image/png;base64,${fs.readFileSync(overlayPath).toString("base64")}`
       : null,
   });
 }

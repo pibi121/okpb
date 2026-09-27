@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { mapGalleryItem, parseGalleryMeta, isSystemIdentityPackItem } from "@/lib/gallery-meta";
+import {
+  mapGalleryItem,
+  parseGalleryMeta,
+  isHiddenFromTgMiniAppGallery,
+} from "@/lib/gallery-meta";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import { cleanupLegacyTgGalleryItems } from "@/lib/tg/tg-gallery-cleanup";
 
@@ -20,7 +24,10 @@ export async function GET(req: Request) {
     const row = await prisma.galleryItem.findFirst({
       where: { id, userId },
     });
-    if (!row) {
+    if (
+      !row ||
+      isHiddenFromTgMiniAppGallery({ metaJson: row.metaJson, title: row.title })
+    ) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
     return NextResponse.json({ item: mapGalleryItem(row) });
@@ -38,7 +45,9 @@ export async function GET(req: Request) {
   const root = items.filter((i) => {
     const m = parseGalleryMeta(i.metaJson);
     if (typeof m.folderId === "string") return false;
-    if (isSystemIdentityPackItem({ metaJson: i.metaJson, title: i.title })) return false;
+    if (isHiddenFromTgMiniAppGallery({ metaJson: i.metaJson, title: i.title })) {
+      return false;
+    }
     return true;
   });
 

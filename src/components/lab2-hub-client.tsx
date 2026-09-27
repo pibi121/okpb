@@ -12,6 +12,13 @@ type Card = {
 
 const CARDS: Card[] = [
   {
+    href: "/peach/lab2/transfer",
+    title: "Перенос шаблонов",
+    blurb:
+      "Списки фото / MiniMax / Krea→MiniMax. Галочки «в воронку», быстрый edit названия кнопки, категории, превью, описания → Сохранить.",
+    status: "ready",
+  },
+  {
     href: "/peach/photo-edit",
     title: "Позы (новый Photo Edit)",
     blurb:
@@ -27,7 +34,7 @@ const CARDS: Card[] = [
   {
     href: "/peach/tg-catalog",
     title: "TG каталог",
-    blurb: "Публикация / порядок шаблонов для бота.",
+    blurb: "Промпты и тонкая настройка шаблонов бота.",
     status: "ready",
   },
   {

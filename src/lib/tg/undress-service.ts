@@ -71,6 +71,7 @@ export async function startTgUndressGeneration(opts: {
         source: opts.funnelV2 || opts.funnelV2Blur ? "funnel_v2" : "tg_undress",
         funnelV2: Boolean(opts.funnelV2 || opts.funnelV2Blur),
         blurTrial: Boolean(opts.funnelV2Blur),
+        ...(opts.funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
       }),
     },
   });
@@ -140,6 +141,7 @@ export async function startTgUndressGeneration(opts: {
               source: funnelV2 || funnelV2Blur ? "funnel_v2" : "tg_undress",
               funnelV2: funnelV2 || funnelV2Blur,
               blurTrial: funnelV2Blur,
+              ...(funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
             }),
           },
         });

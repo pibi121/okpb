@@ -6,6 +6,8 @@ export type GalleryMeta = {
   jobAction?: string;
   identityPack?: boolean;
   hiddenFromTgGallery?: boolean;
+  /** Funnel v2 unpaid trial — blurred still; keep in DB for TG chat, hide in Mini App gallery */
+  blurTrial?: boolean;
   [key: string]: unknown;
 };
 
@@ -33,6 +35,18 @@ export function isSystemIdentityPackItem(opts: {
   if (typeof opts.title === "string" && /^Identity\s*·/i.test(opts.title.trim())) {
     return true;
   }
+  return false;
+}
+
+/** Items that must not appear in TG Mini App gallery (blur trials, identity packs, etc.). */
+export function isHiddenFromTgMiniAppGallery(opts: {
+  metaJson?: string | null;
+  title?: string | null;
+}): boolean {
+  if (isSystemIdentityPackItem(opts)) return true;
+  const m = parseGalleryMeta(opts.metaJson);
+  if (m.blurTrial === true) return true;
+  if (m.hiddenFromTgGallery === true) return true;
   return false;
 }
 

@@ -40,6 +40,7 @@ export const ADMIN_NAV: NavLink[] = [
  */
 export const LAB2_NAV: NavLink[] = [
   { href: "/peach/lab2", label: "Обзор 2.0", exact: true },
+  { href: "/peach/lab2/transfer", label: "Перенос шаблонов" },
   { href: "/peach/photo-edit", label: "Позы (новый Edit)" },
   { href: "/peach/tg-photo", label: "TG фото-шаблоны" },
   { href: "/peach/tg-catalog", label: "TG каталог" },
@@ -55,6 +56,7 @@ export const ALL_LAB_HREFS: string[] = [
   ...ADMIN_NAV.map((l) => l.href),
   ...LAB2_NAV.map((l) => l.href),
   "/peach/lab2",
+  "/peach/lab2/transfer",
 ];
 
 export function displayUserName(name: string | null, email: string): string {

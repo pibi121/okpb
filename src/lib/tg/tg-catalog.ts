@@ -2,7 +2,7 @@
  * TG bot + Mini App featured catalog (templates & studio cast sync).
  */
 import { prisma } from "@/lib/db";
-import { GALLERY_PLACEHOLDER_URL, isSystemIdentityPackItem } from "@/lib/gallery-meta";
+import { GALLERY_PLACEHOLDER_URL, isHiddenFromTgMiniAppGallery } from "@/lib/gallery-meta";
 import { seedCastCoverUrl } from "@/lib/tg/tg-catalog-seed";
 import { studioCastCoverUrl } from "@/lib/tg/tg-static-previews";
 import { resolveStudioCastCoverUrl } from "@/lib/tg/studio-cast";
@@ -322,7 +322,9 @@ export async function pickCharacterCoverUrl(
   });
   const valid = rows.filter((r) => {
     if (r.resultUrl.startsWith("data:image/svg")) return false;
-    if (isSystemIdentityPackItem({ metaJson: r.metaJson, title: r.title })) return false;
+    if (isHiddenFromTgMiniAppGallery({ metaJson: r.metaJson, title: r.title })) {
+      return false;
+    }
     try {
       const m = JSON.parse(r.metaJson || "{}") as { mock?: boolean };
       if (m.mock && r.resultUrl === GALLERY_PLACEHOLDER_URL) return false;

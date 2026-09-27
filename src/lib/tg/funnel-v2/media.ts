@@ -32,6 +32,8 @@ const COVERS = {
 
 export type FunnelCoverSlot = keyof typeof COVERS;
 
+export type FunnelSentMessage = { message_id?: number };
+
 export function funnelCoverUrl(slot: FunnelCoverSlot): string {
   const primary = COVERS[slot][0]!;
   return tgAbsoluteUrl(primary);
@@ -47,7 +49,7 @@ export async function sendCoverPhoto(
   slot: FunnelCoverSlot,
   caption: string,
   reply_markup: Record<string, unknown>,
-) {
+): Promise<FunnelSentMessage | undefined> {
   const { tgSendPhoto, tgSendMessage, tgSendVideo } = await import(
     "@/lib/tg/telegram-api"
   );
@@ -55,14 +57,18 @@ export async function sendCoverPhoto(
   for (const url of urls) {
     try {
       if (/\.(mp4|webm)(\?|$)/i.test(url)) {
-        await tgSendVideo(chatId, url, caption, { reply_markup });
-        return;
+        return (await tgSendVideo(chatId, url, caption, {
+          reply_markup,
+        })) as FunnelSentMessage;
       }
-      await tgSendPhoto(chatId, url, caption, { reply_markup });
-      return;
+      return (await tgSendPhoto(chatId, url, caption, {
+        reply_markup,
+      })) as FunnelSentMessage;
     } catch {
       /* try next */
     }
   }
-  await tgSendMessage(chatId, caption, { reply_markup });
+  return (await tgSendMessage(chatId, caption, {
+    reply_markup,
+  })) as FunnelSentMessage;
 }

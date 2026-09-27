@@ -18,6 +18,7 @@ import {
   getFunnelBalance,
 } from "@/lib/tg/funnel-v2/mode";
 import { saveGalleryBinary } from "@/lib/local-store";
+import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 const PAGE_SIZE = 6;
 
@@ -79,7 +80,7 @@ export async function sendFunnelV2PhotoHub(
     ? "<b>Фотография загружена</b>, но ты можешь заменить её на другую"
     : "<b>Фотография пока не загружена</b>";
   const body =
-    `${header}\n` +
+    `${header}\n\n` +
     `Просто выбери шаблон и сделай с ней всё, что захочешь 😍`;
 
   const rows: Array<Array<Record<string, unknown>>> = [
@@ -125,27 +126,31 @@ export async function sendFunnelV2PhotoHub(
   ]);
 
   const markup = { inline_keyboard: rows };
-  try {
-    if (photoUrl) {
-      await tgSendPhoto(
-        chatId,
-        photoUrl.startsWith("http") ? photoUrl : tgAbsoluteUrl(photoUrl),
-        body,
-        { reply_markup: markup },
-      );
-    } else {
+  await funnelV2ReplaceUi(platformUserId, chatId, async () => {
+    try {
+      if (photoUrl) {
+        return (await tgSendPhoto(
+          chatId,
+          photoUrl.startsWith("http") ? photoUrl : tgAbsoluteUrl(photoUrl),
+          body,
+          { reply_markup: markup },
+        )) as { message_id?: number };
+      }
       const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
-      await sendCoverPhoto(chatId, "photoPlaceholder", body, markup);
+      return sendCoverPhoto(chatId, "photoPlaceholder", body, markup);
+    } catch {
+      return (await tgSendMessage(chatId, body, {
+        reply_markup: markup,
+      })) as { message_id?: number };
     }
-  } catch {
-    await tgSendMessage(chatId, body, { reply_markup: markup });
-  }
+  });
   void userId;
   void locale;
 }
 
 async function sendConfirm(
   chatId: number,
+  platformUserId: string,
   opts: {
     kind: "ud" | "tpl";
     id: string;
@@ -158,10 +163,13 @@ async function sendConfirm(
   },
 ) {
   const emoji = opts.kind === "ud" ? "📷" : "📷";
+  const notesBlock = opts.notes
+    ? `${opts.notes.slice(0, 400)}\n\n`
+    : "";
   const text =
-    `${emoji} <b>${opts.title}</b>\n` +
-    `${opts.notes ? opts.notes.slice(0, 400) + "\n" : ""}` +
-    `Стоимость: ${priceLine(opts.price)}\n` +
+    `${emoji} <b>${opts.title}</b>\n\n` +
+    notesBlock +
+    `Стоимость: ${priceLine(opts.price)}\n\n` +
     `<a href="${tgAbsoluteUrl("/tg/guide")}">🔗 Инструкция, как использовать шаблон и примеры</a>`;
 
   const kb = {
@@ -183,29 +191,31 @@ async function sendConfirm(
 
   const vid = (opts.previewVideoUrl || "").trim();
   const img = (opts.previewImageUrl || "").trim();
-  try {
-    if (vid) {
-      await tgSendVideo(
-        chatId,
-        vid.startsWith("http") ? vid : tgAbsoluteUrl(vid),
-        text,
-        { reply_markup: kb },
-      );
-      return;
+  await funnelV2ReplaceUi(platformUserId, chatId, async () => {
+    try {
+      if (vid) {
+        return (await tgSendVideo(
+          chatId,
+          vid.startsWith("http") ? vid : tgAbsoluteUrl(vid),
+          text,
+          { reply_markup: kb },
+        )) as { message_id?: number };
+      }
+      if (img) {
+        return (await tgSendPhoto(
+          chatId,
+          img.startsWith("http") ? img : tgAbsoluteUrl(img),
+          text,
+          { reply_markup: kb },
+        )) as { message_id?: number };
+      }
+    } catch {
+      /* fall through */
     }
-    if (img) {
-      await tgSendPhoto(
-        chatId,
-        img.startsWith("http") ? img : tgAbsoluteUrl(img),
-        text,
-        { reply_markup: kb },
-      );
-      return;
-    }
-  } catch {
-    /* fall through */
-  }
-  await tgSendMessage(chatId, text, { reply_markup: kb });
+    return (await tgSendMessage(chatId, text, {
+      reply_markup: kb,
+    })) as { message_id?: number };
+  });
   void opts.hasPhoto;
 }
 
@@ -232,9 +242,11 @@ export async function handleFunnelV2PhotoCallback(opts: {
       chatState: "funnel_v2_awaiting_photo",
       pending: { funnelV2AwaitReplace: true },
     });
-    await tgSendMessage(
-      chatId,
-      "Пришли новое фото одним сообщением (файл или сжатое фото).",
+    await funnelV2ReplaceUi(platformUserId, chatId, () =>
+      tgSendMessage(
+        chatId,
+        "Пришли новое фото одним сообщением (файл или сжатое фото).",
+      ),
     );
     return true;
   }
@@ -251,7 +263,7 @@ export async function handleFunnelV2PhotoCallback(opts: {
   }
   if (data === FV2.phUndress) {
     const hasPhoto = Boolean(await activePhotoUrl(platformUserId));
-    await sendConfirm(chatId, {
+    await sendConfirm(chatId, platformUserId, {
       kind: "ud",
       id: "undress",
       title: "Раздеть полностью",
@@ -274,7 +286,7 @@ export async function handleFunnelV2PhotoCallback(opts: {
       }
       return true;
     }
-    await sendConfirm(chatId, {
+    await sendConfirm(chatId, platformUserId, {
       kind: "tpl",
       id: row.id,
       title: row.tgDisplayTitle || row.title,
@@ -303,9 +315,11 @@ export async function handleFunnelV2PhotoCallback(opts: {
         chatState: "funnel_v2_awaiting_photo",
         pending: { funnelV2PendingConfirm: { kind, id } },
       });
-      await tgSendMessage(
-        chatId,
-        "Сначала пришли фото одним сообщением, потом снова нажми Подтвердить.",
+      await funnelV2ReplaceUi(platformUserId, chatId, () =>
+        tgSendMessage(
+          chatId,
+          "Сначала пришли фото одним сообщением, потом снова нажми Подтвердить.",
+        ),
       );
       return true;
     }
@@ -362,24 +376,26 @@ async function runFunnelV2PhotoGen(opts: {
 
   if (bal < price && blurUsed >= 2) {
     const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
-    await sendCoverPhoto(
-      opts.chatId,
-      "needTopup",
-      "Сейчас я не могу сгенерировать фото для тебя, пока ты не пополнишь баланс. " +
-        "Достаточно один раз пополнить, чтобы генерировать фото и видео по 1 фото на любой вкус, без размытия и получать максимум удовольствия.\n" +
-        "Сейчас тебя ждёт много бонусных 🍑 за пополнение баланса. Нажми кнопку ниже, чтобы проверить",
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "Пополнить баланс 🍑",
-              callback_data: FV2.topup,
-              style: "success",
-            },
+    await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+      sendCoverPhoto(
+        opts.chatId,
+        "needTopup",
+        "Сейчас я не могу сгенерировать фото для тебя, пока ты не пополнишь баланс.\n\n" +
+          "Достаточно один раз пополнить, чтобы генерировать фото и видео по 1 фото на любой вкус, без размытия и получать максимум удовольствия.\n\n" +
+          "Сейчас тебя ждёт много бонусных 🍑 за пополнение баланса. Нажми кнопку ниже, чтобы проверить",
+        {
+          inline_keyboard: [
+            [
+              {
+                text: "Пополнить баланс 🍑",
+                callback_data: FV2.topup,
+                style: "success",
+              },
+            ],
+            [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
           ],
-          [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
-        ],
-      },
+        },
+      ),
     );
     return;
   }
@@ -398,9 +414,11 @@ async function runFunnelV2PhotoGen(opts: {
     });
   }
 
-  await tgSendMessage(
-    opts.chatId,
-    "⏳ <b>Оу, сейчас я буду творить!</b>\nМне нужно немного времени, скоро отправлю фото",
+  await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+    tgSendMessage(
+      opts.chatId,
+      "⏳ <b>Оу, сейчас я буду творить!</b>\n\nМне нужно немного времени, скоро отправлю фото",
+    ),
   );
 
   try {

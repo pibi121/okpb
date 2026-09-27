@@ -21,6 +21,7 @@ import {
 import { enqueuePhotoEditAnimatePreview } from "@/lib/photo-edit-preview-animate";
 import { parseGalleryMeta } from "@/lib/gallery-meta";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
+import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 function priceLine(peaches: number): string {
   return `${peaches}🍑 (${peaches} рублей / ${peachesToUsdt(peaches)}$)`;
@@ -78,7 +79,7 @@ export async function sendFunnelV2AnimatePicker(opts: {
   });
 
   const text =
-    `<b>Стоимость оживления этой фотографии:</b>\n` + lines.join("\n");
+    `<b>Стоимость оживления этой фотографии:</b>\n\n` + lines.join("\n\n");
 
   const rows: Array<Array<Record<string, unknown>>> = [
     [
@@ -100,23 +101,24 @@ export async function sendFunnelV2AnimatePicker(opts: {
     [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
   ];
 
-  if (cover) {
-    try {
-      const { tgSendPhoto } = await import("@/lib/tg/telegram-api");
-      const { tgAbsoluteUrl } = await import("@/lib/tg/media-assets");
-      await tgSendPhoto(
-        opts.chatId,
-        cover.startsWith("http") ? cover : tgAbsoluteUrl(cover),
-        text,
-        { reply_markup: { inline_keyboard: rows } },
-      );
-      return;
-    } catch {
-      /* fall through */
+  const platformUserId = String(opts.chatId);
+  await funnelV2ReplaceUi(platformUserId, opts.chatId, async () => {
+    if (cover) {
+      try {
+        const { tgSendPhoto } = await import("@/lib/tg/telegram-api");
+        return (await tgSendPhoto(
+          opts.chatId,
+          cover.startsWith("http") ? cover : tgAbsoluteUrl(cover),
+          text,
+          { reply_markup: { inline_keyboard: rows } },
+        )) as { message_id?: number };
+      } catch {
+        /* fall through */
+      }
     }
-  }
-  await sendCoverPhoto(opts.chatId, "animate", text, {
-    inline_keyboard: rows,
+    return sendCoverPhoto(opts.chatId, "animate", text, {
+      inline_keyboard: rows,
+    });
   });
   void cfg;
 }
@@ -140,23 +142,25 @@ export async function startFunnelV2Animate(opts: {
   const price = videoPeachesForSec("animate", sec);
   const bal = await getFunnelBalance(user);
   if (bal < price) {
-    await tgSendMessage(
-      opts.chatId,
-      "Сейчас я не могу сгенерировать для тебя, пока ты не пополнишь баланс.",
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "Пополнить баланс 🍑",
-                callback_data: FV2.topup,
-                style: "success",
-              },
+    await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+      tgSendMessage(
+        opts.chatId,
+        "Сейчас я не могу сгенерировать для тебя, пока ты не пополнишь баланс.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Пополнить баланс 🍑",
+                  callback_data: FV2.topup,
+                  style: "success",
+                },
+              ],
+              [{ text: "⬅️ Главное меню", callback_data: FV2.hub }],
             ],
-            [{ text: "⬅️ Главное меню", callback_data: FV2.hub }],
-          ],
+          },
         },
-      },
+      ),
     );
     return;
   }
@@ -183,9 +187,11 @@ export async function startFunnelV2Animate(opts: {
     return;
   }
 
-  await tgSendMessage(
-    opts.chatId,
-    "⏳ <b>Оу, сейчас я буду творить!</b>\nМне нужно немного времени, скоро отправлю видео",
+  await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+    tgSendMessage(
+      opts.chatId,
+      "⏳ <b>Оу, сейчас я буду творить!</b>\n\nМне нужно немного времени, скоро отправлю видео",
+    ),
   );
 
   try {
@@ -248,16 +254,18 @@ export async function sendFunnelV2EditPrompt(opts: {
   });
 
   const text =
-    `Хочешь добавить что-то своё на её теле? Татуировку, изменить волосы, увеличить/уменьшить размер груди? Да что угодно, без проблем!\n` +
-    `Просто отправь своими словами в 1 сообщении, что нужно добавить на сделанную фотографию и PeachBitch сделает это\n` +
+    `Хочешь добавить что-то своё на её теле? Татуировку, изменить волосы, увеличить/уменьшить размер груди? Да что угодно, без проблем!\n\n` +
+    `Просто отправь своими словами в 1 сообщении, что нужно добавить на сделанную фотографию и PeachBitch сделает это\n\n` +
     `Стоимость: ${priceLine(editPrice)}\n\n` +
     `<a href="${tgAbsoluteUrl("/tg/guide")}">🔗 Инструкция, как редактировать и правила</a>`;
 
-  await sendCoverPhoto(opts.chatId, "editDemo", text, {
-    inline_keyboard: [
-      [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
-    ],
-  });
+  await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+    sendCoverPhoto(opts.chatId, "editDemo", text, {
+      inline_keyboard: [
+        [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
+      ],
+    }),
+  );
   void price;
   void opts.userId;
   void opts.locale;
@@ -281,23 +289,25 @@ export async function handleFunnelV2EditText(opts: {
       chatState: "idle",
       clearPending: true,
     });
-    await tgSendMessage(
-      opts.chatId,
-      "Сейчас я не могу сгенерировать фото для тебя, пока ты не пополнишь баланс.",
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "Пополнить баланс 🍑",
-                callback_data: FV2.topup,
-                style: "success",
-              },
+    await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+      tgSendMessage(
+        opts.chatId,
+        "Сейчас я не могу сгенерировать фото для тебя, пока ты не пополнишь баланс.",
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Пополнить баланс 🍑",
+                  callback_data: FV2.topup,
+                  style: "success",
+                },
+              ],
+              [{ text: "⬅️ Главное меню", callback_data: FV2.hub }],
             ],
-            [{ text: "⬅️ Главное меню", callback_data: FV2.hub }],
-          ],
+          },
         },
-      },
+      ),
     );
     return;
   }
@@ -320,9 +330,11 @@ export async function handleFunnelV2EditText(opts: {
     chatState: "idle",
     clearPending: true,
   });
-  await tgSendMessage(
-    opts.chatId,
-    "⏳ <b>Оу, сейчас я буду творить!</b>\nМне нужно немного времени, скоро отправлю фото",
+  await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+    tgSendMessage(
+      opts.chatId,
+      "⏳ <b>Оу, сейчас я буду творить!</b>\n\nМне нужно немного времени, скоро отправлю фото",
+    ),
   );
 
   const { localBytesFromResultUrl } = await import("@/lib/peach-lab");

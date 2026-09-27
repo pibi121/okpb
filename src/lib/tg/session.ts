@@ -92,6 +92,8 @@ export type TgPending = {
   funnelV2TopupBonus?: number;
   /** Last silent message that carries the bottom reply keyboard */
   replyKbCarrierId?: number;
+  /** Funnel v2 navigable UI message (menus/confirms) — replaced on each step */
+  funnelV2UiMessageId?: number;
 };
 
 export async function getTgSession(platformUserId: string) {
@@ -140,8 +142,14 @@ export async function setTgSession(
   ) {
     pending.replyKbCarrierId = prevPending.replyKbCarrierId;
   }
-  // Funnel v2 ref photo must survive hub/menu clears until user replaces it.
+  // Funnel v2 UI carrier + ref photo survive hub/menu clears.
   if (patch.clearPending) {
+    if (
+      prevPending.funnelV2UiMessageId != null &&
+      patch.pending?.funnelV2UiMessageId === undefined
+    ) {
+      pending.funnelV2UiMessageId = prevPending.funnelV2UiMessageId;
+    }
     if (
       prevPending.funnelV2PhotoUrl &&
       patch.pending?.funnelV2PhotoUrl === undefined

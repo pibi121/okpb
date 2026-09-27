@@ -24,6 +24,7 @@ import {
   addCharacterPhotoFromBuffer,
 } from "@/lib/tg/character-service";
 import { saveGalleryBinary } from "@/lib/local-store";
+import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 const PAGE_SIZE = 6;
 
@@ -119,8 +120,8 @@ export async function sendFunnelV2VideoHub(
     ? "<b>Фотография загружена</b>, но ты можешь заменить её на другую"
     : "<b>Фотография пока не загружена</b>";
   const body =
-    `${header}\n` +
-    `Здесь тебе доступны шаблоны обычного секса 🍓, сюжетные🍿, с диалогами 💬\n` +
+    `${header}\n\n` +
+    `Здесь тебе доступны шаблоны обычного секса 🍓, сюжетные🍿, с диалогами 💬\n\n` +
     `Выбирай то, что тебе хочется с ней сделать 😜`;
 
   const rows: Array<Array<Record<string, unknown>>> = [];
@@ -164,34 +165,36 @@ export async function sendFunnelV2VideoHub(
     { text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub },
   ]);
 
-  try {
-    if (photoUrl) {
-      await tgSendPhoto(
-        chatId,
-        photoUrl.startsWith("http") ? photoUrl : tgAbsoluteUrl(photoUrl),
-        body,
-        { reply_markup: { inline_keyboard: rows } },
-      );
-    } else {
-      await sendCoverPhoto(chatId, "videoPlaceholder", body, {
-        inline_keyboard: rows,
-      });
+  const markup = { inline_keyboard: rows };
+  await funnelV2ReplaceUi(platformUserId, chatId, async () => {
+    try {
+      if (photoUrl) {
+        return (await tgSendPhoto(
+          chatId,
+          photoUrl.startsWith("http") ? photoUrl : tgAbsoluteUrl(photoUrl),
+          body,
+          { reply_markup: markup },
+        )) as { message_id?: number };
+      }
+      return sendCoverPhoto(chatId, "videoPlaceholder", body, markup);
+    } catch {
+      return (await tgSendMessage(chatId, body, {
+        reply_markup: markup,
+      })) as { message_id?: number };
     }
-  } catch {
-    await tgSendMessage(chatId, body, {
-      reply_markup: { inline_keyboard: rows },
-    });
-  }
+  });
 }
 
 async function sendVideoConfirm(
   chatId: number,
+  platformUserId: string,
   row: VidRow,
 ) {
+  const notesBlock = row.notes ? `${row.notes.slice(0, 400)}\n\n` : "";
   const text =
-    `🎥 <b>${row.title}${row.emojis}</b>\n` +
-    `${row.notes ? row.notes.slice(0, 400) + "\n" : ""}` +
-    `Стоимость: ${priceLine(row.price)}\n` +
+    `🎥 <b>${row.title}${row.emojis}</b>\n\n` +
+    notesBlock +
+    `Стоимость: ${priceLine(row.price)}\n\n` +
     `<a href="${tgAbsoluteUrl("/tg/guide")}">🔗 Инструкция, как использовать шаблон и примеры</a>`;
   const kb = {
     inline_keyboard: [
@@ -205,25 +208,31 @@ async function sendVideoConfirm(
       ],
     ],
   };
-  try {
-    if (row.previewVideoUrl) {
-      const u = row.previewVideoUrl.startsWith("http")
-        ? row.previewVideoUrl
-        : tgAbsoluteUrl(row.previewVideoUrl);
-      await tgSendVideo(chatId, u, text, { reply_markup: kb });
-      return;
+  await funnelV2ReplaceUi(platformUserId, chatId, async () => {
+    try {
+      if (row.previewVideoUrl) {
+        const u = row.previewVideoUrl.startsWith("http")
+          ? row.previewVideoUrl
+          : tgAbsoluteUrl(row.previewVideoUrl);
+        return (await tgSendVideo(chatId, u, text, {
+          reply_markup: kb,
+        })) as { message_id?: number };
+      }
+      if (row.previewImageUrl) {
+        const u = row.previewImageUrl.startsWith("http")
+          ? row.previewImageUrl
+          : tgAbsoluteUrl(row.previewImageUrl);
+        return (await tgSendPhoto(chatId, u, text, {
+          reply_markup: kb,
+        })) as { message_id?: number };
+      }
+    } catch {
+      /* fall through */
     }
-    if (row.previewImageUrl) {
-      const u = row.previewImageUrl.startsWith("http")
-        ? row.previewImageUrl
-        : tgAbsoluteUrl(row.previewImageUrl);
-      await tgSendPhoto(chatId, u, text, { reply_markup: kb });
-      return;
-    }
-  } catch {
-    /* fall through */
-  }
-  await tgSendMessage(chatId, text, { reply_markup: kb });
+    return (await tgSendMessage(chatId, text, {
+      reply_markup: kb,
+    })) as { message_id?: number };
+  });
 }
 
 async function loadPhotoBytes(photoUrl: string): Promise<Buffer> {
@@ -283,23 +292,25 @@ async function runFunnelV2VideoGen(opts: {
 
   const bal = await getFunnelBalance(user);
   if (bal < row.price) {
-    await sendCoverPhoto(
-      opts.chatId,
-      "needTopup",
-      "Сейчас я не могу сгенерировать видео для тебя, пока ты не пополнишь баланс. " +
-        "Сейчас тебя ждёт много бонусных 🍑 за пополнение баланса.",
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "Пополнить баланс 🍑",
-              callback_data: FV2.topup,
-              style: "success",
-            },
+    await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+      sendCoverPhoto(
+        opts.chatId,
+        "needTopup",
+        "Сейчас я не могу сгенерировать видео для тебя, пока ты не пополнишь баланс.\n\n" +
+          "Сейчас тебя ждёт много бонусных 🍑 за пополнение баланса.",
+        {
+          inline_keyboard: [
+            [
+              {
+                text: "Пополнить баланс 🍑",
+                callback_data: FV2.topup,
+                style: "success",
+              },
+            ],
+            [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
           ],
-          [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
-        ],
-      },
+        },
+      ),
     );
     return;
   }
@@ -310,9 +321,11 @@ async function runFunnelV2VideoGen(opts: {
     return;
   }
 
-  await tgSendMessage(
-    opts.chatId,
-    "⏳ <b>Оу, сейчас я буду творить!</b>\nМне нужно немного времени, скоро отправлю видео",
+  await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
+    tgSendMessage(
+      opts.chatId,
+      "⏳ <b>Оу, сейчас я буду творить!</b>\n\nМне нужно немного времени, скоро отправлю видео",
+    ),
   );
 
   try {
@@ -445,9 +458,11 @@ export async function handleFunnelV2VideoCallback(opts: {
       chatState: "funnel_v2_awaiting_photo",
       pending: { funnelV2AwaitReplace: true, funnelV2ReturnTo: "video" },
     });
-    await tgSendMessage(
-      chatId,
-      "Пришли новое фото одним сообщением (файл или сжатое фото).",
+    await funnelV2ReplaceUi(platformUserId, chatId, () =>
+      tgSendMessage(
+        chatId,
+        "Пришли новое фото одним сообщением (файл или сжатое фото).",
+      ),
     );
     return true;
   }
@@ -474,7 +489,7 @@ export async function handleFunnelV2VideoCallback(opts: {
       }
       return true;
     }
-    await sendVideoConfirm(chatId, row);
+    await sendVideoConfirm(chatId, platformUserId, row);
     return true;
   }
   const okM = /^fv2:vid:ok:(qv|li2v):(.+)$/.exec(data);
@@ -495,9 +510,11 @@ export async function handleFunnelV2VideoCallback(opts: {
           funnelV2PendingVideoConfirm: { kind, id },
         },
       });
-      await tgSendMessage(
-        chatId,
-        "Сначала пришли фото одним сообщением, потом снова нажми Подтвердить.",
+      await funnelV2ReplaceUi(platformUserId, chatId, () =>
+        tgSendMessage(
+          chatId,
+          "Сначала пришли фото одним сообщением, потом снова нажми Подтвердить.",
+        ),
       );
       return true;
     }

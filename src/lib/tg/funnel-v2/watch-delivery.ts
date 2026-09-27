@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { galleryStatus } from "@/lib/gallery-meta";
 import { enqueueTgOutbox } from "@/lib/tg/session";
 import type { TgLocale } from "@/lib/tg/i18n";
+import { funnelV2DropUi } from "@/lib/tg/funnel-v2/ui";
 
 export function watchFunnelV2Delivery(opts: {
   galleryItemId: string;
@@ -22,6 +23,11 @@ export function watchFunnelV2Delivery(opts: {
       const st = galleryStatus(gi.metaJson);
       if (st === "error") return;
       if (st !== "ready" || !gi.resultUrl?.trim()) continue;
+      // Drop «сейчас творю» UI before delivering the result (result itself is not tracked).
+      const chatId = Number(opts.platformUserId);
+      if (Number.isFinite(chatId)) {
+        await funnelV2DropUi(opts.platformUserId, chatId).catch(() => undefined);
+      }
       await enqueueTgOutbox({
         userId: opts.userId,
         platformUserId: opts.platformUserId,

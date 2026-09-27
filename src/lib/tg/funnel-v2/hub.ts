@@ -7,8 +7,6 @@ import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
   tgDeleteMessage,
   tgSendMessage,
-  tgEditMessageText,
-  tgEditMessageCaption,
 } from "@/lib/tg/telegram-api";
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
 import {
@@ -99,9 +97,12 @@ export async function sendFunnelV2Rules(
     "⚠️ <b>Дальше ты воплотишь все свои фантазии!</b>\n\n" +
     "Но для этого нужно, чтобы ты принял правила пользования ботом и ознакомился с оффертой, " +
     "а также подтвердил, что тебе исполнилось 18 лет. Просто нажми на кнопку ниже";
-  await tgSendMessage(chatId, text, {
-    reply_markup: funnelV2RulesKeyboard(),
-  });
+  const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
+  await funnelV2ReplaceUi(String(chatId), chatId, async () =>
+    tgSendMessage(chatId, text, {
+      reply_markup: funnelV2RulesKeyboard(),
+    }),
+  );
 }
 
 export function funnelV2HubKeyboard() {
@@ -136,13 +137,13 @@ export async function buildFunnelV2HubText(userId: string): Promise<string> {
   const bal = user ? await getFunnelBalance(user) : 0;
   const examples = tgAbsoluteUrl("/tg");
   return (
-    `<b>Ну что, с чего начнём?</b>\n` +
-    `Твой баланс: <b>${bal}🍑</b>\n` +
-    `Вот список того, что я умею делать максимально реалистично:\n` +
-    `1. Раздеть по 1 фото, поставить её в любую позу 💦 и оживить\n` +
-    `2. Сделать 🍓 видео с ней по 1 фото с сексом, диалогами, сюжетами по готовым шаблонам\n` +
-    `3. Сделать PRO образ твоего персонажа, чтобы вывести реализм на новый уровень и делать самые качественные фото/видео в ⭐️ PRO-режиме\n` +
-    `<a href="${examples}">🔗Открыть примеры работ</a>\n` +
+    `<b>Ну что, с чего начнём?</b>\n\n` +
+    `Твой баланс: <b>${bal}🍑</b>\n\n` +
+    `Вот список того, что я умею делать максимально реалистично:\n\n` +
+    `1. Раздеть по 1 фото, поставить её в любую позу 💦 и оживить\n\n` +
+    `2. Сделать 🍓 видео с ней по 1 фото с сексом, диалогами, сюжетами по готовым шаблонам\n\n` +
+    `3. Сделать PRO образ твоего персонажа, чтобы вывести реализм на новый уровень и делать самые качественные фото/видео в ⭐️ PRO-режиме\n\n` +
+    `<a href="${examples}">🔗Открыть примеры работ</a>\n\n` +
     `Выбери, что тебя интересует по кнопкам ниже 👇`
   );
 }
@@ -167,26 +168,15 @@ export async function sendFunnelV2Hub(
 
   const text = await buildFunnelV2HubText(userId);
   const markup = funnelV2HubKeyboard();
+  const platformUserId = String(chatId);
+  const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
+  const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
 
-  if (opts?.editMessageId) {
-    try {
-      if (opts.editHasMedia) {
-        await tgEditMessageCaption(chatId, opts.editMessageId, text, {
-          reply_markup: markup,
-        });
-      } else {
-        await tgEditMessageText(chatId, opts.editMessageId, text, {
-          reply_markup: markup,
-        });
-      }
-    } catch {
-      const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
-      await sendCoverPhoto(chatId, "hub", text, markup);
-    }
-  } else {
-    const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
-    await sendCoverPhoto(chatId, "hub", text, markup);
-  }
+  // Prefer replace carrier over in-place edit (media ↔ text switches break edit).
+  void opts;
+  await funnelV2ReplaceUi(platformUserId, chatId, () =>
+    sendCoverPhoto(chatId, "hub", text, markup),
+  );
   await attachV2ReplyKb(chatId);
 }
 

@@ -9,6 +9,7 @@ import { setTgSession } from "@/lib/tg/session";
 import { getFunnelBalance } from "@/lib/tg/funnel-v2/mode";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
 import { sendTopupPrompt } from "@/lib/tg/topup-flow";
+import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 export const FV2_TOPUP_PACKS: Array<{
   peaches: number;
@@ -32,7 +33,7 @@ export async function sendFunnelV2Topup(
   const bal = user ? await getFunnelBalance(user) : 0;
   const usdt1 = peachesToUsdt(1);
   const text =
-    `У тебя на балансе: <b>${bal}🍑</b>\n` +
+    `У тебя на балансе: <b>${bal}🍑</b>\n\n` +
     `1🍑 = 1 рубль / ${usdt1}$\n\n` +
     `Пополни баланс от 1000🍑 и получай бонусные персики сверху (бонусы пропадают, лучше воспользоваться сразу)\n\n` +
     `Выбери сумму для пополнения:`;
@@ -54,7 +55,9 @@ export async function sendFunnelV2Topup(
   ];
 
   const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
-  await sendCoverPhoto(chatId, "topup", text, { inline_keyboard: rows });
+  await funnelV2ReplaceUi(String(chatId), chatId, () =>
+    sendCoverPhoto(chatId, "topup", text, { inline_keyboard: rows }),
+  );
   void locale;
 }
 
@@ -70,13 +73,13 @@ export async function handleFunnelV2TopupAmount(
   const { topupFeeRebatePeaches } = await import("@/lib/tg/topup-payments");
   const feeRebate = topupFeeRebatePeaches(peaches);
   const bonusLine = bonus
-    ? `\n+ бонусные: <b>${bonus}🍑</b>`
+    ? `\n\n+ бонусные: <b>${bonus}🍑</b>`
     : "";
   const feeLine = feeRebate
-    ? `\n+ возврат комиссии: <b>${feeRebate}🍑</b>`
+    ? `\n\n+ возврат комиссии: <b>${feeRebate}🍑</b>`
     : "";
   const text =
-    `Пополнение баланса на <b>${peaches}🍑</b>${bonusLine}${feeLine}\n` +
+    `Пополнение баланса на <b>${peaches}🍑</b>${bonusLine}${feeLine}\n\n` +
     `Сумма: ${peaches} рублей / ${usdt}$ (комиссию платёжной системы мы вернём в виде дополнительных 🍑 вместе с бонусными)\n\n` +
     `Выбери способ для пополнения:`;
 
@@ -97,9 +100,11 @@ export async function handleFunnelV2TopupAmount(
     ...(kb.inline_keyboard as Array<Array<Record<string, unknown>>>),
     [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
   ];
-  await tgSendMessage(chatId, text, {
-    reply_markup: { inline_keyboard: rows },
-  });
+  await funnelV2ReplaceUi(platformUserId, chatId, () =>
+    tgSendMessage(chatId, text, {
+      reply_markup: { inline_keyboard: rows },
+    }),
+  );
 }
 
 /** Fallback: open classic Cashera flow for real payments outside preview. */

@@ -9,36 +9,39 @@ import { tgRulesArticleUrl, tgAffiliateAttributionNote } from "@/lib/tg/rules";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { tgSupportContact, tgSupportUrl } from "@/lib/tg/support";
 import { setTgSession } from "@/lib/tg/session";
+import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 export async function showHelpInPlaceProxy(chatId: number, locale: TgLocale) {
-  await tgSendMessage(
-    chatId,
-    tFormat("help_title", locale, { support: tgSupportContact() }),
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: t("help_guide_btn", locale),
-              web_app: { url: tgMiniAppUrl("guide") },
-            },
+  await funnelV2ReplaceUi(String(chatId), chatId, () =>
+    tgSendMessage(
+      chatId,
+      tFormat("help_title", locale, { support: tgSupportContact() }),
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: t("help_guide_btn", locale),
+                web_app: { url: tgMiniAppUrl("guide") },
+              },
+            ],
+            [
+              {
+                text: t("help_rules_btn", locale),
+                url: tgRulesArticleUrl(locale),
+              },
+            ],
+            [
+              {
+                text: t("help_support_btn", locale),
+                url: tgSupportUrl(),
+              },
+            ],
+            [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
           ],
-          [
-            {
-              text: t("help_rules_btn", locale),
-              url: tgRulesArticleUrl(locale),
-            },
-          ],
-          [
-            {
-              text: t("help_support_btn", locale),
-              url: tgSupportUrl(),
-            },
-          ],
-          [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
-        ],
+        },
       },
-    },
+    ),
   );
 }
 
@@ -64,28 +67,30 @@ export async function showEarnInPlaceProxy(
     bridge: bridgeUrl || mainUrl,
   });
 
-  await tgSendMessage(
-    chatId,
-    body + "\n\n" + tgAffiliateAttributionNote(locale, Number(pct)),
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "📊 Открыть партнёрку в Mini App",
-              web_app: { url: tgMiniAppUrl("partner") },
-            },
+  await funnelV2ReplaceUi(String(chatId), chatId, () =>
+    tgSendMessage(
+      chatId,
+      body + "\n\n" + tgAffiliateAttributionNote(locale, Number(pct)),
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "📊 Открыть партнёрку в Mini App",
+                web_app: { url: tgMiniAppUrl("partner") },
+              },
+            ],
+            [
+              {
+                text: "🔗 Ссылки с метками 🔗",
+                callback_data: FV2.earnLinks,
+              },
+            ],
+            [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
           ],
-          [
-            {
-              text: "🔗 Ссылки с метками 🔗",
-              callback_data: FV2.earnLinks,
-            },
-          ],
-          [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
-        ],
+        },
       },
-    },
+    ),
   );
 }
 
@@ -125,20 +130,22 @@ export async function sendFunnelV2EarnLinks(
     lines.push("Пока нет меток — создай первую кнопкой ниже.");
   }
 
-  await tgSendMessage(chatId, lines.join("\n"), {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: "➕ Создать ссылку с меткой",
-            callback_data: FV2.earnNew,
-          },
+  await funnelV2ReplaceUi(String(chatId), chatId, () =>
+    tgSendMessage(chatId, lines.join("\n"), {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "➕ Создать ссылку с меткой",
+              callback_data: FV2.earnNew,
+            },
+          ],
+          [{ text: "⬅️ Назад", callback_data: FV2.earn }],
+          [{ text: "⬅️ Главное меню", callback_data: FV2.hub }],
         ],
-        [{ text: "⬅️ Назад", callback_data: FV2.earn }],
-        [{ text: "⬅️ Главное меню", callback_data: FV2.hub }],
-      ],
-    },
-  });
+      },
+    }),
+  );
 }
 
 export async function beginFunnelV2EarnNewLink(
@@ -148,16 +155,18 @@ export async function beginFunnelV2EarnNewLink(
   await setTgSession(platformUserId, {
     chatState: "funnel_v2_awaiting_partner_label",
   });
-  await tgSendMessage(
-    chatId,
-    "Напиши <b>название метки</b> одним сообщением (например: <code>stories_sept</code> или <code>Блогер Аня</code>).",
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "⬅️ Отмена", callback_data: FV2.earnLinks }],
-        ],
+  await funnelV2ReplaceUi(platformUserId, chatId, () =>
+    tgSendMessage(
+      chatId,
+      "Напиши <b>название метки</b> одним сообщением (например: <code>stories_sept</code> или <code>Блогер Аня</code>).",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "⬅️ Отмена", callback_data: FV2.earnLinks }],
+          ],
+        },
       },
-    },
+    ),
   );
 }
 

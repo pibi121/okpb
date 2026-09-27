@@ -1609,6 +1609,17 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
         await rejectLegacyForFunnelV2(chatId, cq.id);
         return;
       }
+      // Old top-up entry points → Funnel v2 balance screen
+      if (
+        data === "tu:open" ||
+        /^tu:\d+$/.test(data) ||
+        data === "hub:tu"
+      ) {
+        await tgAnswerCallbackQuery(cq.id);
+        const { sendFunnelV2Topup } = await import("@/lib/tg/funnel-v2/topup");
+        await sendFunnelV2Topup(chatId, user.id, locale);
+        return;
+      }
     }
   }
 

@@ -9,6 +9,7 @@ import {
   tgAnswerCallbackQuery,
   tgSendMessage,
   tgSendPhoto,
+  tgSendPhotoFile,
   tgSendVideo,
 } from "@/lib/tg/telegram-api";
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
@@ -46,6 +47,49 @@ async function activePhotoUrl(platformUserId: string): Promise<string | null> {
     funnelV2PhotoUrl?: string;
   };
   return p.funnelV2PhotoUrl?.trim() || null;
+}
+
+async function sendFunnelRefPhoto(
+  chatId: number,
+  platformUserId: string,
+  caption: string,
+  reply_markup: Record<string, unknown>,
+): Promise<{ message_id?: number } | undefined> {
+  const s = await getTgSession(platformUserId);
+  const p = parsePending(s?.pendingJson || "{}") as {
+    funnelV2PhotoUrl?: string;
+    funnelV2PhotoKey?: string;
+  };
+  let bytes: Buffer | null = null;
+  if (p.funnelV2PhotoKey) {
+    const { resolveGalleryFile } = await import("@/lib/local-store");
+    const abs = resolveGalleryFile(p.funnelV2PhotoKey);
+    if (abs) {
+      const fs = await import("fs");
+      if (fs.existsSync(abs)) bytes = fs.readFileSync(abs);
+    }
+  }
+  if (!bytes?.length && p.funnelV2PhotoUrl) {
+    try {
+      bytes = await loadPhotoBytes(p.funnelV2PhotoUrl);
+    } catch {
+      bytes = null;
+    }
+  }
+  if (bytes?.length) {
+    return (await tgSendPhotoFile(chatId, bytes, "ref.jpg", caption, {
+      reply_markup,
+    })) as { message_id?: number };
+  }
+  if (p.funnelV2PhotoUrl) {
+    const url = p.funnelV2PhotoUrl.startsWith("http")
+      ? p.funnelV2PhotoUrl
+      : tgAbsoluteUrl(p.funnelV2PhotoUrl);
+    return (await tgSendPhoto(chatId, url, caption, {
+      reply_markup,
+    })) as { message_id?: number };
+  }
+  return undefined;
 }
 
 async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]> {
@@ -169,12 +213,13 @@ export async function sendFunnelV2VideoHub(
   await funnelV2ReplaceUi(platformUserId, chatId, async () => {
     try {
       if (photoUrl) {
-        return (await tgSendPhoto(
+        const sent = await sendFunnelRefPhoto(
           chatId,
-          photoUrl.startsWith("http") ? photoUrl : tgAbsoluteUrl(photoUrl),
+          platformUserId,
           body,
-          { reply_markup: markup },
-        )) as { message_id?: number };
+          markup,
+        );
+        if (sent) return sent;
       }
       return sendCoverPhoto(chatId, "videoPlaceholder", body, markup);
     } catch {

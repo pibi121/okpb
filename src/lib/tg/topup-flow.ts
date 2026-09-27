@@ -47,6 +47,24 @@ export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
   return { inline_keyboard: rows };
 }
 
+/** Funnel v2: same methods, but «другая сумма» returns to FV2 topup packs. */
+export function funnelV2TopupMethodKeyboard(locale: TgLocale, peaches: number) {
+  const rows = TOPUP_PAYMENT_METHODS.map((m) => [
+    {
+      text: locale === "en" ? m.labelEn : m.labelRu,
+      callback_data: TOPUP_CB.method(m.id),
+    },
+  ]);
+  rows.push([
+    {
+      text: locale === "en" ? "← Other amount" : "← Другая сумма",
+      callback_data: "fv2:tu",
+    },
+  ]);
+  void peaches;
+  return { inline_keyboard: rows };
+}
+
 function payLinkKeyboard(opts: {
   locale: TgLocale;
   paymentUrl: string;

@@ -28,37 +28,34 @@ export function funnelV2ReplyKeyboard() {
 
 async function attachV2ReplyKb(chatId: number) {
   const platformUserId = String(chatId);
-  let prev: number | undefined;
+  let already: number | undefined;
   try {
     const acc = await getTgSession(platformUserId);
-    if (acc) prev = parsePending(acc.pendingJson).replyKbCarrierId;
+    if (acc) already = parsePending(acc.pendingJson).replyKbCarrierId;
   } catch {
     /* ignore */
   }
+  // Telegram keeps ReplyKeyboard after the first set — don't spam empty carriers.
+  if (already) return;
+
   let sent: { message_id?: number } | undefined;
   try {
-    sent = (await tgSendMessage(chatId, "\u2060", {
-      ...funnelV2ReplyKeyboard(),
-      disable_notification: true,
-    })) as { message_id?: number };
+    sent = (await tgSendMessage(
+      chatId,
+      "Кнопка <b>🏠 Главное меню</b> закреплена внизу экрана.",
+      {
+        ...funnelV2ReplyKeyboard(),
+        disable_notification: true,
+      },
+    )) as { message_id?: number };
   } catch {
-    sent = (await tgSendMessage(chatId, "👇", {
-      ...funnelV2ReplyKeyboard(),
-      disable_notification: true,
-    })) as { message_id?: number };
+    return;
   }
   const mid = sent?.message_id;
   if (mid) {
     await setTgSession(platformUserId, {
       pending: { replyKbCarrierId: mid },
     }).catch(() => undefined);
-  }
-  if (prev && prev !== mid) {
-    try {
-      await tgDeleteMessage(chatId, prev);
-    } catch {
-      /* ignore */
-    }
   }
 }
 

@@ -9,6 +9,7 @@ import {
   tgAnswerCallbackQuery,
   tgSendMessage,
   tgSendPhoto,
+  tgSendPhotoFile,
   tgSendVideo,
 } from "@/lib/tg/telegram-api";
 import { setTgSession, parsePending, getTgSession } from "@/lib/tg/session";
@@ -61,6 +62,54 @@ async function activePhotoUrl(
   const p = parsePending(s?.pendingJson || "{}");
   const url = (p as { funnelV2PhotoUrl?: string }).funnelV2PhotoUrl;
   return url?.trim() || null;
+}
+
+/** Telegram cannot fetch private /api/media — upload bytes when we have a local file. */
+async function sendFunnelRefPhoto(
+  chatId: number,
+  platformUserId: string,
+  caption: string,
+  reply_markup: Record<string, unknown>,
+): Promise<{ message_id?: number } | undefined> {
+  const s = await getTgSession(platformUserId);
+  const p = parsePending(s?.pendingJson || "{}") as {
+    funnelV2PhotoUrl?: string;
+    funnelV2PhotoKey?: string;
+  };
+  let bytes: Buffer | null = null;
+  if (p.funnelV2PhotoKey) {
+    const { resolveGalleryFile } = await import("@/lib/local-store");
+    const abs = resolveGalleryFile(p.funnelV2PhotoKey);
+    if (abs) {
+      const fs = await import("fs");
+      if (fs.existsSync(abs)) bytes = fs.readFileSync(abs);
+    }
+  }
+  if (!bytes?.length && p.funnelV2PhotoUrl) {
+    try {
+      bytes = await loadPhotoBytes(p.funnelV2PhotoUrl);
+    } catch {
+      bytes = null;
+    }
+  }
+  if (bytes?.length) {
+    return (await tgSendPhotoFile(
+      chatId,
+      bytes,
+      "ref.jpg",
+      caption,
+      { reply_markup },
+    )) as { message_id?: number };
+  }
+  if (p.funnelV2PhotoUrl) {
+    const url = p.funnelV2PhotoUrl.startsWith("http")
+      ? p.funnelV2PhotoUrl
+      : tgAbsoluteUrl(p.funnelV2PhotoUrl);
+    return (await tgSendPhoto(chatId, url, caption, {
+      reply_markup,
+    })) as { message_id?: number };
+  }
+  return undefined;
 }
 
 export async function sendFunnelV2PhotoHub(
@@ -129,12 +178,13 @@ export async function sendFunnelV2PhotoHub(
   await funnelV2ReplaceUi(platformUserId, chatId, async () => {
     try {
       if (photoUrl) {
-        return (await tgSendPhoto(
+        const sent = await sendFunnelRefPhoto(
           chatId,
-          photoUrl.startsWith("http") ? photoUrl : tgAbsoluteUrl(photoUrl),
+          platformUserId,
           body,
-          { reply_markup: markup },
-        )) as { message_id?: number };
+          markup,
+        );
+        if (sent) return sent;
       }
       const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
       return sendCoverPhoto(chatId, "photoPlaceholder", body, markup);
@@ -267,7 +317,8 @@ export async function handleFunnelV2PhotoCallback(opts: {
       kind: "ud",
       id: "undress",
       title: "Раздеть полностью",
-      notes: "Снять одежду с фото максимально реалистично.",
+      notes:
+        "Она готова раздеться перед тобой - показать свою грудь, киску и попку, чтобы ты насладился её телом",
       price: undressPeaches(),
       hasPhoto,
       previewVideoUrl: "/tg/media/funnel-undress-preview.mp4",

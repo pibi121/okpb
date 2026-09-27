@@ -58,7 +58,7 @@ export async function funnelV2DropUi(
 export async function funnelV2ReplaceUi(
   platformUserId: string,
   chatId: number,
-  send: () => Promise<TgMsg>,
+  send: () => Promise<unknown>,
 ): Promise<number | undefined> {
   const prev = await readUiMessageId(platformUserId);
   if (prev) {
@@ -70,7 +70,7 @@ export async function funnelV2ReplaceUi(
   }
 
   const sent = await send();
-  const mid = extractMessageId(sent);
+  const mid = extractMessageId(sent as TgMsg);
   await writeUiMessageId(platformUserId, mid);
   return mid;
 }

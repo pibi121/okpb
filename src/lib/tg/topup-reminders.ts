@@ -83,6 +83,12 @@ export async function tickTopupReminders(): Promise<number> {
     const price = formatTopupPriceLine(order.peaches, locale);
     const method = methodLabel(order.paymentMethod, locale);
 
+    const { resolveBotTokenByInstanceId } = await import(
+      "@/lib/tg/bot-registry"
+    );
+    const token =
+      (await resolveBotTokenByInstanceId(acc.lastBotInstanceId)) || undefined;
+
     try {
       await tgSendMessage(
         Number(acc.platformUserId),
@@ -115,14 +121,25 @@ export async function tickTopupReminders(): Promise<number> {
             ],
           },
         },
+        token,
       );
       sent += 1;
     } catch (e) {
-      console.warn(
-        "[topup-remind] send failed",
-        order.id,
-        e instanceof Error ? e.message : e,
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[topup-remind] send failed", order.id, msg);
+      // Dead chats: stop further nudges (same pattern as funnel drip).
+      if (
+        /bot was blocked|chat not found|user is deactivated|Forbidden: bot|PEER_ID_INVALID/i.test(
+          msg,
+        )
+      ) {
+        await prisma.paymentOrder
+          .update({
+            where: { id: order.id },
+            data: { remindCount: MAX_REMINDS },
+          })
+          .catch(() => undefined);
+      }
     }
   }
   return sent;

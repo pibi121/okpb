@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCasheraWebhookHeaders } from "@/lib/cashera";
 import { fulfillPaidTopup } from "@/lib/tg/topup-payments";
 import { prisma } from "@/lib/db";
-import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { tFormat, type TgLocale } from "@/lib/tg/i18n";
+import { tgNotifyUserOnLiveBots } from "@/lib/tg/notify-user";
+import { formatNotice } from "@/lib/ops/notices";
+import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
+import { userOnFunnelV2 } from "@/lib/tg/funnel-v2/mode";
 
 export const runtime = "nodejs";
 
@@ -58,24 +61,21 @@ export async function POST(req: NextRequest) {
 
   if (result.credited && result.userId && result.peaches) {
     try {
-      const acc = await prisma.platformAccount.findFirst({
-        where: { userId: result.userId, platform: "telegram" },
-        orderBy: { lastSeenAt: "desc" },
+      const user = await prisma.user.findUnique({
+        where: { id: result.userId },
+        select: { locale: true, balancePeaches: true },
       });
-      if (acc?.platformUserId) {
-        const user = await prisma.user.findUnique({
-          where: { id: result.userId },
-          select: { locale: true, balancePeaches: true },
-        });
-        const locale = (user?.locale === "en" ? "en" : "ru") as TgLocale;
-        await tgSendMessage(
-          Number(acc.platformUserId),
-          tFormat("topup_paid", locale, {
-            n: result.peaches,
-            balance: user?.balancePeaches ?? result.peaches,
-          }),
-        );
-      }
+      const locale = (user?.locale === "en" ? "en" : "ru") as TgLocale;
+      const text = tFormat("topup_paid", locale, {
+        n: result.peaches,
+        balance: user?.balancePeaches ?? result.peaches,
+      });
+      // Fan-out to live bots so dual-bot users get the notice where they chat.
+      await tgNotifyUserOnLiveBots({
+        userId: result.userId,
+        text,
+        allLive: true,
+      });
     } catch (e) {
       console.error("[cashera] notify user failed:", e);
       void import("@/lib/ops/errors")
@@ -90,6 +90,42 @@ export async function POST(req: NextRequest) {
           }),
         )
         .catch(() => undefined);
+    }
+  } else if (
+    result.userId &&
+    /^(failed|canceled|cancelled|expired|rejected)$/.test(status)
+  ) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: result.userId },
+      });
+      const locale = (user?.locale === "en" ? "en" : "ru") as TgLocale;
+      const notice =
+        (await formatNotice("payment_fail", locale)) ||
+        (locale === "en"
+          ? "The payment didn't go through. Nothing was charged."
+          : "Платёж не дошёл. Деньги не списались. Попробуй ещё раз или напиши в поддержку.");
+      const onFv2 = user ? await userOnFunnelV2(user) : false;
+      await tgNotifyUserOnLiveBots({
+        userId: result.userId,
+        text: notice,
+        allLive: true,
+        extra: {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text:
+                    locale === "en" ? "Top up again 🍑" : "Пополнить снова 🍑",
+                  callback_data: onFv2 ? FV2.topup : "tu:open",
+                },
+              ],
+            ],
+          },
+        },
+      });
+    } catch (e) {
+      console.error("[cashera] payment_fail notify:", e);
     }
   }
 

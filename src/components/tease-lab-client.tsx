@@ -43,9 +43,28 @@ export function TeaseLabClient() {
   useEffect(() => {
     void fetch("/api/peach/tease-lab/preset")
       .then((r) => r.json())
-      .then((d: { preset?: TeaseOverlayPreset }) => {
-        if (d.preset) setPreset({ ...DEFAULT_TEASE_PRESET, ...d.preset });
-      })
+      .then(
+        (d: {
+          preset?: TeaseOverlayPreset;
+          hasOverlayFile?: boolean;
+          overlayUrl?: string | null;
+        }) => {
+          if (d.preset) setPreset({ ...DEFAULT_TEASE_PRESET, ...d.preset });
+          if (d.hasOverlayFile && d.overlayUrl) {
+            if (overlayUrlRef.current?.startsWith("blob:")) {
+              URL.revokeObjectURL(overlayUrlRef.current);
+            }
+            overlayUrlRef.current = d.overlayUrl;
+            setOverlayUrl(d.overlayUrl);
+            setOverlayReady(true);
+            setMsg("Вотермарк загружен с сервера (сохранённый пресет).");
+          } else if (d.hasOverlayFile === false) {
+            setMsg(
+              "Пресет есть, но PNG вотермарка нет на диске — загрузи снова и сохрани.",
+            );
+          }
+        },
+      )
       .catch(() => undefined);
   }, []);
 

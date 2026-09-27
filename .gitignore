@@ -81,5 +81,6 @@ klein_fix_latest.png
 # optional local presets — ship all JSON registries needed on Railway
 /presets/*
 !/presets/*.json
+!/presets/tease_cta.png
 
 # keep workflows — needed for Comfy later

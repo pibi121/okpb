@@ -34,13 +34,37 @@ function readPreset(): TeaseOverlayPreset {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
+
+  const wantOverlay =
+    req.nextUrl.searchParams.get("overlay") === "1" ||
+    req.nextUrl.searchParams.get("file") === "overlay";
+
   const preset = readPreset();
+  const overlayPath = overlayAbs(preset.overlayFile);
+  const hasOverlayFile = fs.existsSync(overlayPath);
+
+  if (wantOverlay) {
+    if (!hasOverlayFile) {
+      return NextResponse.json({ error: "overlay missing" }, { status: 404 });
+    }
+    const buf = fs.readFileSync(overlayPath);
+    return new NextResponse(buf, {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   return NextResponse.json({
     preset,
-    hasOverlayFile: fs.existsSync(overlayAbs(preset.overlayFile)),
+    hasOverlayFile,
+    overlayUrl: hasOverlayFile
+      ? `/api/peach/tease-lab/preset?overlay=1&t=${encodeURIComponent(preset.updatedAt || "1")}`
+      : null,
   });
 }
 
@@ -84,7 +108,15 @@ export async function POST(req: NextRequest) {
     await sharp(overlayBytes).png().toFile(overlayAbs(preset.overlayFile));
   }
   fs.writeFileSync(presetAbs(), JSON.stringify(preset, null, 2), "utf8");
-  return NextResponse.json({ preset, ok: true });
+  const hasOverlayFile = fs.existsSync(overlayAbs(preset.overlayFile));
+  return NextResponse.json({
+    preset,
+    ok: true,
+    hasOverlayFile,
+    overlayUrl: hasOverlayFile
+      ? `/api/peach/tease-lab/preset?overlay=1&t=${encodeURIComponent(preset.updatedAt || "1")}`
+      : null,
+  });
 }
 
 /** Server apply = future TG tease path. Returns PNG. */

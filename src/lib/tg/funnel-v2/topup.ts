@@ -93,9 +93,9 @@ export async function handleFunnelV2TopupAmount(
     },
   });
 
-  // Reuse existing payment method keyboard from classic topup.
-  const { topupMethodKeyboard } = await import("@/lib/tg/topup-flow");
-  const kb = topupMethodKeyboard(locale, peaches);
+  // Reuse existing payment method keyboard from classic topup (FV2 «другая сумма»).
+  const { funnelV2TopupMethodKeyboard } = await import("@/lib/tg/topup-flow");
+  const kb = funnelV2TopupMethodKeyboard(locale, peaches);
   const rows = [
     ...(kb.inline_keyboard as Array<Array<Record<string, unknown>>>),
     [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],

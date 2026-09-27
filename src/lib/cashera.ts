@@ -8,7 +8,11 @@ import { publicSiteBaseUrl } from "@/lib/tg/public-site-url";
 export const CASHERA_BASE =
   process.env.CASHERA_API_BASE?.trim() || "https://api.cashera.cash/api/v1";
 
-export type CasheraPaymentMethod = "sbp" | "card" | "crypto";
+export type CasheraPaymentMethod =
+  | "sbp"
+  | "card"
+  | "crypto"
+  | "cryptobot";
 
 export type CasheraTransaction = {
   uuid: string;

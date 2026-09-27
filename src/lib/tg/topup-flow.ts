@@ -13,13 +13,14 @@ import { setTgSession } from "@/lib/tg/session";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { casheraConfigured } from "@/lib/cashera";
+import type { CasheraPaymentMethod } from "@/lib/cashera";
 import {
   createTopupPayment,
   formatTopupPriceLine,
   isActiveTopupMethod,
+  topupFeeRebatePeaches,
   TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
-import type { CasheraPaymentMethod } from "@/lib/cashera";
 import { prisma } from "@/lib/db";
 
 export function topupInlineKeyboard(locale: TgLocale) {
@@ -31,12 +32,15 @@ export function topupInlineKeyboard(locale: TgLocale) {
 }
 
 export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
-  const rows = TOPUP_PAYMENT_METHODS.map((m) => [
-    {
-      text: locale === "en" ? m.labelEn : m.labelRu,
-      callback_data: TOPUP_CB.method(m.id),
-    },
-  ]);
+  const rows: Array<Array<Record<string, unknown>>> = TOPUP_PAYMENT_METHODS.map(
+    (m) => [
+      {
+        text: locale === "en" ? m.labelEn : m.labelRu,
+        callback_data: TOPUP_CB.method(m.id),
+        style: m.style,
+      },
+    ],
+  );
   rows.push([
     {
       text: locale === "en" ? "← Other amount" : "← Другая сумма",
@@ -49,12 +53,15 @@ export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
 
 /** Funnel v2: same methods, but «другая сумма» returns to FV2 topup packs. */
 export function funnelV2TopupMethodKeyboard(locale: TgLocale, peaches: number) {
-  const rows = TOPUP_PAYMENT_METHODS.map((m) => [
-    {
-      text: locale === "en" ? m.labelEn : m.labelRu,
-      callback_data: TOPUP_CB.method(m.id),
-    },
-  ]);
+  const rows: Array<Array<Record<string, unknown>>> = TOPUP_PAYMENT_METHODS.map(
+    (m) => [
+      {
+        text: locale === "en" ? m.labelEn : m.labelRu,
+        callback_data: TOPUP_CB.method(m.id),
+        style: m.style,
+      },
+    ],
+  );
   rows.push([
     {
       text: locale === "en" ? "← Other amount" : "← Другая сумма",
@@ -98,8 +105,12 @@ function payLinkKeyboard(opts: {
   };
 }
 
-function payLinkCopyKey(method: string): "topup_pay_link_sbp" | "topup_pay_link_crypto" {
-  return method === "crypto" ? "topup_pay_link_crypto" : "topup_pay_link_sbp";
+function payLinkCopyKey(
+  method: string,
+): "topup_pay_link_sbp" | "topup_pay_link_crypto" | "topup_pay_link_cryptobot" {
+  if (method === "cryptobot") return "topup_pay_link_cryptobot";
+  if (method === "crypto") return "topup_pay_link_crypto";
+  return "topup_pay_link_sbp";
 }
 
 export async function sendTopupPrompt(chatId: number, locale: TgLocale) {
@@ -252,13 +263,30 @@ export async function handleTopupRenew(
     });
   }
 
+  // order.peaches is credit total (base + pack bonus + fee rebate).
+  // Paid amount = amountMinor (1🍑=1₽ → base peaches).
+  const basePeaches = Math.max(
+    TG_MIN_TOPUP_PEACHES,
+    Math.round(order.amountMinor / 100),
+  );
+  const feeWas = topupFeeRebatePeaches(basePeaches, order.paymentMethod);
+  const packBonus = Math.max(0, order.peaches - basePeaches - feeWas);
+
+  await setTgSession(platformUserId, {
+    chatState: "awaiting_topup_method",
+    pending: {
+      topupPeaches: basePeaches,
+      topupBonusPeaches: packBonus,
+    },
+  });
+
   await handleTopupMethod(
     chatId,
     platformUserId,
     locale,
     order.paymentMethod as CasheraPaymentMethod,
     userId,
-    order.peaches,
+    basePeaches,
   );
 }
 

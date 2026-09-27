@@ -1750,12 +1750,12 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   if (data.startsWith("tu:pay:")) {
     await tgAnswerCallbackQuery(cq.id);
     const method = data.slice("tu:pay:".length);
-    if (!["sbp", "crypto"].includes(method)) {
+    if (!["sbp", "crypto", "cryptobot"].includes(method)) {
       await tgSendMessage(
         chatId,
         locale === "en"
-          ? "This method is unavailable. Choose SBP or crypto."
-          : "Этот способ недоступен. Выбери СБП или крипту.",
+          ? "This method is unavailable. Choose SBP, crypto, or CryptoBot."
+          : "Этот способ недоступен. Выбери СБП, крипту или CryptoBot.",
       );
       return;
     }
@@ -1770,7 +1770,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       chatId,
       platformUserId,
       locale,
-      method as "sbp" | "crypto",
+      method as "sbp" | "crypto" | "cryptobot",
       user.id,
       peaches,
     );

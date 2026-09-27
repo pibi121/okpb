@@ -70,17 +70,13 @@ export async function handleFunnelV2TopupAmount(
   const pack = FV2_TOPUP_PACKS.find((p) => p.peaches === peaches);
   const bonus = pack?.bonus || 0;
   const usdt = peachesToUsdt(peaches);
-  const { topupFeeRebatePeaches } = await import("@/lib/tg/topup-payments");
-  const feeRebate = topupFeeRebatePeaches(peaches);
   const bonusLine = bonus
     ? `\n\n+ бонусные: <b>${bonus}🍑</b>`
     : "";
-  const feeLine = feeRebate
-    ? `\n\n+ возврат комиссии: <b>${feeRebate}🍑</b>`
-    : "";
   const text =
-    `Пополнение баланса на <b>${peaches}🍑</b>${bonusLine}${feeLine}\n\n` +
-    `Сумма: ${peaches} рублей / ${usdt}$ (комиссию платёжной системы мы вернём в виде дополнительных 🍑 вместе с бонусными)\n\n` +
+    `Пополнение баланса на <b>${peaches}🍑</b>${bonusLine}\n\n` +
+    `Сумма: ${peaches} рублей / ${usdt}$\n\n` +
+    `Комиссию платёжной системы вернём персиками: <b>СБП 13%</b>, <b>крипта 3%</b>, <b>CryptoBot 5%</b> (плюс бонус пакета, если есть).\n\n` +
     `Выбери способ для пополнения:`;
 
   await setTgSession(platformUserId, {

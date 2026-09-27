@@ -716,14 +716,14 @@ Tap below to top up 👇`,
 Минимум — <b>{min} 🍑</b> (≈ {usdt} USDT по курсу)
 
 Выбери по кнопке или введи число в чате 👇
-Дальше — оплата через <b>СБП</b> или <b>крипту (USDT)</b>.`,
+Дальше — оплата через <b>СБП</b>, <b>крипту (USDT)</b> или <b>CryptoBot</b>.`,
     en: `<b>How many peaches do you want?</b>
 
 🍑 1 peach = 1 RUB
 Minimum — <b>{min} 🍑</b> (≈ {usdt} USDT at current rate)
 
 Pick a button or type a number 👇
-Next: pay via <b>SBP</b> or <b>crypto (USDT)</b>.`,
+Next: pay via <b>SBP</b>, <b>crypto (USDT)</b>, or <b>CryptoBot</b>.`,
   },
 
   topup_min_error: {
@@ -771,22 +771,33 @@ Tap below to open the payment form. Peaches credit automatically after payment.`
     ru: `К оплате: <b>{price}</b>
 
 Оплата через <b>СБП</b>: открой форму → подтверди перевод в банковском приложении.
-Персики зачислятся сами после оплаты.`,
+Персики зачислятся сами после оплаты (включая возврат комиссии 13%).`,
     en: `To pay: <b>{price}</b>
 
 Pay via <b>SBP</b>: open the form → confirm in your banking app.
-Peaches credit automatically after payment.`,
+Peaches credit automatically after payment (incl. 13% fee rebate).`,
   },
 
   topup_pay_link_crypto: {
     ru: `К оплате: <b>{price}</b>
 
 Оплата <b>USDT</b>: открой форму → выбери сеть → переведи сумму.
-Персики зачислятся сами после оплаты.`,
+Персики зачислятся сами после оплаты (включая возврат комиссии 3%).`,
     en: `To pay: <b>{price}</b>
 
 Pay with <b>USDT</b>: open the form → pick a network → send the amount.
-Peaches credit automatically after payment.`,
+Peaches credit automatically after payment (incl. 3% fee rebate).`,
+  },
+
+  topup_pay_link_cryptobot: {
+    ru: `К оплате: <b>{price}</b>
+
+Оплата через <b>CryptoBot</b> в Telegram: открой форму → оплати криптой в @CryptoBot.
+Персики зачислятся сами после оплаты (включая возврат комиссии 5%).`,
+    en: `To pay: <b>{price}</b>
+
+Pay via <b>CryptoBot</b> in Telegram: open the form → pay with crypto in @CryptoBot.
+Peaches credit automatically after payment (incl. 5% fee rebate).`,
   },
 
   topup_remind: {
@@ -805,8 +816,8 @@ Open the link again or request a new one 👇`,
   },
 
   topup_method_unavailable: {
-    ru: "Этот способ временно недоступен. Выбери СБП или крипту.",
-    en: "This method is unavailable. Choose SBP or crypto.",
+    ru: "Этот способ временно недоступен. Выбери СБП, крипту или CryptoBot.",
+    en: "This method is unavailable. Choose SBP, crypto, or CryptoBot.",
   },
 
   topup_already_paid: {

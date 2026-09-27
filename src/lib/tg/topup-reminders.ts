@@ -40,7 +40,7 @@ export async function tickTopupReminders(): Promise<number> {
       paymentUrl: { not: "" },
       remindCount: { lt: MAX_REMINDS },
       createdAt: { gte: oldest, lte: firstCutoff },
-      paymentMethod: { in: ["sbp", "crypto"] },
+      paymentMethod: { in: ["sbp", "crypto", "cryptobot"] },
     },
     orderBy: { createdAt: "asc" },
     take: 40,

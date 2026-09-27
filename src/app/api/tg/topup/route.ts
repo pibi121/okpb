@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   const method = String(body.method || "") as CasheraPaymentMethod;
   if (!isActiveTopupMethod(method)) {
     return NextResponse.json(
-      { error: "bad_method", message: "Use sbp or crypto" },
+      { error: "bad_method", message: "Use sbp, crypto, or cryptobot" },
       { status: 400 },
     );
   }

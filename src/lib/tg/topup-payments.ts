@@ -1,5 +1,5 @@
 /**
- * Peach top-ups via Cashera (SBP / crypto).
+ * Peach top-ups via Cashera (SBP / crypto / CryptoBot).
  * Card is not offered in product UI — Cashera merchant has card disabled.
  */
 import { prisma } from "@/lib/db";
@@ -18,23 +18,52 @@ export const TOPUP_PAYMENT_METHODS: Array<{
   id: Exclude<CasheraPaymentMethod, "card">;
   labelRu: string;
   labelEn: string;
+  /** Telegram Bot API inline button style (primary/success/danger). */
+  style: "primary" | "success" | "danger";
 }> = [
-  { id: "sbp", labelRu: "СБП — перевод из банка", labelEn: "SBP — bank transfer" },
+  {
+    id: "sbp",
+    labelRu: "📲 СБП — перевод из банка",
+    labelEn: "📲 SBP — bank transfer",
+    style: "success",
+  },
   {
     id: "crypto",
-    labelRu: "Крипта — USDT",
-    labelEn: "Crypto — USDT",
+    labelRu: "🪙 Крипта — USDT",
+    labelEn: "🪙 Crypto — USDT",
+    style: "danger",
+  },
+  {
+    id: "cryptobot",
+    labelRu: "💎 CryptoBot — криптой через ТГ",
+    labelEn: "💎 CryptoBot — pay in Telegram",
+    style: "primary",
   },
 ];
 
 export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
 
 /**
- * Peaches returned to cover payment-provider fee (user pays fee; we rebate in 🍑).
- * Set TG_TOPUP_FEE_REBATE_PCT (e.g. "1.5" for 1.5%). Default 0 until configured.
+ * Fee rebate %: user pays Cashera fee (fee_payer=customer), we return it as 🍑.
+ * Rates match merchant cabinet (SBP / crypto / CryptoBot).
  */
-export function topupFeeRebatePeaches(peaches: number): number {
-  const pct = Number(process.env.TG_TOPUP_FEE_REBATE_PCT || "0");
+export const TOPUP_FEE_REBATE_PCT: Record<
+  Exclude<CasheraPaymentMethod, "card">,
+  number
+> = {
+  sbp: 13,
+  crypto: 3,
+  cryptobot: 5,
+};
+
+/**
+ * Peaches returned to cover payment-provider fee for the chosen method.
+ */
+export function topupFeeRebatePeaches(
+  peaches: number,
+  method: string,
+): number {
+  const pct = TOPUP_FEE_REBATE_PCT[method as keyof typeof TOPUP_FEE_REBATE_PCT];
   if (!Number.isFinite(pct) || pct <= 0) return 0;
   return Math.max(0, Math.ceil((Math.floor(peaches) * pct) / 100));
 }
@@ -71,17 +100,20 @@ export async function createTopupPayment(opts: {
   casheraUuid: string;
   amountMinor: number;
   peaches: number;
+  feeRebate: number;
   priceLine: string;
 }> {
   if (!casheraConfigured()) {
     throw new Error("Платежи ещё не настроены (нет ключей Cashera)");
   }
   if (!isActiveTopupMethod(opts.method)) {
-    throw new Error("Этот способ оплаты недоступен. Выбери СБП или крипту.");
+    throw new Error(
+      "Этот способ оплаты недоступен. Выбери СБП, крипту или CryptoBot.",
+    );
   }
   const peaches = Math.floor(opts.peaches);
   const packBonus = Math.max(0, Math.floor(opts.bonusPeaches || 0));
-  const feeRebate = topupFeeRebatePeaches(peaches);
+  const feeRebate = topupFeeRebatePeaches(peaches, opts.method);
   const bonus = packBonus + feeRebate;
   if (peaches < TG_MIN_TOPUP_PEACHES) {
     throw new Error(`Минимум ${TG_MIN_TOPUP_PEACHES} 🍑`);
@@ -89,13 +121,13 @@ export async function createTopupPayment(opts: {
 
   const rub = peachesToRub(peaches);
   const amountMinor = rubToMinor(rub);
-  const creditPeaches = peaches + bonus;
+  const creditTotal = peaches + bonus;
 
   const order = await prisma.paymentOrder.create({
     data: {
       externalId: `pb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
       userId: opts.userId,
-      peaches: creditPeaches,
+      peaches: creditTotal,
       amountMinor,
       currency: "RUB",
       paymentMethod: opts.method,
@@ -117,7 +149,7 @@ export async function createTopupPayment(opts: {
         peaches,
         packBonus,
         feeRebate,
-        creditPeaches,
+        creditPeaches: creditTotal,
         orderId: order.id,
         method: opts.method,
       },
@@ -139,7 +171,8 @@ export async function createTopupPayment(opts: {
       paymentUrl: String(tx.payment_url),
       casheraUuid: tx.uuid,
       amountMinor,
-      peaches: creditPeaches,
+      peaches: creditTotal,
+      feeRebate,
       priceLine: formatTopupPriceLine(peaches, opts.locale || "ru"),
     };
   } catch (e) {

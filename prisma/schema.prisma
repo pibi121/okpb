@@ -316,7 +316,7 @@ model PaymentOrder {
   /// Amount in minor units (kopecks for RUB)
   amountMinor     Int
   currency        String   @default("RUB")
-  /// sbp | crypto (| legacy card)
+  /// sbp | crypto | cryptobot (| legacy card)
   paymentMethod   String
   status          String   @default("pending")
   casheraUuid     String   @default("")

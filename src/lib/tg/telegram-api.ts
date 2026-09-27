@@ -198,6 +198,37 @@ export async function tgSendVideo(
   extra: Record<string, unknown> = {},
   token?: string,
 ) {
+  let sized = { ...extra };
+  const hasW = Number(sized.width) > 0;
+  const hasH = Number(sized.height) > 0;
+  if (!hasW || !hasH) {
+    try {
+      const { localBytesFromResultUrl } = await import("@/lib/peach-lab");
+      const { telegramVideoSizeExtra } = await import("@/lib/tg/mp4-probe");
+      let rel = "";
+      const raw = (videoUrl || "").trim();
+      if (raw.startsWith("/api/media/") || raw.startsWith("/tg/")) {
+        rel = raw.split("?")[0] || "";
+      } else {
+        try {
+          const u = new URL(raw);
+          if (
+            u.pathname.startsWith("/api/media/") ||
+            u.pathname.startsWith("/tg/")
+          ) {
+            rel = u.pathname;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      const bytes = rel ? localBytesFromResultUrl(rel) : null;
+      sized = telegramVideoSizeExtra(bytes, sized);
+    } catch {
+      if (!hasW) sized.width = 720;
+      if (!hasH) sized.height = 1280;
+    }
+  }
   return tgApi(
     "sendVideo",
     {
@@ -206,7 +237,7 @@ export async function tgSendVideo(
       caption,
       parse_mode: "HTML",
       supports_streaming: true,
-      ...extra,
+      ...sized,
     },
     token,
   );
@@ -221,6 +252,8 @@ export async function tgSendVideoFile(
   extra: Record<string, unknown> = {},
   token?: string,
 ) {
+  const { telegramVideoSizeExtra } = await import("@/lib/tg/mp4-probe");
+  const sized = telegramVideoSizeExtra(bytes, extra);
   const form = new FormData();
   form.append("chat_id", String(chatId));
   form.append(
@@ -231,7 +264,7 @@ export async function tgSendVideoFile(
   if (caption) form.append("caption", caption);
   form.append("parse_mode", "HTML");
   form.append("supports_streaming", "true");
-  for (const [k, v] of Object.entries(extra)) {
+  for (const [k, v] of Object.entries(sized)) {
     if (v == null) continue;
     form.append(k, typeof v === "string" ? v : JSON.stringify(v));
   }

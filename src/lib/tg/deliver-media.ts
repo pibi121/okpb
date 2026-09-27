@@ -93,15 +93,17 @@ export async function tgDeliverVideo(opts: {
   extra?: Record<string, unknown>;
   token?: string;
 }): Promise<void> {
+  const { telegramVideoSizeExtra } = await import("@/lib/tg/mp4-probe");
   const rel = mediaRelativePath(opts.url);
   const bytes = rel ? localBytesFromResultUrl(rel) : null;
+  const extra = telegramVideoSizeExtra(bytes, opts.extra || {});
   if (bytes?.length) {
     await tgSendVideoFile(
       opts.chatId,
       bytes,
       filenameFromPath(opts.url, "video.mp4"),
       opts.caption,
-      opts.extra || {},
+      extra,
       opts.token,
     );
     return;
@@ -115,7 +117,7 @@ export async function tgDeliverVideo(opts: {
     opts.chatId,
     tgAbsoluteUrl(opts.url),
     opts.caption,
-    opts.extra || {},
+    extra,
     opts.token,
   );
 }

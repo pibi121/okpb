@@ -307,14 +307,30 @@ async function ensureFunnelVideoRefCharacter(
   const ch =
     existing ||
     (await createVideoRefCharacter(userId, "FV2 ref"));
-  // Reset photos: add latest as only ref
+
+  // Always replace ref photos — otherwise QuickVideo keeps mixing the old face.
+  const { listCharacterPhotos, deleteCharacterPhoto } = await import(
+    "@/lib/character-dataset"
+  );
+  for (const photo of listCharacterPhotos(ch.id)) {
+    try {
+      deleteCharacterPhoto(ch.id, photo.name);
+    } catch {
+      /* ignore */
+    }
+  }
+
   await addCharacterPhotoFromBuffer(
     userId,
     ch.id,
     photoBytes,
     `fv2_${Date.now()}.jpg`,
-    { maxPhotos: 8, skipAgeGate: true },
+    { maxPhotos: 1, skipAgeGate: true },
   );
+  await prisma.character.update({
+    where: { id: ch.id },
+    data: { photoCount: 1, updatedAt: new Date() },
+  });
   return ch.id;
 }
 

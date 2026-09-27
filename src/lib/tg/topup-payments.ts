@@ -23,20 +23,20 @@ export const TOPUP_PAYMENT_METHODS: Array<{
 }> = [
   {
     id: "sbp",
-    labelRu: "📲 СБП — перевод из банка",
-    labelEn: "📲 SBP — bank transfer",
+    labelRu: "📲 СБП (для жителей РФ)",
+    labelEn: "📲 SBP (for Russia)",
     style: "success",
   },
   {
     id: "crypto",
-    labelRu: "🪙 Крипта — USDT",
-    labelEn: "🪙 Crypto — USDT",
+    labelRu: "🪙 Криптовалюта (USDT, BTC, ETH и т.д)",
+    labelEn: "🪙 Crypto (USDT, BTC, ETH…)",
     style: "danger",
   },
   {
     id: "cryptobot",
-    labelRu: "💎 CryptoBot — криптой через ТГ",
-    labelEn: "💎 CryptoBot — pay in Telegram",
+    labelRu: "💎 CryptoBot (криптой через ТГ)",
+    labelEn: "💎 CryptoBot (crypto via TG)",
     style: "primary",
   },
 ];

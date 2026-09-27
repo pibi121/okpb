@@ -241,6 +241,7 @@ async function sendVideoConfirm(
     `🎥 <b>${row.title}${row.emojis}</b>\n\n` +
     notesBlock +
     `Стоимость: ${priceLine(row.price)}\n\n` +
+    `Я готов сделать с ней это видео. Просто нажми «Подтвердить»\n\n` +
     `<a href="${tgAbsoluteUrl("/tg/guide")}">🔗 Инструкция, как использовать шаблон и примеры</a>`;
   const kb = {
     inline_keyboard: [

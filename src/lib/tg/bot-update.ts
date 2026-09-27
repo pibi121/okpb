@@ -1600,24 +1600,22 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       return;
     }
     if (await userOnFunnelV2(user)) {
-      if (
-        data.startsWith("hub:") ||
-        data.startsWith("ud:") ||
-        data.startsWith("tpl:") ||
-        data.startsWith("vid:")
-      ) {
-        await rejectLegacyForFunnelV2(chatId, cq.id);
-        return;
-      }
-      // Old top-up entry points → Funnel v2 balance screen
-      if (
-        data === "tu:open" ||
-        /^tu:\d+$/.test(data) ||
-        data === "hub:tu"
-      ) {
+      // Old top-up entry points → Funnel v2 packs (not tu:N amount / pay / renew).
+      if (data === "tu:open" || data === "hub:tu") {
         await tgAnswerCallbackQuery(cq.id);
         const { sendFunnelV2Topup } = await import("@/lib/tg/funnel-v2/topup");
         await sendFunnelV2Topup(chatId, user.id, locale);
+        return;
+      }
+      // Allow payment continuation + rules; block all other legacy bot surfaces.
+      const funnelAllowedLegacy =
+        /^tu:\d+$/.test(data) ||
+        data.startsWith("tu:pay:") ||
+        data.startsWith("tu:renew:") ||
+        data === CB.rulesAgree ||
+        data === "rules:agree";
+      if (!funnelAllowedLegacy) {
+        await rejectLegacyForFunnelV2(chatId, cq.id);
         return;
       }
     }
@@ -2044,11 +2042,13 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         await sendFunnelV2Rules(chatId, user.id, locale);
         return;
       }
+    } else if (
+      user.ageConfirmed &&
+      text &&
+      (await routeMenuText(chatId, platformUserId, user.id, locale, text))
+    ) {
+      return;
     }
-  }
-
-  if (user.ageConfirmed && text && (await routeMenuText(chatId, platformUserId, user.id, locale, text))) {
-    return;
   }
 
   if (!user.ageConfirmed) {
@@ -2105,6 +2105,95 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         text: text.trim(),
         galleryItemId: itemId,
       });
+      return;
+    }
+  }
+
+  // Hard isolation: Funnel v2 never falls into LoRA / character / undress upload flows.
+  {
+    const { userOnFunnelV2, handleFunnelV2PhotoUpload, sendFunnelV2Hub } =
+      await import("@/lib/tg/funnel-v2");
+    if (await userOnFunnelV2(user)) {
+      if (
+        (chatState === "awaiting_topup_amount" ||
+          chatState === "awaiting_topup_method") &&
+        text
+      ) {
+        const n = Number(text.replace(/\s/g, ""));
+        if (Number.isFinite(n)) {
+          await handleTopupAmount(
+            chatId,
+            platformUserId,
+            locale,
+            Math.round(n),
+            user.id,
+          );
+        } else {
+          const { sendFunnelV2Topup } = await import("@/lib/tg/funnel-v2/topup");
+          await sendFunnelV2Topup(chatId, user.id, locale);
+        }
+        return;
+      }
+
+      if (msg.photo?.length) {
+        const largest = msg.photo[msg.photo.length - 1]!;
+        const buf = await tgDownloadFile(largest.file_id);
+        await handleFunnelV2PhotoUpload({
+          chatId,
+          userId: user.id,
+          platformUserId,
+          locale,
+          photoBytes: buf,
+        });
+        return;
+      }
+
+      if (
+        msg.document?.file_id &&
+        String(msg.document.mime_type || "").startsWith("image/")
+      ) {
+        const buf = await tgDownloadFile(msg.document.file_id);
+        await handleFunnelV2PhotoUpload({
+          chatId,
+          userId: user.id,
+          platformUserId,
+          locale,
+          photoBytes: buf,
+        });
+        return;
+      }
+
+      const legacyUploadState =
+        chatState === "awaiting_photos" ||
+        chatState === "onboarding_awaiting_photos" ||
+        chatState === "awaiting_undress_photo" ||
+        chatState === "onboarding_awaiting_name" ||
+        chatState === "awaiting_video_ref_name" ||
+        chatState === "awaiting_lookbook_custom" ||
+        chatState === "awaiting_speech";
+      if (legacyUploadState) {
+        await setTgSession(platformUserId, {
+          chatState: "idle",
+          clearPending: true,
+        });
+        await sendFunnelV2Hub(chatId, user.id, locale);
+        return;
+      }
+
+      if (text) {
+        await recordInboundUserMessage({
+          userId: user.id,
+          platformUserId,
+          text,
+          meta: { chatState, funnelV2: true },
+        });
+        await tgSendMessage(
+          chatId,
+          t("inbox_ack", locale),
+          (await import("@/lib/tg/funnel-v2/hub")).funnelV2ReplyKeyboard(),
+        );
+        return;
+      }
       return;
     }
   }

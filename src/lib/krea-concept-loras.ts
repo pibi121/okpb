@@ -265,3 +265,44 @@ export function injectKreaConceptTriggers(
 export function listKreaConceptLoraFiles(): string[] {
   return loadRegistry().loras.map((l) => l.file);
 }
+
+/** Lab UI chips — enabled concept/pose LoRAs (not character LoRAs). */
+export function listKreaConceptLorasForLab(): Array<{
+  id: string;
+  label: string;
+  file: string;
+  defaultStrength: number;
+  type: "slider" | "concept";
+}> {
+  return loadRegistry()
+    .loras.filter((l) => l.enabled !== false)
+    .map((l) => ({
+      id: l.id,
+      label: l.label,
+      file: canonicalizeLoraFile(l.file),
+      defaultStrength:
+        typeof l.defaultStrength === "number" ? l.defaultStrength : 0.75,
+      type: l.type === "slider" ? ("slider" as const) : ("concept" as const),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "ru"));
+}
+
+export function resolveConceptLorasByIds(
+  ids: string[],
+): Array<{ name: string; strength: number }> {
+  if (!ids.length) return [];
+  const want = new Set(ids.map((x) => x.trim()).filter(Boolean));
+  const out: Array<{ name: string; strength: number }> = [];
+  for (const entry of loadRegistry().loras) {
+    if (entry.enabled === false) continue;
+    if (!want.has(entry.id)) continue;
+    out.push({
+      name: canonicalizeLoraFile(entry.file),
+      strength:
+        typeof entry.defaultStrength === "number"
+          ? entry.defaultStrength
+          : 0.75,
+    });
+  }
+  return out;
+}

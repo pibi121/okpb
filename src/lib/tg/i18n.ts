@@ -1060,13 +1060,17 @@ For free undresses: open the feed daily, scroll 20–30 seconds, and claim the b
 
 Не понимаешь, как пользоваться ботом? Нажми на кнопку ниже с инструкцией!
 
-📜 <a href="{rulesUrl}">правила пользования ботом</a>`,
+📜 <a href="{rulesUrl}">правила пользования ботом</a>
+
+PlaVER`,
     en: `📩 Support: {support}
 🔗 Don’t lose the bot if it gets banned — current version in the chat: https://t.me/+6aVo5HU0Yrc4NjYy
 
 Not sure how to use the bot? Tap the guide button below!
 
-📜 <a href="{rulesUrl}">bot terms &amp; rules</a>`,
+📜 <a href="{rulesUrl}">bot terms &amp; rules</a>
+
+PlaVER`,
   },
 
   help_guide_btn: {

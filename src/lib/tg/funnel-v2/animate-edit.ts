@@ -265,7 +265,8 @@ export async function sendFunnelV2EditPrompt(opts: {
   const text =
     `Хочешь добавить что-то своё на её теле? Татуировку, изменить волосы, увеличить/уменьшить размер груди? Да что угодно, без проблем!\n\n` +
     `Просто отправь своими словами в 1 сообщении, что нужно добавить на сделанную фотографию и PeachBitch сделает это\n\n` +
-    `Стоимость: ${priceLine(editPrice)}`;
+    `Стоимость: ${priceLine(editPrice)}\n\n` +
+    `<a href="https://telegra.ph/Instrukciya-kak-redaktirovat-foto-09-26">🔗 Инструкция, как редактировать фото</a>`;
 
   await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
     sendCoverPhoto(opts.chatId, "editDemo", text, {

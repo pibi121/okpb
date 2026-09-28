@@ -220,7 +220,8 @@ async function sendConfirm(
     `${emoji} <b>${opts.title}</b>\n\n` +
     notesBlock +
     `Стоимость: ${priceLine(opts.price)}\n\n` +
-    `Я готов сделать с ней эту фотку. Просто нажми «Подтвердить»`;
+    `Я готов сделать с ней эту фотку. Просто нажми «Подтвердить»\n\n` +
+    `<a href="https://telegra.ph/Instrukciya-kak-generirovat-foto-09-26">🔗 Инструкция, как этим пользоваться</a>`;
 
   const kb = {
     inline_keyboard: [
@@ -425,7 +426,7 @@ async function runFunnelV2PhotoGen(opts: {
   const bal = await getFunnelBalance(user);
   const blurUsed = user.tgFunnelV2BlurTrialsUsed || 0;
 
-  if (bal < price && blurUsed >= 2) {
+  if (bal < price && blurUsed >= 1) {
     const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
     await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
       sendCoverPhoto(

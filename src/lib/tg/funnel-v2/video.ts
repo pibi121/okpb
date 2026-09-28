@@ -241,7 +241,8 @@ async function sendVideoConfirm(
     `🎥 <b>${row.title}${row.emojis}</b>\n\n` +
     notesBlock +
     `Стоимость: ${priceLine(row.price)}\n\n` +
-    `Я готов сделать с ней это видео. Просто нажми «Подтвердить»`;
+    `Я готов сделать с ней это видео. Просто нажми «Подтвердить»\n\n` +
+    `<a href="https://telegra.ph/Instrukciya-kak-generirovat-foto-09-26">🔗 Инструкция, как этим пользоваться</a>`;
   const kb = {
     inline_keyboard: [
       [

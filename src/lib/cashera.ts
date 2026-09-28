@@ -107,12 +107,18 @@ export async function createCasheraPayment(opts: {
   }
 
   if (!res.ok) {
-    const detail =
+    const rawDetail =
       typeof json.error === "string"
         ? json.error
         : typeof json.message === "string"
           ? json.message
           : text.slice(0, 300);
+    // Never put HTML error pages into Error.message — Telegram HTML parse_mode breaks on <!doctype>.
+    const detail =
+      /<!doctype|<\/?html|<\/?head|<\/?body/i.test(rawDetail) ||
+      (rawDetail.trim().startsWith("<") && rawDetail.includes(">"))
+        ? `HTTP ${res.status}`
+        : rawDetail.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
     throw new Error(`Cashera ${res.status}: ${detail || "create failed"}`);
   }
 

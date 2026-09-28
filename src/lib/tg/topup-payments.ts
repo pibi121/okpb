@@ -10,10 +10,15 @@ import {
   type CasheraPaymentMethod,
   type CasheraTransaction,
 } from "@/lib/cashera";
-import { TG_MIN_TOPUP_PEACHES, peachesToRub, peachesToUsdt } from "@/lib/tg-pricing";
+import {
+  TG_MAX_TOPUP_PEACHES,
+  TG_MIN_TOPUP_PEACHES,
+  peachesToRub,
+  peachesToUsdt,
+} from "@/lib/tg-pricing";
 import { creditPeaches } from "@/lib/tg/wallet";
 
-/** Methods shown in bot + Mini App. */
+/** Methods shown in bot + Mini App. CryptoBot hidden until Cashera path works. */
 export const TOPUP_PAYMENT_METHODS: Array<{
   id: Exclude<CasheraPaymentMethod, "card">;
   labelRu: string;
@@ -33,12 +38,8 @@ export const TOPUP_PAYMENT_METHODS: Array<{
     labelEn: "🪙 Crypto (USDT, BTC, ETH…)",
     style: "danger",
   },
-  {
-    id: "cryptobot",
-    labelRu: "💎 CryptoBot (криптой через ТГ)",
-    labelEn: "💎 CryptoBot (crypto via TG)",
-    style: "primary",
-  },
+  // Hidden: CryptoBot not working in Cashera yet — re-add when ready:
+  // { id: "cryptobot", labelRu: "💎 CryptoBot…", labelEn: "💎 CryptoBot…", style: "primary" },
 ];
 
 export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
@@ -108,7 +109,7 @@ export async function createTopupPayment(opts: {
   }
   if (!isActiveTopupMethod(opts.method)) {
     throw new Error(
-      "Этот способ оплаты недоступен. Выбери СБП, крипту или CryptoBot.",
+      "Этот способ оплаты недоступен. Выбери СБП или крипту.",
     );
   }
   const peaches = Math.floor(opts.peaches);
@@ -117,6 +118,9 @@ export async function createTopupPayment(opts: {
   const bonus = packBonus + feeRebate;
   if (peaches < TG_MIN_TOPUP_PEACHES) {
     throw new Error(`Минимум ${TG_MIN_TOPUP_PEACHES} 🍑`);
+  }
+  if (peaches > TG_MAX_TOPUP_PEACHES) {
+    throw new Error(`Максимум за раз — ${TG_MAX_TOPUP_PEACHES} 🍑`);
   }
 
   const rub = peachesToRub(peaches);

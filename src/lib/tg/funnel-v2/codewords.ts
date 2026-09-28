@@ -71,9 +71,10 @@ export async function tryFunnelV2Codeword(opts: {
       return true;
     }
     await setFunnelV2Live(true);
+    // Silent for end-users; only ack to the operator who typed the codeword.
     await tgSendMessage(
       opts.chatId,
-      "🚀 <b>Funnel v2 LIVE</b> включён для всех. Старые кнопки попросят открыть Главное меню.",
+      "Funnel v2 LIVE (тихо). База до выкатки зафиксирована для рассылок.",
     );
     return true;
   }

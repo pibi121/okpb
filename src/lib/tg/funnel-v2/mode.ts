@@ -16,7 +16,16 @@ export type FunnelV2User = {
 };
 
 export async function isFunnelV2Live(): Promise<boolean> {
-  if (process.env.TG_FUNNEL_V2_LIVE === "1") return true;
+  if (process.env.TG_FUNNEL_V2_LIVE === "1") {
+    // Env force-live: freeze broadcast cutoff on first hit if missing.
+    const row = await prisma.opsSetting.findUnique({ where: { id: "main" } });
+    const at = (row as { tgFunnelV2LiveAt?: Date | null } | null)
+      ?.tgFunnelV2LiveAt;
+    if (!at || !(row as { tgFunnelV2Live?: boolean } | null)?.tgFunnelV2Live) {
+      await setFunnelV2Live(true);
+    }
+    return true;
+  }
   const s = await getOpsSettings();
   return Boolean((s as { tgFunnelV2Live?: boolean }).tgFunnelV2Live);
 }
@@ -105,10 +114,21 @@ export async function enterFunnelV2Preview(userId: string): Promise<void> {
 }
 
 export async function setFunnelV2Live(live: boolean): Promise<void> {
+  const row = await prisma.opsSetting.findUnique({ where: { id: "main" } });
+  const prevAt = (row as { tgFunnelV2LiveAt?: Date | null } | null)
+    ?.tgFunnelV2LiveAt;
   await prisma.opsSetting.upsert({
     where: { id: "main" },
-    create: { id: "main", tgFunnelV2Live: live },
-    update: { tgFunnelV2Live: live },
+    create: {
+      id: "main",
+      tgFunnelV2Live: live,
+      ...(live ? { tgFunnelV2LiveAt: new Date() } : {}),
+    },
+    update: {
+      tgFunnelV2Live: live,
+      // Freeze cutoff on first go-live only (broadcast «база до выкатки»).
+      ...(live && !prevAt ? { tgFunnelV2LiveAt: new Date() } : {}),
+    },
   });
   const { invalidateOpsSettings } = await import("@/lib/ops/settings");
   invalidateOpsSettings();

@@ -27,6 +27,11 @@ export async function startTgUndressGeneration(opts: {
   funnelV2?: boolean;
   /** Funnel v2 trial: apply tease blur; no paid result CTAs */
   funnelV2Blur?: boolean;
+  /**
+   * Already debited from funnel wallet — skip peach/free charge;
+   * store as chargedPeaches for QC refund.
+   */
+  funnelChargedPeaches?: number;
 }): Promise<{
   galleryItemId: string;
   chargedPeaches: number;
@@ -40,8 +45,12 @@ export async function startTgUndressGeneration(opts: {
   const price = undressPeaches();
   let usedFree = false;
   let chargedPeaches = 0;
+  const funnelPaid = Math.max(0, Math.floor(opts.funnelChargedPeaches || 0));
 
-  if (user.tgUndressFreeCredits >= 1) {
+  if (funnelPaid > 0) {
+    chargedPeaches = funnelPaid;
+    usedFree = false;
+  } else if (user.tgUndressFreeCredits >= 1) {
     const ok = await consumeUndressFree(opts.userId);
     if (!ok) throw new Error("free_race");
     usedFree = true;
@@ -82,6 +91,7 @@ export async function startTgUndressGeneration(opts: {
   const galleryItemId = item.id;
   const funnelV2 = Boolean(opts.funnelV2);
   const funnelV2Blur = Boolean(opts.funnelV2Blur);
+  const funnelPaidAmt = funnelPaid;
 
   void enqueueGpuJob(
     async () => {
@@ -101,7 +111,9 @@ export async function startTgUndressGeneration(opts: {
             // Keep Funnel v2 hooks above; owner OOM path frees VRAM before retry.
             if (
               isOom ||
-              /Comfy job error|ECONN|ETIMEDOUT|socket hang|tunnel/i.test(msg)
+              /Comfy job error|Comfy wait timeout|wait timeout|ECONN|ETIMEDOUT|socket hang|tunnel|Bad Gateway|EAI_AGAIN/i.test(
+                msg,
+              )
             ) {
               console.warn("[undress] retry once after:", msg.slice(0, 160));
               await comfyFreeMemory();
@@ -150,30 +162,73 @@ export async function startTgUndressGeneration(opts: {
           : funnelV2
             ? "funnel_v2_photo"
             : "undress";
-        await enqueueTgOutbox({
-          platformUserId,
-          userId: opts.userId,
-          kind: "photo",
-          payload: {
-            url: saved.publicUrl,
-            caption: "",
-            successKind,
-            galleryItemId,
-            chargedPeaches,
-            undressFreeUsed: usedFree,
+        if (funnelV2 || funnelV2Blur) {
+          const { enqueueFunnelV2Result } = await import(
+            "@/lib/tg/funnel-v2/enqueue-result"
+          );
+          await enqueueFunnelV2Result({
+            userId: opts.userId,
+            platformUserId,
             locale,
-            funnelV2: funnelV2 || funnelV2Blur,
+            kind: "photo",
+            url: saved.publicUrl,
+            galleryItemId,
+            successKind,
             blurTrial: funnelV2Blur,
-          },
-        });
+            offerQcDislike: funnelV2 && !funnelV2Blur && chargedPeaches > 0,
+            extraPayload: {
+              chargedPeaches,
+              undressFreeUsed: usedFree,
+            },
+          });
+        } else {
+          await enqueueTgOutbox({
+            platformUserId,
+            userId: opts.userId,
+            kind: "photo",
+            payload: {
+              url: saved.publicUrl,
+              caption: "",
+              successKind,
+              galleryItemId,
+              chargedPeaches,
+              undressFreeUsed: usedFree,
+              locale,
+            },
+          });
+        }
       } catch (e) {
         console.error("[undress] job failed:", e);
-        if (usedFree) {
+        if (funnelPaidAmt > 0) {
+          const { creditFunnelBalance } = await import(
+            "@/lib/tg/funnel-v2/mode"
+          );
+          await creditFunnelBalance(opts.userId, funnelPaidAmt).catch(
+            () => undefined,
+          );
+        } else if (usedFree) {
           await restoreUndressFree(opts.userId).catch(() => undefined);
         } else if (chargedPeaches > 0) {
           await creditPeaches(opts.userId, chargedPeaches, "tg_undress_refund", {
             galleryItemId,
           }).catch(() => undefined);
+        }
+        if (funnelV2Blur) {
+          try {
+            const u = await prisma.user.findUnique({
+              where: { id: opts.userId },
+              select: { tgFunnelV2BlurTrialsUsed: true },
+            });
+            const used = u?.tgFunnelV2BlurTrialsUsed || 0;
+            if (used > 0) {
+              await prisma.user.update({
+                where: { id: opts.userId },
+                data: { tgFunnelV2BlurTrialsUsed: used - 1 },
+              });
+            }
+          } catch {
+            /* ignore */
+          }
         }
         await prisma.galleryItem.update({
           where: { id: galleryItemId },

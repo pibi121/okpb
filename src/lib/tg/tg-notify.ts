@@ -17,6 +17,56 @@ export async function hasTelegramAccount(userId: string): Promise<{
   };
 }
 
+/** True if we already queued/sent media outbox for this gallery item (dedupe recover vs primary). */
+export async function alreadyQueuedTgMediaOutbox(
+  userId: string,
+  galleryItemId: string,
+  kind: "photo" | "video",
+): Promise<boolean> {
+  const id = (galleryItemId || "").trim();
+  if (!id) return false;
+  const row = await prisma.tgOutbox.findFirst({
+    where: {
+      userId,
+      kind,
+      payloadJson: { contains: id },
+    },
+    select: { id: true },
+  });
+  return Boolean(row);
+}
+
+/**
+ * Claim one TG media delivery per gallery item (meta flag + outbox check).
+ * Prevents complete vs recover double-send.
+ */
+export async function claimTgMediaNotify(
+  userId: string,
+  galleryItemId: string,
+  kind: "photo" | "video",
+): Promise<boolean> {
+  const id = (galleryItemId || "").trim();
+  if (!id) return true; // no id — can't dedupe; allow
+  if (await alreadyQueuedTgMediaOutbox(userId, id, kind)) return false;
+  try {
+    const gi = await prisma.galleryItem.findUnique({
+      where: { id },
+      select: { metaJson: true },
+    });
+    if (!gi) return true;
+    const meta = JSON.parse(gi.metaJson || "{}") as Record<string, unknown>;
+    if (meta.tgMediaNotified) return false;
+    meta.tgMediaNotified = Date.now();
+    await prisma.galleryItem.update({
+      where: { id },
+      data: { metaJson: JSON.stringify(meta) },
+    });
+  } catch {
+    /* best-effort — still fall through to outbox dedupe */
+  }
+  return true;
+}
+
 export async function notifyTelegramMediaReady(opts: {
   userId: string;
   kind: "photo" | "video";
@@ -36,6 +86,15 @@ export async function notifyTelegramMediaReady(opts: {
   let funnelV2 = false;
   let offerSave = opts.offerSaveCharacterId;
   if (opts.galleryItemId) {
+    if (
+      !(await claimTgMediaNotify(
+        opts.userId,
+        opts.galleryItemId,
+        opts.kind,
+      ))
+    ) {
+      return;
+    }
     try {
       const gi = await prisma.galleryItem.findUnique({
         where: { id: opts.galleryItemId },
@@ -59,18 +118,25 @@ export async function notifyTelegramMediaReady(opts: {
     }
   }
 
+  const caption =
+    funnelV2 && opts.kind === "video" && !opts.caption?.includes("Готово")
+      ? "❤️ Готово! Как тебе? 💦"
+      : opts.caption;
+
   await enqueueTgOutbox({
     platformUserId: acc.platformUserId,
     userId: opts.userId,
     kind: opts.kind,
     payload: {
       url: rel,
-      caption: opts.caption,
+      caption,
       successKind,
       locale: acc.locale,
       ...(opts.galleryItemId ? { galleryItemId: opts.galleryItemId } : {}),
       ...(offerSave ? { offerSaveCharacterId: offerSave } : {}),
-      ...(funnelV2 ? { funnelV2: true } : {}),
+      ...(funnelV2
+        ? { funnelV2: true, attachResultKeyboard: true }
+        : {}),
     },
   });
 }

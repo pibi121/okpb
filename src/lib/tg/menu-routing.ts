@@ -77,7 +77,10 @@ async function showHelpInPlace(
   ]);
   await editOrSendNavMessage({
     chatId,
-    text: tFormat("help_title", locale, { support: tgSupportContact() }),
+    text: tFormat("help_title", locale, {
+      support: tgSupportContact(),
+      rulesUrl: tgRulesArticleUrl(locale),
+    }),
     reply_markup: { inline_keyboard: rows },
     messageId,
     hasMedia,

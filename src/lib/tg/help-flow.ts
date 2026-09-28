@@ -10,10 +10,12 @@ import {
 } from "@/lib/tg/support";
 
 export async function sendHelp(chatId: number, locale: TgLocale) {
+  const rulesUrl = tgRulesArticleUrl(locale);
   await tgSendMessage(
     chatId,
     tFormat("help_title", locale, {
       support: tgSupportContact(),
+      rulesUrl,
     }),
     {
       reply_markup: {
@@ -27,7 +29,7 @@ export async function sendHelp(chatId: number, locale: TgLocale) {
           [
             {
               text: t("help_rules_btn", locale),
-              url: tgRulesArticleUrl(locale),
+              url: rulesUrl,
             },
           ],
           [

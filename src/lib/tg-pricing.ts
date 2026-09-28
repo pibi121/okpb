@@ -56,6 +56,8 @@ export const TG_VIDEO_PEACHES = {
 /** Quick top-up buttons in bot (1 🍑 = 1 ₽). Template prices are separate. */
 export const TG_QUICK_TOPUP_AMOUNTS = [200, 300, 1000, 4000] as const;
 export const TG_MIN_TOPUP_PEACHES = 200;
+/** Hard ceiling for custom amount — blocks runaway Cashera creates. */
+export const TG_MAX_TOPUP_PEACHES = 50_000;
 
 export const TG_TOP_UP_PACKS = [
   { id: "try", label: { ru: "Try", en: "Try" }, peaches: 200, bonusPct: 0 },

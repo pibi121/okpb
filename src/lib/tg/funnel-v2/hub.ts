@@ -3,7 +3,6 @@
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
-import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
   tgDeleteMessage,
   tgSendMessage,
@@ -76,7 +75,7 @@ export function funnelV2RulesKeyboard() {
 export async function sendFunnelV2Rules(
   chatId: number,
   userId: string,
-  _locale: TgLocale,
+  locale: TgLocale,
 ) {
   await prisma.user.update({
     where: { id: userId },
@@ -90,9 +89,11 @@ export async function sendFunnelV2Rules(
   await setTgSession(String(chatId), {
     chatState: "funnel_v2_awaiting_rules",
   });
+  const { tgRulesArticleUrl } = await import("@/lib/tg/rules");
+  const rulesUrl = tgRulesArticleUrl(locale);
   const text =
     "⚠️ <b>Дальше ты воплотишь все свои фантазии!</b>\n\n" +
-    "Но для этого нужно, чтобы ты принял правила пользования ботом и ознакомился с оффертой, " +
+    `Но для этого нужно, чтобы ты принял <a href="${rulesUrl}">правила пользования ботом</a> и ознакомился с оффертой, ` +
     "а также подтвердил, что тебе исполнилось 18 лет. Просто нажми на кнопку ниже";
   const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
   await funnelV2ReplaceUi(String(chatId), chatId, async () =>
@@ -132,7 +133,6 @@ export function funnelV2HubKeyboard() {
 export async function buildFunnelV2HubText(userId: string): Promise<string> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   const bal = user ? await getFunnelBalance(user) : 0;
-  const examples = tgAbsoluteUrl("/tg");
   return (
     `<b>Ну что, с чего начнём?</b>\n\n` +
     `Твой баланс: <b>${bal}🍑</b>\n\n` +
@@ -140,7 +140,6 @@ export async function buildFunnelV2HubText(userId: string): Promise<string> {
     `1. Раздеть по 1 фото, поставить её в любую позу 💦 и оживить\n\n` +
     `2. Сделать 🍓 видео с ней по 1 фото с сексом, диалогами, сюжетами по готовым шаблонам\n\n` +
     `3. Сделать PRO образ твоего персонажа, чтобы вывести реализм на новый уровень и делать самые качественные фото/видео в ⭐️ PRO-режиме\n\n` +
-    `<a href="${examples}">🔗Открыть примеры работ</a>\n\n` +
     `Выбери, что тебя интересует по кнопкам ниже 👇`
   );
 }

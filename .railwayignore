@@ -83,3 +83,8 @@ klein_fix_latest.png
 # optional local presets — ship JSON registries
 /presets/*
 !/presets/*.json
+
+/Temp/
+/tmp-undress-samples/
+/tmp-query-undress.js
+

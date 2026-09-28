@@ -8,6 +8,7 @@ import { FV2, isFunnelV2Callback } from "@/lib/tg/funnel-v2/callbacks";
 import {
   acceptFunnelV2Rules,
   sendFunnelV2Hub,
+  sendFunnelV2Rules,
 } from "@/lib/tg/funnel-v2/hub";
 import { handleFunnelV2PhotoCallback } from "@/lib/tg/funnel-v2/photo";
 import {
@@ -23,7 +24,7 @@ import {
   sendFunnelV2EditPrompt,
   startFunnelV2Animate,
 } from "@/lib/tg/funnel-v2/animate-edit";
-import { userOnFunnelV2 } from "@/lib/tg/funnel-v2/mode";
+import { funnelV2RulesAccepted, userOnFunnelV2 } from "@/lib/tg/funnel-v2/mode";
 import { showEarnInPlaceProxy, showHelpInPlaceProxy } from "@/lib/tg/funnel-v2/earn-help";
 
 export { isFunnelV2Callback };
@@ -162,12 +163,26 @@ export async function routeFunnelV2MenuText(opts: {
   return false;
 }
 
-/** Old hub/inline buttons while on v2 — ask to use main menu. */
+/** Old hub/inline buttons while on v2 — open new main menu (silent migration). */
 export async function rejectLegacyForFunnelV2(
   chatId: number,
   callbackId?: string,
+  opts?: { userId?: string; locale?: TgLocale },
 ): Promise<void> {
   if (callbackId) await tgAnswerCallbackQuery(callbackId);
+  const userId = opts?.userId;
+  const locale = opts?.locale || "ru";
+  if (userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      if (!funnelV2RulesAccepted(user)) {
+        await sendFunnelV2Rules(chatId, userId, locale);
+      } else {
+        await sendFunnelV2Hub(chatId, userId, locale);
+      }
+      return;
+    }
+  }
   await tgSendMessage(
     chatId,
     "Эта кнопка устарела. Нажми <b>🏠 Главное меню</b> или /start.",

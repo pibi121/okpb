@@ -34,6 +34,7 @@ import {
   filterDbCharacterIds,
   isCustomCharacterId,
 } from "@/lib/quick-video-custom-character";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 export type PublicQuickVideoRun = {
   id: string;
@@ -372,16 +373,51 @@ async function runQuickVideoJob(runId: string, userId: string) {
     refVideoBuffer = localBytesFromResultUrl(run.refVideoUrl);
   }
 
-  const out = await runRef2VClip({
-    refImageBuffers: refBuffers,
-    refVideoBuffer,
-    refVideoName: run.refVideoUrl ? "pose.mp4" : undefined,
-    prompt: composed,
-    width: run.width,
-    height: run.height,
-    durationSec: run.durationSec,
-    filenamePrefix: `peach/quick_${runId}`,
-  });
+  const out = await (async () => {
+    try {
+      return await runRef2VClip({
+        refImageBuffers: refBuffers,
+        refVideoBuffer,
+        refVideoName: run.refVideoUrl ? "pose.mp4" : undefined,
+        prompt: composed,
+        width: run.width,
+        height: run.height,
+        durationSec: run.durationSec,
+        filenamePrefix: `peach/quick_${runId}`,
+      });
+    } catch (first) {
+      const msg = first instanceof Error ? first.message : String(first);
+      if (
+        !/OutOfMemory|CUDA out of memory|ran out of memory|Comfy job error/i.test(
+          msg,
+        )
+      ) {
+        throw first;
+      }
+      console.warn(
+        `[peach] quick-video OOM/comfy retry once for ${runId}:`,
+        msg.slice(0, 180),
+      );
+      try {
+        const { comfyFreeMemory } = await import("@/lib/comfy-client");
+        await comfyFreeMemory();
+        await new Promise((r) => setTimeout(r, 12_000));
+        await comfyFreeMemory();
+      } catch (freeErr) {
+        console.warn("[peach] comfyFreeMemory before retry:", freeErr);
+      }
+      return await runRef2VClip({
+        refImageBuffers: refBuffers,
+        refVideoBuffer,
+        refVideoName: run.refVideoUrl ? "pose.mp4" : undefined,
+        prompt: composed,
+        width: run.width,
+        height: run.height,
+        durationSec: run.durationSec,
+        filenamePrefix: `peach/quick_${runId}`,
+      });
+    }
+  })();
 
   const saved = saveGalleryBinary(userId, "mp4", out.bytes, `quick_${runId}`);
 
@@ -483,15 +519,16 @@ async function runQuickVideoJob(runId: string, userId: string) {
       mediaUrl: saved.publicUrl,
       caption: run.title,
       offerSaveCharacterId: charIds[0],
-      galleryItemId: run.galleryItemId || undefined,
+      galleryItemId: itemId || undefined,
     }).catch((e) => console.error("[peach] tg video notify:", e));
   }
 }
 
 function friendlyQuickVideoError(msg: string) {
-  return /ECONNREFUSED|ECONNRESET|ETIMEDOUT|8188/i.test(msg)
-    ? "Сервер временно недоступен. Подожди ~30 сек и запусти снова."
-    : msg;
+  return userFacingTgError(
+    msg,
+    "Не получилось собрать видео. Попробуй ещё раз через минуту — если списание было, персики вернутся.",
+  );
 }
 
 /**
@@ -618,7 +655,7 @@ export async function tryRecoverQuickVideoFromComfy(
     mediaUrl: saved.publicUrl,
     caption: run.title,
     offerSaveCharacterId: charIds[0],
-    galleryItemId: run.galleryItemId || undefined,
+    galleryItemId: itemId || undefined,
   }).catch((e) => console.error("[peach] tg video notify:", e));
 
   return true;

@@ -9,7 +9,7 @@ import { listLiveBots, type LiveBot } from "@/lib/tg/bot-registry";
 import { tgDeliverPhoto, tgDeliverVideo } from "@/lib/tg/deliver-media";
 
 export type BroadcastFilter = {
-  who?: "all" | "paid" | "never_paid" | "no_job";
+  who?: "all" | "paid" | "never_paid" | "no_job" | "pre_funnel_v2";
   locale?: "ru" | "en" | "";
   trafficLinkId?: string;
   skipQuietDays?: number;
@@ -322,15 +322,28 @@ function buttonsMarkup(buttons: BroadcastButton[]) {
 
 export async function previewBroadcastAudience(filterJson: string) {
   const f = parseFilter(filterJson);
-  const where = buildWhere(f);
+  const where = await buildWhere(f);
   return prisma.platformAccount.count({ where });
 }
 
-function buildWhere(f: BroadcastFilter) {
+async function buildWhere(f: BroadcastFilter) {
   const quietFrom =
     f.skipQuietDays && f.skipQuietDays > 0
       ? new Date(Date.now() - f.skipQuietDays * 86400000)
       : null;
+
+  let createdBefore: Date | null = null;
+  if (f.who === "pre_funnel_v2") {
+    const { getOpsSettings } = await import("@/lib/ops/settings");
+    const s = await getOpsSettings();
+    if (s.tgFunnelV2LiveAt) {
+      createdBefore = new Date(s.tgFunnelV2LiveAt);
+    } else {
+      // Go-live not frozen yet — preview ≈ current base (everyone so far).
+      createdBefore = new Date();
+    }
+  }
+
   return {
     platform: "telegram" as const,
     user: {
@@ -344,6 +357,7 @@ function buildWhere(f: BroadcastFilter) {
         ? { ledger: { none: { amount: { gt: 0 }, reason: { contains: "topup" } } } }
         : {}),
       ...(f.who === "no_job" ? { galleryItems: { none: {} } } : {}),
+      ...(createdBefore ? { createdAt: { lte: createdBefore } } : {}),
     },
     ...(quietFrom ? { lastSeenAt: { gte: quietFrom } } : {}),
   };
@@ -440,7 +454,7 @@ async function processBroadcastSend(id: string) {
   const byBot = emptyBotStats(bots);
 
   const accounts = await prisma.platformAccount.findMany({
-    where: buildWhere(f),
+    where: await buildWhere(f),
     include: { user: { select: { locale: true } } },
     take: 5000,
   });

@@ -1208,6 +1208,8 @@ model OpsSetting {
   ageGateJson            String   @default("{}")
   /// New TG funnel live for everyone (after QA via FUNNEL_PREVIEW)
   tgFunnelV2Live         Boolean  @default(false)
+  /// Frozen at first go-live — broadcast segment «база до выкатки»
+  tgFunnelV2LiveAt       DateTime?
   updatedAt              DateTime @updatedAt
 }
 

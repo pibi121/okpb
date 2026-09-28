@@ -716,14 +716,14 @@ Tap below to top up 👇`,
 Минимум — <b>{min} 🍑</b> (≈ {usdt} USDT по курсу)
 
 Выбери по кнопке или введи число в чате 👇
-Дальше — оплата через <b>СБП</b>, <b>крипту (USDT)</b> или <b>CryptoBot</b>.`,
+Дальше — оплата через <b>СБП</b> или <b>крипту (USDT)</b>.`,
     en: `<b>How many peaches do you want?</b>
 
 🍑 1 peach = 1 RUB
 Minimum — <b>{min} 🍑</b> (≈ {usdt} USDT at current rate)
 
 Pick a button or type a number 👇
-Next: pay via <b>SBP</b>, <b>crypto (USDT)</b>, or <b>CryptoBot</b>.`,
+Next: pay via <b>SBP</b> or <b>crypto (USDT)</b>.`,
   },
 
   topup_min_error: {
@@ -816,8 +816,8 @@ Open the link again or request a new one 👇`,
   },
 
   topup_method_unavailable: {
-    ru: "Этот способ временно недоступен. Выбери СБП, крипту или CryptoBot.",
-    en: "This method is unavailable. Choose SBP, crypto, or CryptoBot.",
+    ru: "Этот способ временно недоступен. Выбери СБП или крипту.",
+    en: "This method is unavailable. Choose SBP or crypto.",
   },
 
   topup_already_paid: {
@@ -1058,11 +1058,15 @@ For free undresses: open the feed daily, scroll 20–30 seconds, and claim the b
     ru: `📩 Поддержка: {support}
 🔗 Не потеряй бота, если забанят, актуальная версия в чате: https://t.me/+6aVo5HU0Yrc4NjYy
 
-Не понимаешь, как пользоваться ботом? Нажми на кнопку ниже с инструкцией!`,
+Не понимаешь, как пользоваться ботом? Нажми на кнопку ниже с инструкцией!
+
+📜 <a href="{rulesUrl}">правила пользования ботом</a>`,
     en: `📩 Support: {support}
 🔗 Don’t lose the bot if it gets banned — current version in the chat: https://t.me/+6aVo5HU0Yrc4NjYy
 
-Not sure how to use the bot? Tap the guide button below!`,
+Not sure how to use the bot? Tap the guide button below!
+
+📜 <a href="{rulesUrl}">bot terms &amp; rules</a>`,
   },
 
   help_guide_btn: {

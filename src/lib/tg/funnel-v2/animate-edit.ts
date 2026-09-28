@@ -265,8 +265,7 @@ export async function sendFunnelV2EditPrompt(opts: {
   const text =
     `Хочешь добавить что-то своё на её теле? Татуировку, изменить волосы, увеличить/уменьшить размер груди? Да что угодно, без проблем!\n\n` +
     `Просто отправь своими словами в 1 сообщении, что нужно добавить на сделанную фотографию и PeachBitch сделает это\n\n` +
-    `Стоимость: ${priceLine(editPrice)}\n\n` +
-    `<a href="${tgAbsoluteUrl("/tg/guide")}">🔗 Инструкция, как редактировать и правила</a>`;
+    `Стоимость: ${priceLine(editPrice)}`;
 
   await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
     sendCoverPhoto(opts.chatId, "editDemo", text, {
@@ -351,7 +350,9 @@ export async function handleFunnelV2EditText(opts: {
   const { enqueueGpuJob } = await import("@/lib/gallery-jobs");
   const { GALLERY_PLACEHOLDER_URL } = await import("@/lib/gallery-meta");
   const { saveGalleryBinary } = await import("@/lib/local-store");
-  const { enqueueTgOutbox } = await import("@/lib/tg/session");
+  const { enqueueFunnelV2Result } = await import(
+    "@/lib/tg/funnel-v2/enqueue-result"
+  );
 
   let bytes = localBytesFromResultUrl(still.resultUrl);
   if (!bytes?.length) {
@@ -405,18 +406,14 @@ export async function handleFunnelV2EditText(opts: {
           }),
         },
       });
-      await enqueueTgOutbox({
+      await enqueueFunnelV2Result({
         userId: opts.userId,
         platformUserId,
+        locale,
         kind: "photo",
-        payload: {
-          url: saved.publicUrl,
-          caption: "",
-          successKind: "funnel_v2_photo",
-          galleryItemId: item.id,
-          locale,
-          funnelV2: true,
-        },
+        url: saved.publicUrl,
+        galleryItemId: item.id,
+        successKind: "funnel_v2_photo",
       });
     } catch (e) {
       const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");

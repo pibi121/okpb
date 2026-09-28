@@ -76,7 +76,7 @@ export async function handleFunnelV2TopupAmount(
   const text =
     `Пополнение баланса на <b>${peaches}🍑</b>${bonusLine}\n\n` +
     `Сумма: ${peaches} рублей / ${usdt}$\n\n` +
-    `Комиссию платёжной системы вернём персиками: <b>СБП 13%</b>, <b>крипта 3%</b>, <b>CryptoBot 5%</b> (плюс бонус пакета, если есть).\n\n` +
+    `Комиссию платёжной системы вернём персиками: <b>СБП 13%</b>, <b>крипта 3%</b> (плюс бонус пакета, если есть).\n\n` +
     `Выбери способ для пополнения:`;
 
   await setTgSession(platformUserId, {

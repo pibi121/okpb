@@ -225,6 +225,30 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
     }
   }
 
+  {
+    const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
+      "@/lib/tg/funnel-v2/mode"
+    );
+    if (await userOnFunnelV2(user)) {
+      trackFunnelEventBg({
+        userId: user.id,
+        platformUserId: String(chatId),
+        eventKey: user.ageConfirmed
+          ? "bot.start.returning"
+          : "bot.start",
+        meta: { payload: payload || "", funnelV2: true },
+      });
+      if (!funnelV2RulesAccepted(user)) {
+        const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+        await sendFunnelV2Rules(chatId, user.id, locale);
+      } else {
+        const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
+        await sendFunnelV2Hub(chatId, user.id, locale);
+      }
+      return;
+    }
+  }
+
   if (user.ageConfirmed) {
     trackFunnelEventBg({
       userId: user.id,
@@ -1607,15 +1631,19 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
         await sendFunnelV2Topup(chatId, user.id, locale);
         return;
       }
-      // Allow payment continuation + rules; block all other legacy bot surfaces.
+      // Allow payment continuation + QC + rules; block other legacy bot surfaces.
       const funnelAllowedLegacy =
         /^tu:\d+$/.test(data) ||
         data.startsWith("tu:pay:") ||
         data.startsWith("tu:renew:") ||
+        data.startsWith("qc:") ||
         data === CB.rulesAgree ||
         data === "rules:agree";
       if (!funnelAllowedLegacy) {
-        await rejectLegacyForFunnelV2(chatId, cq.id);
+        await rejectLegacyForFunnelV2(chatId, cq.id, {
+          userId: user.id,
+          locale,
+        });
         return;
       }
     }
@@ -1750,12 +1778,13 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   if (data.startsWith("tu:pay:")) {
     await tgAnswerCallbackQuery(cq.id);
     const method = data.slice("tu:pay:".length);
-    if (!["sbp", "crypto", "cryptobot"].includes(method)) {
+    const { isActiveTopupMethod } = await import("@/lib/tg/topup-payments");
+    if (!isActiveTopupMethod(method)) {
       await tgSendMessage(
         chatId,
         locale === "en"
-          ? "This method is unavailable. Choose SBP, crypto, or CryptoBot."
-          : "Этот способ недоступен. Выбери СБП, крипту или CryptoBot.",
+          ? "This method is unavailable. Choose SBP or crypto."
+          : "Этот способ недоступен. Выбери СБП или крипту.",
       );
       return;
     }
@@ -1770,7 +1799,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       chatId,
       platformUserId,
       locale,
-      method as "sbp" | "crypto" | "cryptobot",
+      method as "sbp" | "crypto",
       user.id,
       peaches,
     );
@@ -1999,19 +2028,6 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   if (text.startsWith("/start")) {
     const payload = text.split(/\s+/)[1];
     await handleStart(chatId, from, payload);
-    const u2 = await prisma.user.findUnique({ where: { id: user.id } });
-    if (u2) {
-      const { userOnFunnelV2, sendFunnelV2Hub, funnelV2RulesAccepted } =
-        await import("@/lib/tg/funnel-v2");
-      if (await userOnFunnelV2(u2)) {
-        if (!funnelV2RulesAccepted(u2)) {
-          const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
-          await sendFunnelV2Rules(chatId, user.id, locale);
-        } else {
-          await sendFunnelV2Hub(chatId, user.id, locale);
-        }
-      }
-    }
     return;
   }
 
@@ -2530,6 +2546,9 @@ export async function flushTgOutbox() {
         mediaSent?: boolean;
         funnelV2?: boolean;
         blurTrial?: boolean;
+        /** Keyboard already on media — do not send a second «Готово» spam. */
+        attachResultKeyboard?: boolean;
+        offerQcDislike?: boolean;
       };
       const chatId = Number(row.platformUserId);
       const locale = payload.locale || "ru";
@@ -2555,6 +2574,53 @@ export async function flushTgOutbox() {
         });
       };
 
+      const isFunnelV2Media =
+        payload.funnelV2 ||
+        payload.successKind === "funnel_v2_photo" ||
+        payload.successKind === "funnel_v2_blur" ||
+        payload.successKind === "funnel_v2_video";
+
+      let funnelMediaExtra: Record<string, unknown> | undefined;
+      if (
+        isFunnelV2Media &&
+        (row.kind === "photo" || row.kind === "video") &&
+        !payload.mediaSent
+      ) {
+        const {
+          funnelV2PhotoReadyKeyboard,
+          funnelV2PhotoBlurKeyboard,
+          funnelV2VideoReadyKeyboard,
+        } = await import("@/lib/tg/funnel-v2/result-keyboards");
+        if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
+          if (!payload.caption?.trim()) {
+            payload.caption =
+              "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс.\nКстати, сейчас тебя ждёт много бонусных 🍑 за пополнение баланса";
+          }
+          funnelMediaExtra = {
+            reply_markup: funnelV2PhotoBlurKeyboard(locale),
+          };
+        } else if (row.kind === "video" || payload.successKind === "funnel_v2_video") {
+          // Prefer result copy over template title on the video itself.
+          payload.caption = "❤️ Готово! Как тебе? 💦";
+          funnelMediaExtra = {
+            reply_markup: funnelV2VideoReadyKeyboard(locale),
+          };
+        } else if (payload.galleryItemId) {
+          if (!payload.caption?.trim()) {
+            payload.caption =
+              "❤️ Готово! Как тебе? 💦\n\nТеперь ты можешь:\n\n👉 Отредактировать фото, добавить в него что-то своё\n👉 Превратить это фото в горячее видео в 1 клик\n👉 Попробовать другой шаблон";
+          }
+          funnelMediaExtra = {
+            reply_markup: funnelV2PhotoReadyKeyboard(
+              locale,
+              String(payload.galleryItemId),
+              { offerQcDislike: Boolean(payload.offerQcDislike) },
+            ),
+          };
+        }
+        if (funnelMediaExtra) payload.attachResultKeyboard = true;
+      }
+
       if (row.kind === "video" && payload.url) {
         if (!payload.mediaSent) {
           await tgDeliverVideo({
@@ -2562,6 +2628,7 @@ export async function flushTgOutbox() {
             url: payload.url,
             caption: payload.caption,
             token,
+            extra: funnelMediaExtra,
           });
           payload.mediaSent = true;
           await persistPayload(payload);
@@ -2573,6 +2640,7 @@ export async function flushTgOutbox() {
             url: payload.url,
             caption: payload.caption,
             token,
+            extra: funnelMediaExtra,
           });
           payload.mediaSent = true;
           await persistPayload(payload);
@@ -2589,25 +2657,37 @@ export async function flushTgOutbox() {
       }
 
       if ((row.kind === "photo" || row.kind === "video") && payload.successKind) {
-        if (payload.successKind === "funnel_v2_photo" || payload.successKind === "funnel_v2_blur" || payload.successKind === "funnel_v2_video" || payload.funnelV2) {
-          const { funnelV2PhotoReadyKeyboard, funnelV2PhotoBlurKeyboard, funnelV2VideoReadyKeyboard } =
-            await import("@/lib/tg/funnel-v2/result-keyboards");
-          if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
-            await sendMessage(
-              "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс.\nКстати, сейчас тебя ждёт много бонусных 🍑 за пополнение баланса",
-              { reply_markup: funnelV2PhotoBlurKeyboard(locale) },
-            );
-          } else if (row.kind === "video" || payload.successKind === "funnel_v2_video") {
-            await sendMessage("❤️ Готово! Как тебе? 💦", {
-              reply_markup: funnelV2VideoReadyKeyboard(locale),
-            });
-          } else if (payload.galleryItemId) {
-            await sendMessage("❤️ Готово! Как тебе? 💦\n\nТеперь ты можешь:\n\n👉 Отредактировать фото, добавить в него что-то своё\n👉 Превратить это фото в горячее видео в 1 клик\n👉 Попробовать другой шаблон", {
-              reply_markup: funnelV2PhotoReadyKeyboard(
-                locale,
-                String(payload.galleryItemId),
-              ),
-            });
+        if (isFunnelV2Media) {
+          // Result keyboard is on the media message — skip legacy second spam.
+          if (!payload.attachResultKeyboard) {
+            const {
+              funnelV2PhotoReadyKeyboard,
+              funnelV2PhotoBlurKeyboard,
+              funnelV2VideoReadyKeyboard,
+            } = await import("@/lib/tg/funnel-v2/result-keyboards");
+            if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
+              await sendMessage(
+                "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс.\nКстати, сейчас тебя ждёт много бонусных 🍑 за пополнение баланса",
+                { reply_markup: funnelV2PhotoBlurKeyboard(locale) },
+              );
+            } else if (
+              row.kind === "video" ||
+              payload.successKind === "funnel_v2_video"
+            ) {
+              await sendMessage("❤️ Готово! Как тебе? 💦", {
+                reply_markup: funnelV2VideoReadyKeyboard(locale),
+              });
+            } else if (payload.galleryItemId) {
+              await sendMessage(
+                "❤️ Готово! Как тебе? 💦\n\nТеперь ты можешь:\n\n👉 Отредактировать фото, добавить в него что-то своё\n👉 Превратить это фото в горячее видео в 1 клик\n👉 Попробовать другой шаблон",
+                {
+                  reply_markup: funnelV2PhotoReadyKeyboard(
+                    locale,
+                    String(payload.galleryItemId),
+                  ),
+                },
+              );
+            }
           }
         } else if (payload.successKind === "undress" && payload.galleryItemId) {
           const { undressSuccessKeyboard } = await import(

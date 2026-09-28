@@ -2,6 +2,7 @@
  * Bot + shared top-up UX (amount → method → Cashera payment_url).
  */
 import {
+  TG_MAX_TOPUP_PEACHES,
   TG_MIN_TOPUP_PEACHES,
   TG_QUICK_TOPUP_AMOUNTS,
   peachesToUsdt,
@@ -11,7 +12,7 @@ import { t, tFormat } from "@/lib/tg/i18n";
 import { TOPUP_CB } from "@/lib/tg/generation-flow";
 import { setTgSession } from "@/lib/tg/session";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
-import { tgSendMediaMessage } from "@/lib/tg/media-assets";
+import { tgAbsoluteUrl, tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { casheraConfigured } from "@/lib/cashera";
 import type { CasheraPaymentMethod } from "@/lib/cashera";
 import {
@@ -22,6 +23,7 @@ import {
   TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
 import { prisma } from "@/lib/db";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 export function topupInlineKeyboard(locale: TgLocale) {
   const rows = TG_QUICK_TOPUP_AMOUNTS.map((n) => [
@@ -149,6 +151,16 @@ export async function handleTopupAmount(
     });
     return;
   }
+  if (amount > TG_MAX_TOPUP_PEACHES) {
+    await tgSendMessage(
+      chatId,
+      locale === "en"
+        ? `Max top-up is ${TG_MAX_TOPUP_PEACHES} 🍑 per payment.`
+        : `Максимум за одно пополнение — ${TG_MAX_TOPUP_PEACHES} 🍑.`,
+      { reply_markup: topupInlineKeyboard(locale) },
+    );
+    return;
+  }
 
   await setTgSession(platformUserId, {
     chatState: "awaiting_topup_method",
@@ -171,6 +183,13 @@ export async function handleTopupAmount(
     { reply_markup: topupMethodKeyboard(locale, amount) },
   );
   void userId;
+}
+
+function payGuidePath(method: string): string {
+  if (method === "crypto" || method === "cryptobot") {
+    return "/tg/media/topup-guide-crypto.jpg";
+  }
+  return "/tg/media/topup-guide-sbp.jpg";
 }
 
 export async function handleTopupMethod(
@@ -206,27 +225,44 @@ export async function handleTopupMethod(
       method,
       locale,
     });
+    if (!pay.paymentUrl || !/^https?:\/\//i.test(pay.paymentUrl)) {
+      throw new Error("Платёжная ссылка не создана");
+    }
     await setTgSession(platformUserId, {
       chatState: "idle",
       clearPending: true,
     });
 
-    await tgSendMessage(
-      chatId,
-      tFormat(payLinkCopyKey(method), locale, {
-        price: pay.priceLine,
-      }),
-      {
-        reply_markup: payLinkKeyboard({
-          locale,
-          paymentUrl: pay.paymentUrl,
-          peaches,
-          orderId: pay.orderId,
-        }),
-      },
-    );
+    const caption = tFormat(payLinkCopyKey(method), locale, {
+      price: pay.priceLine,
+    });
+    const reply_markup = payLinkKeyboard({
+      locale,
+      paymentUrl: pay.paymentUrl,
+      peaches,
+      orderId: pay.orderId,
+    });
+
+    try {
+      const { tgDeliverPhoto } = await import("@/lib/tg/deliver-media");
+      await tgDeliverPhoto({
+        chatId,
+        url: tgAbsoluteUrl(payGuidePath(method)),
+        caption,
+        extra: { reply_markup },
+      });
+    } catch (mediaErr) {
+      console.warn("[topup] guide photo failed, fallback text:", mediaErr);
+      await tgSendMessage(chatId, caption, { reply_markup });
+    }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "payment error";
+    console.error("[topup] create payment failed:", e);
+    const msg = userFacingTgError(
+      e,
+      locale === "en"
+        ? "Could not create payment. Try again in a minute."
+        : "Не удалось создать платёж. Попробуй ещё раз через минуту.",
+    );
     await tgSendMessage(
       chatId,
       tFormat("topup_pay_error", locale, { msg }),

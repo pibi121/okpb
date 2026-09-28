@@ -151,14 +151,27 @@ export async function deleteManualWorker(id: string) {
 }
 
 /** Soft budgets by pool — fail hung ledger rows so кабинет не врёт «в работе 13 мин». */
-function staleLimitMs(kind: string, pool: string) {
+function staleRunLimitMs(kind: string, pool: string) {
   const k = `${kind} ${pool}`.toLowerCase();
   if (k.includes("train") || pool === "lora") return 150 * 60_000;
   if (pool === "video" || /video|clip|film|i2v|quick|animate/.test(k)) {
     return 40 * 60_000;
   }
-  // photo / any
-  return 8 * 60_000;
+  // photo / any — wall-clock while actually running on a worker
+  return 12 * 60_000;
+}
+
+/**
+ * Queue wait can exceed photo run budget when a long video holds the only GPU.
+ * Don't kill queued/assigned photo rows just for waiting.
+ */
+function staleQueueLimitMs(kind: string, pool: string) {
+  const k = `${kind} ${pool}`.toLowerCase();
+  if (k.includes("train") || pool === "lora") return 180 * 60_000;
+  if (pool === "video" || /video|clip|film|i2v|quick|animate/.test(k)) {
+    return 90 * 60_000;
+  }
+  return 45 * 60_000;
 }
 
 export async function sweepStaleGpuJobs(): Promise<number> {
@@ -169,10 +182,13 @@ export async function sweepStaleGpuJobs(): Promise<number> {
   const now = Date.now();
   let n = 0;
   for (const job of active) {
-    const started = (job.startedAt || job.queuedAt).getTime();
-    const limit = staleLimitMs(job.kind, job.pool);
-    if (now - started < limit) continue;
-    const mins = Math.round((now - started) / 60_000);
+    const isRunning = job.status === "running" && job.startedAt;
+    const anchor = (isRunning ? job.startedAt! : job.queuedAt).getTime();
+    const limit = isRunning
+      ? staleRunLimitMs(job.kind, job.pool)
+      : staleQueueLimitMs(job.kind, job.pool);
+    if (now - anchor < limit) continue;
+    const mins = Math.round((now - anchor) / 60_000);
     await prisma.gpuJob.update({
       where: { id: job.id },
       data: {

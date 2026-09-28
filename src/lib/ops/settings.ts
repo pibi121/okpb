@@ -18,6 +18,8 @@ export type OpsSettings = {
   ageGateEnabled: boolean;
   ageGateJson: string;
   tgFunnelV2Live: boolean;
+  /** ISO cutoff for broadcast who=pre_funnel_v2 (set on first go-live). */
+  tgFunnelV2LiveAt: string | null;
 };
 
 const DEFAULT_MAINT_RU =
@@ -63,6 +65,10 @@ export async function getOpsSettings(): Promise<OpsSettings> {
     tgFunnelV2Live: Boolean(
       (row as { tgFunnelV2Live?: boolean }).tgFunnelV2Live,
     ),
+    tgFunnelV2LiveAt: (() => {
+      const at = (row as { tgFunnelV2LiveAt?: Date | null }).tgFunnelV2LiveAt;
+      return at ? new Date(at).toISOString() : null;
+    })(),
   };
   cache = { at: Date.now(), value };
   return value;

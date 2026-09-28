@@ -12,10 +12,14 @@ import { setTgSession } from "@/lib/tg/session";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 export async function showHelpInPlaceProxy(chatId: number, locale: TgLocale) {
+  const rulesUrl = tgRulesArticleUrl(locale);
   await funnelV2ReplaceUi(String(chatId), chatId, () =>
     tgSendMessage(
       chatId,
-      tFormat("help_title", locale, { support: tgSupportContact() }),
+      tFormat("help_title", locale, {
+        support: tgSupportContact(),
+        rulesUrl,
+      }),
       {
         reply_markup: {
           inline_keyboard: [
@@ -28,7 +32,7 @@ export async function showHelpInPlaceProxy(chatId: number, locale: TgLocale) {
             [
               {
                 text: t("help_rules_btn", locale),
-                url: tgRulesArticleUrl(locale),
+                url: rulesUrl,
               },
             ],
             [

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
-import { TG_MIN_TOPUP_PEACHES, TG_QUICK_TOPUP_AMOUNTS } from "@/lib/tg-pricing";
+import { TG_MAX_TOPUP_PEACHES, TG_MIN_TOPUP_PEACHES, TG_QUICK_TOPUP_AMOUNTS } from "@/lib/tg-pricing";
 import { casheraConfigured } from "@/lib/cashera";
 import {
   createTopupPayment,
@@ -9,6 +9,7 @@ import {
   TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
 import type { CasheraPaymentMethod } from "@/lib/cashera";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     configured: casheraConfigured(),
     minPeaches: TG_MIN_TOPUP_PEACHES,
+    maxPeaches: TG_MAX_TOPUP_PEACHES,
     quickAmounts: [...TG_QUICK_TOPUP_AMOUNTS],
     methods: TOPUP_PAYMENT_METHODS,
     priceLine:
@@ -56,13 +58,19 @@ export async function POST(req: Request) {
   const method = String(body.method || "") as CasheraPaymentMethod;
   if (!isActiveTopupMethod(method)) {
     return NextResponse.json(
-      { error: "bad_method", message: "Use sbp, crypto, or cryptobot" },
+      { error: "bad_method", message: "Use sbp or crypto" },
       { status: 400 },
     );
   }
   if (peaches < TG_MIN_TOPUP_PEACHES) {
     return NextResponse.json(
       { error: "min", min: TG_MIN_TOPUP_PEACHES },
+      { status: 400 },
+    );
+  }
+  if (peaches > TG_MAX_TOPUP_PEACHES) {
+    return NextResponse.json(
+      { error: "max", max: TG_MAX_TOPUP_PEACHES },
       { status: 400 },
     );
   }
@@ -82,7 +90,10 @@ export async function POST(req: Request) {
       peaches: pay.peaches,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "error";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    console.error("[api/tg/topup]", e);
+    return NextResponse.json(
+      { error: userFacingTgError(e, "payment_failed") },
+      { status: 502 },
+    );
   }
 }

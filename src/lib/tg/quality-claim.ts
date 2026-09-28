@@ -198,11 +198,28 @@ export async function handleQcConfirm(opts: {
   });
 
   if (successMessageId) {
-    await tgEditMessageReplyMarkup(
-      opts.chatId,
-      successMessageId,
-      qcStatusKeyboard(opts.locale, kind, "pending", item.id),
-    ).catch(() => undefined);
+    const meta = parseGalleryMeta(item.metaJson) as Record<string, unknown>;
+    const isFunnel =
+      Boolean(meta.funnelV2) || meta.source === "funnel_v2";
+    if (isFunnel && kind === "photo") {
+      const { funnelV2PhotoReadyKeyboard } = await import(
+        "@/lib/tg/funnel-v2/result-keyboards"
+      );
+      await tgEditMessageReplyMarkup(
+        opts.chatId,
+        successMessageId,
+        funnelV2PhotoReadyKeyboard(opts.locale, item.id, {
+          offerQcDislike: true,
+          qcStatus: "pending",
+        }),
+      ).catch(() => undefined);
+    } else {
+      await tgEditMessageReplyMarkup(
+        opts.chatId,
+        successMessageId,
+        qcStatusKeyboard(opts.locale, kind, "pending", item.id),
+      ).catch(() => undefined);
+    }
   }
 
   await tgAnswerCallbackQuery(opts.callbackId);
@@ -305,11 +322,22 @@ export async function resolveQualityClaim(opts: {
       await restoreUndressFree(claim.userId);
       restoredFree = true;
     } else if (claim.chargedPeaches > 0) {
-      await creditPeaches(claim.userId, claim.chargedPeaches, "qc_refund", {
-        claimId: claim.id,
-        galleryItemId: claim.galleryItemId,
-        actorId: opts.actorId,
+      const u = await prisma.user.findUnique({
+        where: { id: claim.userId },
+        select: { tgFunnelV2Preview: true },
       });
+      if (u?.tgFunnelV2Preview) {
+        const { creditFunnelBalance } = await import(
+          "@/lib/tg/funnel-v2/mode"
+        );
+        await creditFunnelBalance(claim.userId, claim.chargedPeaches);
+      } else {
+        await creditPeaches(claim.userId, claim.chargedPeaches, "qc_refund", {
+          claimId: claim.id,
+          galleryItemId: claim.galleryItemId,
+          actorId: opts.actorId,
+        });
+      }
       refunded = claim.chargedPeaches;
     }
   }
@@ -331,11 +359,35 @@ export async function resolveQualityClaim(opts: {
       : "photo";
 
   if (claim.tgChatId && claim.tgMessageId) {
-    await tgEditMessageReplyMarkup(
-      claim.tgChatId,
-      claim.tgMessageId,
-      qcStatusKeyboard(locale, kind, status, claim.galleryItemId),
-    ).catch(() => undefined);
+    const gi = await prisma.galleryItem.findUnique({
+      where: { id: claim.galleryItemId },
+      select: { metaJson: true },
+    });
+    const meta = parseGalleryMeta(gi?.metaJson || "{}") as Record<
+      string,
+      unknown
+    >;
+    const isFunnel =
+      Boolean(meta.funnelV2) || meta.source === "funnel_v2";
+    if (isFunnel && kind === "photo") {
+      const { funnelV2PhotoReadyKeyboard } = await import(
+        "@/lib/tg/funnel-v2/result-keyboards"
+      );
+      await tgEditMessageReplyMarkup(
+        claim.tgChatId,
+        claim.tgMessageId,
+        funnelV2PhotoReadyKeyboard(locale, claim.galleryItemId, {
+          offerQcDislike: true,
+          qcStatus: status,
+        }),
+      ).catch(() => undefined);
+    } else {
+      await tgEditMessageReplyMarkup(
+        claim.tgChatId,
+        claim.tgMessageId,
+        qcStatusKeyboard(locale, kind, status, claim.galleryItemId),
+      ).catch(() => undefined);
+    }
   }
 
   const chatId = Number(claim.tgChatId);

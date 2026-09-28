@@ -304,6 +304,9 @@ export default function OpsBroadcastsPage() {
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
         >
           <option value="all">Все, кто не в блоке</option>
+          <option value="pre_funnel_v2">
+            База до Funnel v2 (до выкатки)
+          </option>
           <option value="paid">Кто пополнял</option>
           <option value="never_paid">Кто не пополнял</option>
           <option value="no_job">Кто ещё не генерил</option>

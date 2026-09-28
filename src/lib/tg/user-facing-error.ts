@@ -26,7 +26,11 @@ export function userFacingTgError(
     return "Сервер сейчас перегружен. Подожди ~1 минуту и запусти генерацию ещё раз — персики вернули, если списание было.";
   }
 
-  if (/Comfy wait timeout|wait timeout|ECONN|ETIMEDOUT|socket hang|Bad Gateway|8188/i.test(trimmed)) {
+  if (
+    /Comfy wait timeout|wait timeout|ECONN|ETIMEDOUT|socket hang|Bad Gateway|8188|fetch failed|tg_\w+_transient|download failed/i.test(
+      trimmed,
+    )
+  ) {
     return "Сервер временно недоступен. Подожди ~30 сек и запусти снова.";
   }
 

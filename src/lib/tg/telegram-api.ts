@@ -12,6 +12,69 @@ function resolveToken(explicit?: string): string {
   return t;
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+/** Extract a short network/CDN failure label, or null if not transient. */
+export function transientTgNetworkDetail(err: unknown): string | null {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  if (/tg_\w+_transient:/i.test(msg)) {
+    return msg.replace(/^tg_\w+_transient:\s*/i, "").slice(0, 80) || "network";
+  }
+  const cause =
+    err instanceof Error
+      ? (err as Error & { cause?: unknown }).cause
+      : undefined;
+  const causeObj =
+    cause && typeof cause === "object"
+      ? (cause as { code?: string; message?: string; name?: string })
+      : null;
+  const code = String(causeObj?.code || "");
+  const causeMsg = String(
+    causeObj?.message || (cause instanceof Error ? cause.message : "") || "",
+  );
+  const blob = `${msg} ${code} ${causeMsg}`;
+  if (
+    /fetch failed|ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|ESOCKETTIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_|socket hang up|other side closed|ConnectTimeout|HeadersTimeout|BodyTimeout|download failed:\s*(429|5\d\d)/i.test(
+      blob,
+    )
+  ) {
+    return (code || causeMsg || msg || "network").slice(0, 80);
+  }
+  return null;
+}
+
+export function isTransientTgNetworkError(err: unknown): boolean {
+  return transientTgNetworkDetail(err) != null;
+}
+
+/** Retry only for idempotent Telegram file downloads — never for send* (duplicate risk). */
+async function withTgDownloadRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      const detail = transientTgNetworkDetail(e);
+      if (!detail || i === attempts - 1) {
+        if (detail) throw new Error(`tg_download_transient: ${detail}`);
+        throw e;
+      }
+      console.warn(
+        `[tg] download transient retry ${i + 1}/${attempts - 1}:`,
+        detail,
+      );
+      await sleep(300 * 2 ** i);
+    }
+  }
+  throw last;
+}
+
 export async function tgApiWithToken<T = unknown>(
   token: string,
   method: string,
@@ -22,7 +85,11 @@ export async function tgApiWithToken<T = unknown>(
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const json = (await res.json()) as { ok: boolean; result?: T; description?: string };
+  const json = (await res.json()) as {
+    ok: boolean;
+    result?: T;
+    description?: string;
+  };
   if (!json.ok) throw new Error(json.description || method);
   return json.result as T;
 }
@@ -345,14 +412,22 @@ export async function tgAnswerCallbackQuery(
 
 export async function tgDownloadFile(fileId: string, token?: string): Promise<Buffer> {
   const tok = resolveToken(token);
-  const file = await tgApiWithToken<{ file_path: string }>(tok, "getFile", {
-    file_id: fileId,
+  // Retry covers getFile + CDN byte fetch together (both reads, no send* side effects).
+  return withTgDownloadRetry(async () => {
+    const file = await tgApiWithToken<{ file_path: string }>(tok, "getFile", {
+      file_id: fileId,
+    });
+    const url = `https://api.telegram.org/file/bot${tok}/${file.file_path}`;
+    const res = await fetch(url);
+    if (res.status === 429 || res.status >= 500) {
+      throw Object.assign(new Error(`download failed: ${res.status}`), {
+        cause: { code: `HTTP_${res.status}` },
+      });
+    }
+    if (!res.ok) throw new Error(`download failed: ${res.status}`);
+    const ab = await res.arrayBuffer();
+    return Buffer.from(ab);
   });
-  const url = `https://api.telegram.org/file/bot${tok}/${file.file_path}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download failed: ${res.status}`);
-  const ab = await res.arrayBuffer();
-  return Buffer.from(ab);
 }
 
 /** Blue chat menu button next to the attach field (replaces default "Open"). */

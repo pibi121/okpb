@@ -87,6 +87,7 @@ import {
   type TgPending,
 } from "@/lib/tg/session";
 import {
+  isTransientTgNetworkError,
   tgAnswerCallbackQuery,
   tgDownloadFile,
   tgEditMessageCaption,
@@ -269,6 +270,31 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
   await beginOnboardingWithoutLang(chatId, user.id);
 }
 
+/**
+ * Download user photo from Telegram. On persistent network flake after retries,
+ * tell the user to resend — do not charge / generate / spam ops as a crash.
+ */
+async function downloadTgPhotoSoft(
+  chatId: number,
+  fileId: string,
+  locale: TgLocale,
+): Promise<Buffer | null> {
+  try {
+    return await tgDownloadFile(fileId);
+  } catch (e) {
+    if (!isTransientTgNetworkError(e)) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[tg] photo download soft-fail:", msg.slice(0, 160));
+    await tgSendMessage(
+      chatId,
+      locale === "en"
+        ? "Couldn't download your photo. Please send it again."
+        : "Не удалось скачать фото. Пришли его ещё раз.",
+    ).catch(() => undefined);
+    return null;
+  }
+}
+
 async function handlePhoto(
   chatId: number,
   platformUserId: string,
@@ -299,7 +325,8 @@ async function handlePhoto(
     return;
   }
 
-  const buf = await tgDownloadFile(fileId);
+  const buf = await downloadTgPhotoSoft(chatId, fileId, locale);
+  if (!buf) return;
   try {
     await addCharacterPhotoFromBuffer(
       userId,
@@ -2153,7 +2180,8 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 
       if (msg.photo?.length) {
         const largest = msg.photo[msg.photo.length - 1]!;
-        const buf = await tgDownloadFile(largest.file_id);
+        const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
+        if (!buf) return;
         await handleFunnelV2PhotoUpload({
           chatId,
           userId: user.id,
@@ -2168,7 +2196,12 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         msg.document?.file_id &&
         String(msg.document.mime_type || "").startsWith("image/")
       ) {
-        const buf = await tgDownloadFile(msg.document.file_id);
+        const buf = await downloadTgPhotoSoft(
+          chatId,
+          msg.document.file_id,
+          locale,
+        );
+        if (!buf) return;
         await handleFunnelV2PhotoUpload({
           chatId,
           userId: user.id,
@@ -2286,7 +2319,8 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   if (msg.photo?.length) {
     const largest = msg.photo[msg.photo.length - 1]!;
     if (chatState === "funnel_v2_awaiting_photo") {
-      const buf = await tgDownloadFile(largest.file_id);
+      const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
+      if (!buf) return;
       const { handleFunnelV2PhotoUpload } = await import("@/lib/tg/funnel-v2");
       await handleFunnelV2PhotoUpload({
         chatId,
@@ -2298,7 +2332,8 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       return;
     }
     if (chatState === "awaiting_undress_photo") {
-      const buf = await tgDownloadFile(largest.file_id);
+      const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
+      if (!buf) return;
       await tgSendMessage(chatId, t("undress_busy", locale));
       await setTgSession(platformUserId, {
         chatState: "idle",
@@ -2353,7 +2388,8 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     msg.document?.file_id &&
     String(msg.document.mime_type || "").startsWith("image/")
   ) {
-    const buf = await tgDownloadFile(msg.document.file_id);
+    const buf = await downloadTgPhotoSoft(chatId, msg.document.file_id, locale);
+    if (!buf) return;
     await tgSendMessage(chatId, t("undress_busy", locale));
     await setTgSession(platformUserId, {
       chatState: "idle",

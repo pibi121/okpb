@@ -543,95 +543,111 @@ async function runFunnelV2PhotoGen(opts: {
     const chatId = opts.chatId;
     const platformUserId = opts.platformUserId;
     const chargedPeaches = !useBlur && price > 0 ? price : 0;
-    void enqueueGpuJob(async () => {
-      try {
-        let out = await runPhotoEditLabBytes({
-          photoBytes: bytes,
-          editPrompt: tpl.editPrompt,
-        });
-        if (useBlur) {
-          try {
-            out = await applyTeaseFromLabPreset(out);
-          } catch {
-            /* keep clear if tease fails */
-          }
-        }
-        const saved = saveGalleryBinary(opts.userId, "png", out, "fv2_photo");
-        await prisma.galleryItem.update({
-          where: { id: item.id },
-          data: {
-            resultUrl: saved.publicUrl,
-            metaJson: JSON.stringify({
-              status: "ready",
-              engine: "funnel_v2_photo_edit",
-              source: "funnel_v2",
-              blurTrial: useBlur,
-              ...(useBlur ? { hiddenFromTgGallery: true } : {}),
-              templateId: tpl.id,
-              localKey: saved.relKey,
-              ...(chargedPeaches > 0 ? { chargedPeaches } : {}),
-            }),
-          },
-        });
-        const { enqueueFunnelV2Result } = await import(
-          "@/lib/tg/funnel-v2/enqueue-result"
-        );
-        await enqueueFunnelV2Result({
-          userId: opts.userId,
-          platformUserId,
-          locale: opts.locale,
-          kind: "photo",
-          url: saved.publicUrl,
-          galleryItemId: item.id,
-          successKind: useBlur ? "funnel_v2_blur" : "funnel_v2_photo",
-          blurTrial: useBlur,
-          offerQcDislike: !useBlur && chargedPeaches > 0,
-          extraPayload:
-            chargedPeaches > 0 ? { chargedPeaches } : undefined,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (useBlur) {
-          try {
-            const u = await prisma.user.findUnique({
-              where: { id: opts.userId },
-              select: { tgFunnelV2BlurTrialsUsed: true },
-            });
-            const used = u?.tgFunnelV2BlurTrialsUsed || 0;
-            if (used > 0) {
-              await prisma.user.update({
-                where: { id: opts.userId },
-                data: { tgFunnelV2BlurTrialsUsed: used - 1 },
-              });
+    void enqueueGpuJob(
+      async () => {
+        try {
+          let out = await runPhotoEditLabBytes({
+            photoBytes: bytes,
+            editPrompt: tpl.editPrompt,
+          });
+          if (useBlur) {
+            try {
+              out = await applyTeaseFromLabPreset(out);
+            } catch {
+              /* keep clear if tease fails */
             }
-          } catch {
-            /* ignore */
           }
-        } else if (chargedPeaches > 0) {
-          const { creditFunnelBalance } = await import(
-            "@/lib/tg/funnel-v2/mode"
+          const saved = saveGalleryBinary(opts.userId, "png", out, "fv2_photo");
+          await prisma.galleryItem.update({
+            where: { id: item.id },
+            data: {
+              resultUrl: saved.publicUrl,
+              metaJson: JSON.stringify({
+                status: "ready",
+                engine: "funnel_v2_photo_edit",
+                source: "funnel_v2",
+                blurTrial: useBlur,
+                ...(useBlur ? { hiddenFromTgGallery: true } : {}),
+                templateId: tpl.id,
+                localKey: saved.relKey,
+                ...(chargedPeaches > 0 ? { chargedPeaches } : {}),
+              }),
+            },
+          });
+          const { enqueueFunnelV2Result } = await import(
+            "@/lib/tg/funnel-v2/enqueue-result"
           );
-          await creditFunnelBalance(opts.userId, chargedPeaches).catch(
+          await enqueueFunnelV2Result({
+            userId: opts.userId,
+            platformUserId,
+            locale: opts.locale,
+            kind: "photo",
+            url: saved.publicUrl,
+            galleryItemId: item.id,
+            successKind: useBlur ? "funnel_v2_blur" : "funnel_v2_photo",
+            blurTrial: useBlur,
+            offerQcDislike: !useBlur && chargedPeaches > 0,
+            extraPayload:
+              chargedPeaches > 0 ? { chargedPeaches } : undefined,
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (useBlur) {
+            try {
+              const u = await prisma.user.findUnique({
+                where: { id: opts.userId },
+                select: { tgFunnelV2BlurTrialsUsed: true },
+              });
+              const used = u?.tgFunnelV2BlurTrialsUsed || 0;
+              if (used > 0) {
+                await prisma.user.update({
+                  where: { id: opts.userId },
+                  data: { tgFunnelV2BlurTrialsUsed: used - 1 },
+                });
+              }
+            } catch {
+              /* ignore */
+            }
+          } else if (chargedPeaches > 0) {
+            const { creditFunnelBalance } = await import(
+              "@/lib/tg/funnel-v2/mode"
+            );
+            await creditFunnelBalance(opts.userId, chargedPeaches).catch(
+              () => undefined,
+            );
+          }
+          await prisma.galleryItem.update({
+            where: { id: item.id },
+            data: {
+              metaJson: JSON.stringify({
+                status: "error",
+                error: msg,
+                source: "funnel_v2",
+                blurTrial: useBlur,
+                ...(chargedPeaches > 0 ? { chargedPeaches } : {}),
+              }),
+            },
+          });
+          await tgSendMessage(chatId, `Ошибка генерации: ${msg}`).catch(
             () => undefined,
           );
         }
-        await prisma.galleryItem.update({
-          where: { id: item.id },
-          data: {
-            metaJson: JSON.stringify({
-              status: "error",
-              error: msg,
-              source: "funnel_v2",
-              blurTrial: useBlur,
-              ...(chargedPeaches > 0 ? { chargedPeaches } : {}),
-            }),
-          },
-        });
-        await tgSendMessage(chatId, `Ошибка генерации: ${msg}`).catch(
-          () => undefined,
-        );
-      }
-    });
+      },
+      {
+        userId: opts.userId,
+        kind: useBlur ? "photo_blur" : "photo_edit",
+        pool: "photo",
+        refType: "galleryItem",
+        refId: item.id,
+        title: useBlur ? "funnel_v2_blur" : "funnel_v2_photo",
+        meta: {
+          funnelV2: true,
+          templateId: tpl.id,
+          blurTrial: useBlur,
+          chargedPeaches,
+        },
+      },
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await tgSendMessage(opts.chatId, `Не удалось запустить: ${msg}`);

@@ -377,6 +377,7 @@ export async function handleFunnelV2EditText(opts: {
         source: "funnel_v2",
         funnelV2: true,
         editOfId: still.id,
+        ...(price > 0 ? { chargedPeaches: price } : {}),
       }),
     },
   });
@@ -386,49 +387,68 @@ export async function handleFunnelV2EditText(opts: {
   const locale = opts.locale;
   const editText = opts.text;
 
-  void enqueueGpuJob(async () => {
-    try {
-      // Translate-ish: keep user text; Comfy prompt often accepts RU mixed — prepend instruction.
-      const editPrompt = `Edit the photo as requested: ${editText}`;
-      const out = await runPhotoEditLabBytes({
-        photoBytes: bytes!,
-        editPrompt,
-      });
-      const saved = saveGalleryBinary(opts.userId, "png", out, "fv2_edit");
-      await prisma.galleryItem.update({
-        where: { id: item.id },
-        data: {
-          resultUrl: saved.publicUrl,
-          metaJson: JSON.stringify({
-            status: "ready",
-            source: "funnel_v2",
-            funnelV2: true,
-            editOfId: still.id,
-          }),
-        },
-      });
-      await enqueueFunnelV2Result({
-        userId: opts.userId,
-        platformUserId,
-        locale,
-        kind: "photo",
-        url: saved.publicUrl,
-        galleryItemId: item.id,
-        successKind: "funnel_v2_photo",
-      });
-    } catch (e) {
-      const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
-      await creditFunnelBalance(opts.userId, price).catch(() => undefined);
-      const msg = e instanceof Error ? e.message : String(e);
-      await prisma.galleryItem.update({
-        where: { id: item.id },
-        data: {
-          metaJson: JSON.stringify({ status: "error", error: msg }),
-        },
-      });
-      await tgSendMessage(chatId, `Ошибка редактирования: ${msg}`).catch(
-        () => undefined,
-      );
-    }
-  });
+  void enqueueGpuJob(
+    async () => {
+      try {
+        // Translate-ish: keep user text; Comfy prompt often accepts RU mixed — prepend instruction.
+        const editPrompt = `Edit the photo as requested: ${editText}`;
+        const out = await runPhotoEditLabBytes({
+          photoBytes: bytes!,
+          editPrompt,
+        });
+        const saved = saveGalleryBinary(opts.userId, "png", out, "fv2_edit");
+        await prisma.galleryItem.update({
+          where: { id: item.id },
+          data: {
+            resultUrl: saved.publicUrl,
+            metaJson: JSON.stringify({
+              status: "ready",
+              source: "funnel_v2",
+              funnelV2: true,
+              editOfId: still.id,
+              ...(price > 0 ? { chargedPeaches: price } : {}),
+            }),
+          },
+        });
+        await enqueueFunnelV2Result({
+          userId: opts.userId,
+          platformUserId,
+          locale,
+          kind: "photo",
+          url: saved.publicUrl,
+          galleryItemId: item.id,
+          successKind: "funnel_v2_photo",
+        });
+      } catch (e) {
+        const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
+        await creditFunnelBalance(opts.userId, price).catch(() => undefined);
+        const msg = e instanceof Error ? e.message : String(e);
+        await prisma.galleryItem.update({
+          where: { id: item.id },
+          data: {
+            metaJson: JSON.stringify({
+              status: "error",
+              error: msg,
+              source: "funnel_v2",
+              funnelV2: true,
+              editOfId: still.id,
+              ...(price > 0 ? { chargedPeaches: price } : {}),
+            }),
+          },
+        });
+        await tgSendMessage(chatId, `Ошибка редактирования: ${msg}`).catch(
+          () => undefined,
+        );
+      }
+    },
+    {
+      userId: opts.userId,
+      kind: "photo_edit",
+      pool: "photo",
+      refType: "galleryItem",
+      refId: item.id,
+      title: "funnel_v2_edit",
+      meta: { funnelV2: true, editOfId: still.id, chargedPeaches: price },
+    },
+  );
 }

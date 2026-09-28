@@ -211,6 +211,7 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
             meta = {};
           }
           if (meta.status === "pending" || meta.status === "busy") {
+            const charged = Number(meta.chargedPeaches || 0) || 0;
             await prisma.galleryItem.update({
               where: { id: item.id },
               data: {
@@ -222,6 +223,17 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
                 }),
               },
             });
+            // Refund paid funnel gens orphaned by redeploy / hung worker.
+            if (charged > 0 && item.userId) {
+              try {
+                const { creditFunnelBalance } = await import(
+                  "@/lib/tg/funnel-v2/mode"
+                );
+                await creditFunnelBalance(item.userId, charged);
+              } catch {
+                /* ignore */
+              }
+            }
           }
         }
       } catch {

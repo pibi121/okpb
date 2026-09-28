@@ -223,13 +223,30 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
                 }),
               },
             });
-            // Refund paid funnel gens orphaned by redeploy / hung worker.
+            // Refund paid gens orphaned by redeploy / hung worker.
             if (charged > 0 && item.userId) {
               try {
-                const { creditFunnelBalance } = await import(
-                  "@/lib/tg/funnel-v2/mode"
-                );
-                await creditFunnelBalance(item.userId, charged);
+                const funnel =
+                  meta.funnelV2 === true ||
+                  meta.source === "funnel_v2" ||
+                  String(meta.engine || "").includes("funnel_v2");
+                if (funnel) {
+                  const { creditFunnelBalance } = await import(
+                    "@/lib/tg/funnel-v2/mode"
+                  );
+                  await creditFunnelBalance(item.userId, charged);
+                } else {
+                  const { creditPeaches } = await import("@/lib/tg/wallet");
+                  await creditPeaches(
+                    item.userId,
+                    charged,
+                    "gpu_healer_refund",
+                    {
+                      galleryItemId: item.id,
+                      gpuJobId: job.id,
+                    },
+                  );
+                }
               } catch {
                 /* ignore */
               }

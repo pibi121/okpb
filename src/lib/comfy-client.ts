@@ -456,6 +456,53 @@ async function comfyPromptBusy(promptId: string): Promise<boolean> {
   }
 }
 
+/** True if Comfy has any work that is not our failed promptId. */
+async function comfyHasForeignWork(ourPromptId: string | null): Promise<boolean> {
+  try {
+    const res = await comfyRequest("/queue", undefined, 30_000);
+    const q = JSON.parse(res.body.toString("utf8") || "{}") as {
+      queue_running?: unknown[];
+      queue_pending?: unknown[];
+    };
+    const running = q.queue_running || [];
+    const pending = q.queue_pending || [];
+    const total = running.length + pending.length;
+    if (total === 0) return false;
+    if (!ourPromptId) return true;
+    const hay = JSON.stringify([running, pending]);
+    // Only safe when the sole item is ours.
+    if (total === 1 && hay.includes(ourPromptId)) return false;
+    return true;
+  } catch {
+    // Unknown queue state — do not risk killing neighbors.
+    return true;
+  }
+}
+
+/**
+ * After timeout/OOM: free VRAM only when the queue is empty (or only our dead prompt).
+ * Never interrupt a stranger's running job on a shared Metalnode.
+ */
+async function safeRecoverAfterHeavyFailure(ourPromptId: string | null): Promise<void> {
+  const foreign = await comfyHasForeignWork(ourPromptId);
+  if (foreign) {
+    console.warn(
+      "[peach] skip interrupt/free — Comfy queue has other work",
+    );
+    await sleep(5_000);
+    return;
+  }
+  await comfyInterrupt().catch(() => undefined);
+  await comfyFreeMemory().catch(() => undefined);
+  await sleep(8_000);
+  // Re-check: if something landed while we freed, stop second free.
+  if (await comfyHasForeignWork(null)) {
+    console.warn("[peach] skip second free — queue no longer idle");
+    return;
+  }
+  await comfyFreeMemory().catch(() => undefined);
+}
+
 export async function comfyWaitHistory(
   promptId: string,
   timeoutMs = 300_000,
@@ -530,7 +577,8 @@ export async function comfyWaitHistory(
 
 /** Pull exception_message from Comfy history status.messages (ops-readable, not raw JSON dump). */
 function formatComfyHistoryError(entry: {
-  status?: { messages?: unknown[] };
+  status?: { messages?: unknown[]; status_str?: string; completed?: boolean };
+  outputs?: unknown;
 }): string {
   const messages = entry.status?.messages;
   const bits: string[] = [];
@@ -540,6 +588,10 @@ function formatComfyHistoryError(entry: {
       const kind = String(row[0] || "");
       if (!/execution_error|error/i.test(kind)) continue;
       const detail = row[1];
+      if (typeof detail === "string" && detail.trim()) {
+        bits.push(detail.trim().slice(0, 400));
+        continue;
+      }
       if (!detail || typeof detail !== "object") continue;
       const d = detail as Record<string, unknown>;
       const msg = String(
@@ -554,6 +606,13 @@ function formatComfyHistoryError(entry: {
     }
   }
   if (bits.length) return `Comfy job error: ${bits.join(" | ").slice(0, 700)}`;
+  // Last resort: short dump so ops isn't stuck with a blank "Comfy job error".
+  try {
+    const raw = JSON.stringify(entry.status || {}).slice(0, 280);
+    if (raw && raw !== "{}") return `Comfy job error: ${raw}`;
+  } catch {
+    /* ignore */
+  }
   return "Comfy job error";
 }
 
@@ -664,8 +723,15 @@ async function uploadImageOnce(
   return data.name || safeName;
 }
 
-/** Photo / still renders — soft budget ~4 min (RTX 5090 Krea normally ~1–2 min). */
-export const COMFY_PHOTO_TIMEOUT_MS = 240_000;
+/** Photo / still renders — soft budget ~5 min (RTX 5090 Krea normally ~1–2 min). */
+export const COMFY_PHOTO_TIMEOUT_MS = 300_000;
+
+function isHeavyComfyFailure(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /Comfy wait timeout|Comfy job error|OutOfMemory|CUDA out of memory|ran out of memory/i.test(
+    msg,
+  );
+}
 
 export async function runComfyAndDownload(
   graph: Record<string, unknown>,
@@ -676,7 +742,8 @@ export async function runComfyAndDownload(
   let promptId: string | null = null;
   let lastErr: unknown;
   let loraRecoveries = 0;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  let heavyRecoveries = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
     try {
       if (!promptId) {
         promptId = await withTransientRetry("queue", () =>
@@ -690,20 +757,35 @@ export async function runComfyAndDownload(
       lastErr = e;
       const timedOut =
         e instanceof Error && /Comfy wait timeout/i.test(e.message);
-      if (timedOut) {
-        await comfyInterrupt().catch(() => undefined);
-        promptId = null;
-        throw e;
-      }
       const missing = extractMissingLoraName(e);
       if (missing && loraRecoveries < 2 && recoverMissingLoraInGraph(graph, missing)) {
         loraRecoveries += 1;
         promptId = null;
         continue;
       }
-      if (!isTransientComfyError(e) || attempt === 2) throw e;
+      // Timeout / blank job error / OOM: recover safely, then re-queue once.
+      if (isHeavyComfyFailure(e) && heavyRecoveries < 1) {
+        heavyRecoveries += 1;
+        console.warn(
+          `[peach] comfy heavy retry after:`,
+          e instanceof Error ? e.message.slice(0, 180) : e,
+        );
+        await safeRecoverAfterHeavyFailure(promptId);
+        promptId = null;
+        await ensureComfyReady(20, 1000);
+        continue;
+      }
+      if (timedOut) {
+        // Final timeout: interrupt only if we won't hit someone else.
+        if (!(await comfyHasForeignWork(promptId))) {
+          await comfyInterrupt().catch(() => undefined);
+        }
+        promptId = null;
+        throw e;
+      }
+      if (!isTransientComfyError(e) || attempt === 3) throw e;
       console.warn(
-        `[peach] comfy still retry ${attempt + 1}/3:`,
+        `[peach] comfy still retry ${attempt + 1}/4:`,
         e instanceof Error ? e.message.slice(0, 160) : e,
       );
       await sleep(1000 + attempt * 800);
@@ -735,6 +817,7 @@ export async function runComfyJob(
   }
   let promptId: string | null = null;
   let lastErr: unknown;
+  let heavyRecoveries = 0;
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
       if (!promptId) {
@@ -761,6 +844,17 @@ export async function runComfyJob(
         );
         promptId = null;
         await ensureComfyNodeTypes(requiredNodes, 20, 3000).catch(() => undefined);
+        continue;
+      }
+      if (isHeavyComfyFailure(e) && heavyRecoveries < 1) {
+        heavyRecoveries += 1;
+        console.warn(
+          `[peach] comfy job heavy retry after:`,
+          msg.slice(0, 180),
+        );
+        await safeRecoverAfterHeavyFailure(promptId);
+        promptId = null;
+        await ensureComfyReady(20, 1000);
         continue;
       }
       if (!isTransientComfyError(e) || attempt === 5) throw e;

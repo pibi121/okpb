@@ -1,11 +1,11 @@
 ﻿{
   "version": 1,
-  "blurPx": 24,
+  "blurPx": 36,
   "overlayScale": 0.83,
   "overlayOpacity": 0.85,
   "overlayX": 0.5,
   "overlayY": 0.7,
   "overlayFile": "tease_cta.png",
-  "updatedAt": "2026-09-27T02:35:00.000Z",
-  "notes": "Owner-tuned — blur +20%, overlay visible in lab via data URL"
+  "updatedAt": "2026-09-29T04:20:00.000Z",
+  "notes": "Owner: blur ×1.5 (24→36); overlay unchanged"
 }

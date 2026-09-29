@@ -125,9 +125,31 @@ export default function TgPartnerPage() {
 
   const kbUrl =
     "https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24";
+  const partnersChatUrl = "https://t.me/+WAQwgrFxbm85YmYx";
 
   return (
     <TgShell locale={locale}>
+      <a
+        className="tg-partner-kb"
+        href={partnersChatUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <span className="tg-partner-kb-pin" aria-hidden>
+          ❗️
+        </span>
+        <span className="tg-partner-kb-body">
+          <strong>
+            {ru
+              ? "Вступай в чат партнёров бота для обмена опытом"
+              : "Join the partner chat to share experience"}
+          </strong>
+          <span className="tg-partner-kb-link">
+            {ru ? "Открыть чат →" : "Open chat →"}
+          </span>
+        </span>
+      </a>
+
       <a
         className="tg-partner-kb"
         href={kbUrl}

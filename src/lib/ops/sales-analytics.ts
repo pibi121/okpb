@@ -3,7 +3,6 @@
  * Dates are Europe/Moscow calendar days.
  */
 import { prisma } from "@/lib/db";
-import { getFunnelStep } from "@/lib/ops/funnel-catalog";
 import type { Prisma } from "@prisma/client";
 
 const MSK = "Europe/Moscow";
@@ -20,7 +19,7 @@ export type SalesFunnelStepDef = {
   kind: "cohort" | "event" | "paid";
 };
 
-/** Fixed sales funnel: cohort start → monetization. */
+/** Fixed sales funnel: cohort start → monetization. Short OPS titles. */
 export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
   {
     key: "registered",
@@ -30,37 +29,37 @@ export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
   },
   {
     key: "bot.start",
-    title: getFunnelStep("bot.start").title,
+    title: "Открыл бота (/start)",
     eventKey: "bot.start",
     kind: "event",
   },
   {
     key: "bot.rules.agree",
-    title: getFunnelStep("bot.rules.agree").title,
+    title: "Согласился с правилами (18+)",
     eventKey: "bot.rules.agree",
     kind: "event",
   },
   {
     key: "bot.welcome.after_rules",
-    title: getFunnelStep("bot.welcome.after_rules").title,
+    title: "Показал welcome после правил",
     eventKey: "bot.welcome.after_rules",
     kind: "event",
   },
   {
     key: "bot.gen.started",
-    title: getFunnelStep("bot.gen.started").title,
+    title: "Запустил генерацию",
     eventKey: "bot.gen.started",
     kind: "event",
   },
   {
     key: "bot.topup.open",
-    title: getFunnelStep("bot.topup.open").title,
+    title: "Открыл пополнение",
     eventKey: "bot.topup.open",
     kind: "event",
   },
   {
     key: "paid",
-    title: "Первая оплата",
+    title: "Сделал первую оплату",
     eventKey: null,
     kind: "paid",
   },
@@ -99,25 +98,33 @@ export type SalesAnalyticsResult = {
     note: string;
   };
   kpi: {
+    /** Cohort size: telegram users created in window */
     newUsers: number;
-    payers: number;
-    payersWithin7d: number;
+    /** All paid PaymentOrders by cohort users (ever, as of report) */
     paymentsCount: number;
     avgMsToFirstPay: number | null;
     medianMsToFirstPay: number | null;
-    arpuRub: number;
-    arppuRub: number;
-    arpuPeaches: number;
-    arppuPeaches: number;
-    avgPaymentsPerPayer: number;
+    /** Cohort ₽ revenue / registrations */
+    revenuePerRegRub: number;
+    /** Cohort 🍑 topups / registrations */
+    revenuePerRegPeaches: number;
+    /** paymentsCount / registrations */
+    paymentsPerReg: number;
+    /** Kept for funnel «первая оплата» / ≤7д */
+    payers: number;
+    payersWithin7d: number;
   };
   cash: {
     note: string;
     rubMinor: number;
     rub: number;
     peaches: number;
+    /** Paid PaymentOrder count in window */
     paymentsCount: number;
-    payers: number;
+    /** Unique payers by PaymentOrder in window (₽) */
+    rubPayers: number;
+    /** Unique users with live topup ledger in window (🍑) */
+    peachPayers: number;
     methods: { method: string; count: number; rubMinor: number; peaches: number }[];
   };
   funnel: FunnelStepRow[];
@@ -396,10 +403,10 @@ export async function collectSalesAnalytics(
     { count: number; rubMinor: number; peaches: number }
   >();
   let cashRubMinor = 0;
-  const cashPayerSet = new Set<string>();
+  const rubPayerSet = new Set<string>();
   for (const o of cashOrders) {
     cashRubMinor += o.amountMinor;
-    cashPayerSet.add(o.userId);
+    rubPayerSet.add(o.userId);
     const m = o.paymentMethod || "other";
     const cur = cashMethodMap.get(m) || { count: 0, rubMinor: 0, peaches: 0 };
     cur.count += 1;
@@ -408,7 +415,7 @@ export async function collectSalesAnalytics(
     cashMethodMap.set(m, cur);
   }
   const cashPeaches = cashLedger.reduce((s, r) => s + r.amount, 0);
-  for (const r of cashLedger) cashPayerSet.add(r.userId);
+  const peachPayerSet = new Set(cashLedger.map((r) => r.userId));
 
   // Dynamics series
   const buckets = buildBuckets(fromYmd, toYmd, grain);
@@ -451,10 +458,9 @@ export async function collectSalesAnalytics(
     );
   }
 
-  const arpuRub = N ? cohortRubMinor / 100 / N : 0;
-  const arppuRub = payers ? cohortRubMinor / 100 / payers : 0;
-  const arpuPeaches = N ? cohortPeachesTotal / N : 0;
-  const arppuPeaches = payers ? cohortPeachesTotal / payers : 0;
+  const revenuePerRegRub = N ? cohortRubMinor / 100 / N : 0;
+  const revenuePerRegPeaches = N ? cohortPeachesTotal / N : 0;
+  const paymentsPerReg = N ? paymentsCount / N : 0;
 
   return {
     meta: {
@@ -466,30 +472,29 @@ export async function collectSalesAnalytics(
       grain,
       minSignupYmd: bounds.minSignupYmd,
       maxYmd,
-      note: "Конверсии когорты — на момент отчёта (оплата могла быть позже выбранных дат). Касса — по факту оплаты в окне.",
+      note:
+        "Первичные регистрации = аккаунты, созданные в выбранные даты. Их шаги и оплаты — на момент отчёта (могли оплатить позже). Касса ниже — все оплаты, прошедшие в эти даты, в т.ч. от более ранних регистраций.",
     },
     kpi: {
       newUsers: N,
-      payers,
-      payersWithin7d,
       paymentsCount,
       avgMsToFirstPay: mean(msToFirst),
       medianMsToFirstPay: median(msToFirst),
-      arpuRub: round2(arpuRub),
-      arppuRub: round2(arppuRub),
-      arpuPeaches: round2(arpuPeaches),
-      arppuPeaches: round2(arppuPeaches),
-      avgPaymentsPerPayer: payers
-        ? Math.round((paymentsCount / payers) * 100) / 100
-        : 0,
+      revenuePerRegRub: round2(revenuePerRegRub),
+      revenuePerRegPeaches: round2(revenuePerRegPeaches),
+      paymentsPerReg: round2(paymentsPerReg),
+      payers,
+      payersWithin7d,
     },
     cash: {
-      note: "Касса за выбранные даты (по факту оплаты), не когорта",
+      note:
+        "Сколько денег реально зашло в выбранные даты (по времени оплаты). Это не срез по первичным регистрациям.",
       rubMinor: cashRubMinor,
       rub: round2(cashRubMinor / 100),
       peaches: cashPeaches,
       paymentsCount: cashOrders.length,
-      payers: cashPayerSet.size,
+      rubPayers: rubPayerSet.size,
+      peachPayers: peachPayerSet.size,
       methods: [...cashMethodMap.entries()]
         .map(([method, v]) => ({ method, ...v }))
         .sort((a, b) => b.count - a.count),

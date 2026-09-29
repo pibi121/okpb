@@ -28,23 +28,22 @@ type SalesPayload = {
   };
   kpi: {
     newUsers: number;
-    payers: number;
-    payersWithin7d: number;
     paymentsCount: number;
     avgMsToFirstPay: number | null;
     medianMsToFirstPay: number | null;
-    arpuRub: number;
-    arppuRub: number;
-    arpuPeaches: number;
-    arppuPeaches: number;
-    avgPaymentsPerPayer: number;
+    revenuePerRegRub: number;
+    revenuePerRegPeaches: number;
+    paymentsPerReg: number;
+    payers: number;
+    payersWithin7d: number;
   };
   cash: {
     note: string;
     rub: number;
     peaches: number;
     paymentsCount: number;
-    payers: number;
+    rubPayers: number;
+    peachPayers: number;
     methods: { method: string; count: number; rubMinor: number; peaches: number }[];
   };
   funnel: FunnelStep[];
@@ -135,9 +134,7 @@ export default function OpsSalesPage() {
       const t = opts?.to ?? to;
       const cur = opts?.currency ?? currency;
       const manual = opts?.grainManual ?? grainManual;
-      const g = manual
-        ? (opts?.grain ?? grain)
-        : pickGrain(f, t);
+      const g = manual ? (opts?.grain ?? grain) : pickGrain(f, t);
       if (!manual) setGrain(g);
       setLoading(true);
       setMsg("");
@@ -209,14 +206,14 @@ export default function OpsSalesPage() {
       <div>
         <h1 className="font-display text-3xl">Аналитика</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Когорта по дате регистрации · касса отдельно по факту оплаты · даты MSK
+          Первичные регистрации выбранных дат и отдельно — касса за эти же даты. Часовой пояс: Москва.
         </p>
       </div>
       {msg ? <p className="text-sm text-rose-300">{msg}</p> : null}
 
       <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-white/10 p-4">
         <label className="text-xs text-zinc-500">
-          От
+          Дата регистрации с
           <input
             type="date"
             value={from}
@@ -230,7 +227,7 @@ export default function OpsSalesPage() {
           />
         </label>
         <label className="text-xs text-zinc-500">
-          До
+          по
           <input
             type="date"
             value={to}
@@ -244,7 +241,7 @@ export default function OpsSalesPage() {
           />
         </label>
         <label className="text-xs text-zinc-500">
-          Валюта
+          Показывать деньги
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value as Currency)}
@@ -256,7 +253,7 @@ export default function OpsSalesPage() {
           </select>
         </label>
         <label className="text-xs text-zinc-500">
-          Зерно
+          График по
           <select
             value={grain}
             onChange={(e) => {
@@ -265,8 +262,8 @@ export default function OpsSalesPage() {
             }}
             className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
           >
-            <option value="day">Дни</option>
-            <option value="week">Недели</option>
+            <option value="day">дням</option>
+            <option value="week">неделям</option>
           </select>
         </label>
         <button
@@ -305,51 +302,66 @@ export default function OpsSalesPage() {
         <>
           <p className="text-xs text-zinc-500">{data.meta.note}</p>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="Новые юзеры" value={String(data.kpi.newUsers)} />
-            <Kpi
-              label="Заплатили"
-              value={`${data.kpi.payers} (${data.kpi.payersWithin7d} ≤7д)`}
-            />
-            <Kpi
-              label="До 1-й оплаты"
-              value={`ср ${fmtDur(data.kpi.avgMsToFirstPay)} · мед ${fmtDur(data.kpi.medianMsToFirstPay)}`}
-            />
-            <Kpi
-              label="Оплат / платящего"
-              value={String(data.kpi.avgPaymentsPerPayer)}
-            />
-            {showRub ? (
-              <>
-                <Kpi label="ARPU ₽" value={fmtMoney(data.kpi.arpuRub)} />
-                <Kpi label="ARPPU ₽" value={fmtMoney(data.kpi.arppuRub)} />
-              </>
-            ) : null}
-            {showPeaches ? (
-              <>
-                <Kpi label="ARPU 🍑" value={String(data.kpi.arpuPeaches)} />
-                <Kpi label="ARPPU 🍑" value={String(data.kpi.arppuPeaches)} />
-              </>
-            ) : null}
-          </div>
+          <section>
+            <h2 className="mb-2 text-sm font-medium text-zinc-300">
+              Первичные регистрации (даты из фильтра)
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Kpi
+                label="Регистраций"
+                hint="Сколько новых TG-юзеров за период"
+                value={String(data.kpi.newUsers)}
+              />
+              <Kpi
+                label="Время до первой оплаты"
+                hint="Среди тех с первичной регистрацией в периоде, кто уже оплатил"
+                value={`ср ${fmtDur(data.kpi.avgMsToFirstPay)} · мед ${fmtDur(data.kpi.medianMsToFirstPay)}`}
+              />
+              {showRub ? (
+                <Kpi
+                  label="Доход на регистрацию, ₽"
+                  hint="Все ₽ оплат этих регистраций ÷ их число"
+                  value={fmtMoney(data.kpi.revenuePerRegRub)}
+                />
+              ) : null}
+              {showPeaches ? (
+                <Kpi
+                  label="Доход на регистрацию, 🍑"
+                  hint="Все topup-персики этих регистраций ÷ их число"
+                  value={fmtMoney(data.kpi.revenuePerRegPeaches)}
+                />
+              ) : null}
+              <Kpi
+                label="Оплат на регистрацию"
+                hint="Число успешных оплат этих регистраций ÷ их число"
+                value={fmtMoney(data.kpi.paymentsPerReg)}
+              />
+            </div>
+          </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
-            <h2 className="font-display text-xl">Оплаты за период</h2>
+            <h2 className="font-display text-xl">Касса за эти даты</h2>
             <p className="mt-1 text-xs text-zinc-500">{data.cash.note}</p>
-            <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
               {showRub ? (
                 <span>
                   <b className="text-peach">{fmtMoney(data.cash.rub)}</b> ₽
+                  <span className="text-zinc-500">
+                    {" "}
+                    · {data.cash.paymentsCount} оплат · {data.cash.rubPayers}{" "}
+                    плательщиков
+                  </span>
                 </span>
               ) : null}
               {showPeaches ? (
                 <span>
                   <b className="text-peach">{data.cash.peaches}</b> 🍑
+                  <span className="text-zinc-500">
+                    {" "}
+                    · {data.cash.peachPayers} чел. с topup
+                  </span>
                 </span>
               ) : null}
-              <span className="text-zinc-400">
-                {data.cash.paymentsCount} оплат · {data.cash.payers} плательщиков
-              </span>
             </div>
             {data.cash.methods.length ? (
               <ul className="mt-3 space-y-1 text-sm text-zinc-400">
@@ -360,7 +372,7 @@ export default function OpsSalesPage() {
                   >
                     <span>{methodLabel(m.method)}</span>
                     <span className="font-mono text-zinc-300">
-                      {m.count}
+                      {m.count} опл.
                       {showRub ? ` · ${fmtMoney(m.rubMinor / 100)} ₽` : ""}
                       {showPeaches ? ` · ${m.peaches} 🍑` : ""}
                     </span>
@@ -368,13 +380,13 @@ export default function OpsSalesPage() {
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-sm text-zinc-600">Нет оплат в окне</p>
+              <p className="mt-2 text-sm text-zinc-600">В эти даты оплат не было</p>
             )}
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-xl">Динамика</h2>
+              <h2 className="font-display text-xl">Динамика по дням / неделям</h2>
               <div className="flex gap-1">
                 <button
                   type="button"
@@ -408,9 +420,20 @@ export default function OpsSalesPage() {
                 </button>
               </div>
             </div>
-            <p className="mt-1 text-xs text-zinc-500">
-              Регистрации · оплатившие из когорты бакета (ever) · касса по paidAt
-            </p>
+            <ul className="mt-2 space-y-0.5 text-xs text-zinc-500">
+              <li>
+                <span className="text-zinc-400">серый</span> — сколько человек
+                зарегистрировалось в этот день/неделю
+              </li>
+              <li>
+                <span className="text-emerald-400/90">зелёный</span> — сколько из
+                них уже оплатили хотя бы раз (на момент отчёта)
+              </li>
+              <li>
+                <span className="text-peach">персик / жёлтый</span> — касса: деньги,
+                зашедшие в этот день/неделю (любые юзеры)
+              </li>
+            </ul>
             <div className="mt-4 space-y-2">
               {data.series.buckets.map((b) => (
                 <div
@@ -423,13 +446,13 @@ export default function OpsSalesPage() {
                       color="bg-zinc-400"
                       value={b.registrations}
                       max={chartMax}
-                      label={`рег ${b.registrations}`}
+                      label={`рег. ${b.registrations}`}
                     />
                     <Bar
                       color="bg-emerald-500/80"
                       value={b.cohortPaid}
                       max={chartMax}
-                      label={`опл. ког. ${b.cohortPaid}`}
+                      label={`из них оплатили ${b.cohortPaid}`}
                     />
                     {showRub ? (
                       <Bar
@@ -454,13 +477,16 @@ export default function OpsSalesPage() {
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
-            <h2 className="font-display text-xl">Воронка когорты</h2>
+            <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              Уники · % от регистрации · % к предыдущему шагу. Бар = доля от старта.
+              Сколько из первичных регистраций дошли до шага. «% от всех» — от числа регистраций.
+              «% от шага выше» — от предыдущей строки. Полоска = доля от всех регистраций.
+              Шаги не всегда идут строго по порядку (часть событий может не трекаться).
             </p>
             <ul className="mt-4 space-y-3">
               {data.funnel.map((f, i) => {
-                const dropHard = i > 0 && f.pctOfPrev < 50;
+                const dropHard = i > 0 && f.pctOfPrev < 50 && f.uniqueUsers > 0;
+                const jumpUp = i > 0 && f.uniqueUsers > 0 && f.pctOfPrev > 100;
                 return (
                   <li key={f.key}>
                     <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -471,18 +497,26 @@ export default function OpsSalesPage() {
                         <b className="text-peach">{f.uniqueUsers}</b>
                         <span className="text-zinc-500">
                           {" "}
-                          · {f.pctOfStart}% старт
+                          · {f.pctOfStart}% от всех
                           {i > 0 ? (
-                            <span className={dropHard ? " text-rose-300" : ""}>
+                            <span
+                              className={
+                                dropHard
+                                  ? " text-rose-300"
+                                  : jumpUp
+                                    ? " text-amber-300"
+                                    : ""
+                              }
+                            >
                               {" "}
-                              · {f.pctOfPrev}% к пред.
+                              · {f.pctOfPrev}% от шага выше
                             </span>
                           ) : null}
                           {f.uniqueWithin7d != null ? (
                             <span className="text-zinc-600">
                               {" "}
-                              · ≤7д: {f.uniqueWithin7d} ({f.pctWithin7dOfStart}
-                              %)
+                              · за ≤7 дней: {f.uniqueWithin7d} (
+                              {f.pctWithin7dOfStart}%)
                             </span>
                           ) : null}
                         </span>
@@ -509,13 +543,22 @@ export default function OpsSalesPage() {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <div className="rounded-2xl border border-white/10 p-4">
       <div className="text-[11px] uppercase tracking-wide text-zinc-500">
         {label}
       </div>
       <div className="mt-1 text-lg leading-snug">{value}</div>
+      {hint ? <p className="mt-1 text-[11px] leading-snug text-zinc-600">{hint}</p> : null}
     </div>
   );
 }
@@ -537,7 +580,7 @@ function Bar({
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/5">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${w}%` }} />
       </div>
-      <span className="w-28 shrink-0 text-right font-mono text-[10px] text-zinc-500">
+      <span className="w-36 shrink-0 text-right font-mono text-[10px] text-zinc-500">
         {label}
       </span>
     </div>

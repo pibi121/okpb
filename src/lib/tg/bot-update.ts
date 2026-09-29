@@ -2334,6 +2334,19 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     if (chatState === "awaiting_undress_photo") {
       const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
       if (!buf) return;
+      try {
+        const { assertImageAllowedForGeneration } = await import(
+          "@/lib/age-gate"
+        );
+        await assertImageAllowedForGeneration(buf, locale);
+      } catch (e) {
+        const { AgeGateBlockedError } = await import("@/lib/age-gate");
+        if (e instanceof AgeGateBlockedError) {
+          await tgSendMessage(chatId, e.message);
+          return;
+        }
+        throw e;
+      }
       await tgSendMessage(chatId, t("undress_busy", locale));
       await setTgSession(platformUserId, {
         chatState: "idle",
@@ -2350,6 +2363,11 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           locale,
         });
       } catch (e) {
+        const { AgeGateBlockedError } = await import("@/lib/age-gate");
+        if (e instanceof AgeGateBlockedError) {
+          await tgSendMessage(chatId, e.message);
+          return;
+        }
         const msgText = e instanceof Error ? e.message : String(e);
         if (/Недостаточно персиков|free_race/i.test(msgText)) {
           await tgSendMessage(chatId, msgText, {
@@ -2390,6 +2408,19 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   ) {
     const buf = await downloadTgPhotoSoft(chatId, msg.document.file_id, locale);
     if (!buf) return;
+    try {
+      const { assertImageAllowedForGeneration } = await import(
+        "@/lib/age-gate"
+      );
+      await assertImageAllowedForGeneration(buf, locale);
+    } catch (e) {
+      const { AgeGateBlockedError } = await import("@/lib/age-gate");
+      if (e instanceof AgeGateBlockedError) {
+        await tgSendMessage(chatId, e.message);
+        return;
+      }
+      throw e;
+    }
     await tgSendMessage(chatId, t("undress_busy", locale));
     await setTgSession(platformUserId, {
       chatState: "idle",
@@ -2406,6 +2437,11 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         locale,
       });
     } catch (e) {
+      const { AgeGateBlockedError } = await import("@/lib/age-gate");
+      if (e instanceof AgeGateBlockedError) {
+        await tgSendMessage(chatId, e.message);
+        return;
+      }
       const msgText = e instanceof Error ? e.message : String(e);
       if (/Недостаточно персиков|free_race/i.test(msgText)) {
         await tgSendMessage(chatId, msgText, {

@@ -295,6 +295,7 @@ async function loadPhotoBytes(photoUrl: string): Promise<Buffer> {
 async function ensureFunnelVideoRefCharacter(
   userId: string,
   photoBytes: Buffer,
+  locale: TgLocale = "ru",
 ): Promise<string> {
   const existing = await prisma.character.findFirst({
     where: {
@@ -325,7 +326,7 @@ async function ensureFunnelVideoRefCharacter(
     ch.id,
     photoBytes,
     `fv2_${Date.now()}.jpg`,
-    { maxPhotos: 1, skipAgeGate: true },
+    { maxPhotos: 1, locale },
   );
   await prisma.character.update({
     where: { id: ch.id },
@@ -467,6 +468,7 @@ async function runFunnelV2VideoGen(opts: {
     const characterId = await ensureFunnelVideoRefCharacter(
       opts.userId,
       bytes,
+      opts.locale,
     );
     // Bridge: credit real wallet so existing service can debit, then it nets zero for preview.
     // For preview wallet we already debited funnel balance — credit peaches then let service debit.

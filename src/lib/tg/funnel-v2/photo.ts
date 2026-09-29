@@ -711,6 +711,18 @@ export async function handleFunnelV2PhotoUpload(opts: {
   locale: TgLocale;
   photoBytes: Buffer;
 }): Promise<void> {
+  try {
+    const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
+    await assertImageAllowedForGeneration(opts.photoBytes, opts.locale);
+  } catch (e) {
+    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    if (e instanceof AgeGateBlockedError) {
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
+    throw e;
+  }
+
   const saved = saveGalleryBinary(
     opts.userId,
     "jpg",

@@ -46,6 +46,9 @@ export async function startTgUndressGeneration(opts: {
   chargedPeaches: number;
   usedFree: boolean;
 }> {
+  const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
+  await assertImageAllowedForGeneration(opts.photoBytes, opts.locale);
+
   await ensureUndressWelcome(opts.userId);
 
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });

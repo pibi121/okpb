@@ -480,6 +480,18 @@ export async function runFunnelV2PhotoGen(opts: {
   );
 
   try {
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId: opts.userId,
+      platformUserId: opts.platformUserId,
+      eventKey: "bot.fv2.gen_start",
+      surface: "bot",
+      meta: {
+        kind: opts.kind,
+        templateId: opts.templateId,
+        blur: useBlur,
+      },
+    });
     const bytes = await loadPhotoBytes(opts.photoUrl);
     const sess = await getTgSession(opts.platformUserId);
     const sessPend = parsePending(sess?.pendingJson || "{}") as {

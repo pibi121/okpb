@@ -463,6 +463,13 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "Кнопка согласия в новой воронке (fv2:rules).",
   ),
   S(
+    "bot.fv2.gen_start",
+    "bot",
+    "generation",
+    "Funnel v2: запустил генерацию",
+    "Старт фото-генерации в воронке (в т.ч. blur-trial / faststart).",
+  ),
+  S(
     "bot.fv2.hub",
     "bot",
     "navigation",

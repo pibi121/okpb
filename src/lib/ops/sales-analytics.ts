@@ -18,11 +18,11 @@ export type SalesFunnelStepDef = {
   eventKeys: string[] | null;
   /** Legacy match in metaJson (fv2 callbacks before catalog keys) */
   metaContains?: string[];
-  kind: "event" | "paid" | "repeat_paid";
+  kind: "cohort" | "event" | "paid" | "repeat_paid";
 };
 
-/** Funnel v2 steps (named keys + legacy meta.callback fallback). */
-export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
+/** Основная воронка (как сейчас на вкладке). */
+export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
   {
     key: "bot.start",
     title: "Вход в воронку",
@@ -73,8 +73,45 @@ export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
   },
 ];
 
+/**
+ * Тестовая воронка под faststart:
+ * рег → правила → генерация → топап → оплата → повтор.
+ */
+export const SALES_FUNNEL_TEST_STEPS: SalesFunnelStepDef[] = [
+  { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
+  {
+    key: "bot.fv2.rules",
+    title: "Принятие правил",
+    eventKeys: ["bot.fv2.rules"],
+    metaContains: ["fv2:rules"],
+    kind: "event",
+  },
+  {
+    key: "bot.fv2.gen_start",
+    title: "Запустил генерацию",
+    eventKeys: ["bot.fv2.gen_start"],
+    kind: "event",
+  },
+  {
+    key: "bot.fv2.topup",
+    title: "Перешёл к пополнению",
+    eventKeys: ["bot.fv2.topup"],
+    metaContains: ["fv2:tu"],
+    kind: "event",
+  },
+  { key: "paid", title: "Пополнил", eventKeys: null, kind: "paid" },
+  {
+    key: "repeat_paid",
+    title: "Пополнил повторно",
+    eventKeys: null,
+    kind: "repeat_paid",
+  },
+];
+
+/** @deprecated alias → main */
+export const SALES_FUNNEL_STEPS = SALES_FUNNEL_MAIN_STEPS;
 /** @deprecated alias */
-export const SALES_FUNNEL_V2_STEPS = SALES_FUNNEL_STEPS;
+export const SALES_FUNNEL_V2_STEPS = SALES_FUNNEL_MAIN_STEPS;
 
 export type SalesPartnerOption = {
   id: string;
@@ -166,6 +203,8 @@ export type SalesAnalyticsResult = {
     };
   };
   funnels: FunnelStepRow[];
+  /** Тестовая воронка (faststart-срез). */
+  funnelsTest: FunnelStepRow[];
   series: {
     grain: SalesGrain;
     buckets: {
@@ -312,6 +351,7 @@ function collectEventKeys(steps: SalesFunnelStepDef[]): string[] {
 
 function buildFunnelRows(
   steps: SalesFunnelStepDef[],
+  N: number,
   payers: number,
   repeatPayers: number,
   payersWithin7d: number,
@@ -319,7 +359,8 @@ function buildFunnelRows(
 ): FunnelStepRow[] {
   const counts: number[] = [];
   for (const step of steps) {
-    if (step.kind === "paid") counts.push(payers);
+    if (step.kind === "cohort") counts.push(N);
+    else if (step.kind === "paid") counts.push(payers);
     else if (step.kind === "repeat_paid") counts.push(repeatPayers);
     else counts.push(usersByStepKey.get(step.key)?.size || 0);
   }
@@ -443,7 +484,10 @@ export async function collectSalesAnalytics(
   const createdById = new Map(cohortUsers.map((u) => [u.id, u.createdAt]));
   const N = cohortIds.length;
 
-  const allEventKeys = collectEventKeys(SALES_FUNNEL_STEPS);
+  const allEventKeys = collectEventKeys([
+    ...SALES_FUNNEL_MAIN_STEPS,
+    ...SALES_FUNNEL_TEST_STEPS,
+  ]);
 
   const [eventHits, fv2LegacyHits, paidOrdersRaw, cashOrders, cashLedgerRaw] =
     await Promise.all([
@@ -598,12 +642,25 @@ export async function collectSalesAnalytics(
     return byStep;
   }
 
+  const usersByEvent = usersForSteps([
+    ...SALES_FUNNEL_MAIN_STEPS,
+    ...SALES_FUNNEL_TEST_STEPS,
+  ]);
   const funnel = buildFunnelRows(
-    SALES_FUNNEL_STEPS,
+    SALES_FUNNEL_MAIN_STEPS,
+    N,
     payers,
     repeatPayers,
     payersWithin7d,
-    usersForSteps(SALES_FUNNEL_STEPS),
+    usersByEvent,
+  );
+  const funnelTest = buildFunnelRows(
+    SALES_FUNNEL_TEST_STEPS,
+    N,
+    payers,
+    repeatPayers,
+    payersWithin7d,
+    usersByEvent,
   );
 
   // Cash totals
@@ -728,6 +785,7 @@ export async function collectSalesAnalytics(
       },
     },
     funnels: funnel,
+    funnelsTest: funnelTest,
     series: {
       grain,
       buckets: buckets.map((b) => ({

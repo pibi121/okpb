@@ -68,6 +68,7 @@ type SalesPayload = {
     };
   };
   funnels: FunnelStep[];
+  funnelsTest: FunnelStep[];
   series: {
     grain: Grain;
     buckets: {
@@ -162,6 +163,7 @@ export default function OpsSalesPage() {
   const [grainManual, setGrainManual] = useState(false);
   const [cashGrainManual, setCashGrainManual] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
+  const [funnelTab, setFunnelTab] = useState<"main" | "test">("main");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [partnersOpen, setPartnersOpen] = useState(false);
   /** null = все; [] = никто; ids = фильтр */
@@ -361,7 +363,10 @@ export default function OpsSalesPage() {
     return Math.max(1, ...data.cash.series.buckets.map((b) => b.total));
   }, [data]);
 
-  const funnel = data?.funnels ?? [];
+  const funnel =
+    funnelTab === "test"
+      ? (data?.funnelsTest ?? [])
+      : (data?.funnels ?? []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -699,11 +704,37 @@ export default function OpsSalesPage() {
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
-            <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  className={
+                    funnelTab === "main"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setFunnelTab("main")}
+                >
+                  Основная
+                </button>
+                <button
+                  type="button"
+                  className={
+                    funnelTab === "test"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setFunnelTab("test")}
+                >
+                  Тестовая
+                </button>
+              </div>
+            </div>
             <p className="mt-1 text-xs text-zinc-500">
-              Вход = /start среди регистраций периода. Дальше — шаги v2 (правила /
-              хаб / фото / видео / топап), первая и повторная оплата (&gt;1). «%
-              от всех» — от входа. «% от шага выше» — от предыдущей строки.
+              {funnelTab === "main"
+                ? "Основная: вход (/start) → правила → хаб → фото → видео → топап → оплаты. «% от всех» — от входа."
+                : "Тестовая (faststart): регистрация → правила → запустил генерацию → топап → пополнил → повторно. «% от всех» — от регистраций. Событие генерации пишется с этого деплоя."}
             </p>
             <ul className="mt-4 space-y-3">
               {funnel.map((f, i) => {

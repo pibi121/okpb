@@ -1,7 +1,7 @@
 import { jsonOk, withOps } from "@/lib/ops/http";
 import { getOpsSettings, saveOpsSettings } from "@/lib/ops/settings";
 import { writeAudit } from "@/lib/ops/audit";
-import { parseAgeGateConfig } from "@/lib/age-gate";
+import { normalizeAgeGateEngine, parseAgeGateConfig } from "@/lib/age-gate";
 import { prisma } from "@/lib/db";
 import { resolveAgeGateReview } from "@/lib/age-gate-review";
 
@@ -37,10 +37,12 @@ export async function GET(req: Request) {
             gateSummary: {
               reason: gate.reason ?? null,
               ageLabel: gate.ageLabel ?? null,
+              ageYears: gate.ageYears ?? null,
               score: gate.score ?? null,
               secondLabel: gate.secondLabel ?? null,
               secondScore: gate.secondScore ?? null,
               faces: gate.faces ?? null,
+              engine: gate.engine ?? null,
             },
           };
         }),
@@ -54,6 +56,7 @@ export async function GET(req: Request) {
     });
     return jsonOk({
       ageGateEnabled: cfg.enabled,
+      engine: cfg.engine,
       blockBuckets: cfg.blockBuckets,
       faceThresh: cfg.faceThresh,
       minScore: cfg.minScore,
@@ -71,6 +74,7 @@ export async function POST(req: Request) {
   return withOps("settings", async (actor) => {
     const body = (await req.json()) as {
       ageGateEnabled?: boolean;
+      engine?: string;
       blockBuckets?: string;
       faceThresh?: number;
       minScore?: number;
@@ -104,6 +108,10 @@ export async function POST(req: Request) {
     const enabled =
       typeof body.ageGateEnabled === "boolean" ? body.ageGateEnabled : prev.enabled;
     const nextJson = {
+      engine:
+        body.engine !== undefined
+          ? normalizeAgeGateEngine(body.engine)
+          : prev.engine,
       blockBuckets:
         typeof body.blockBuckets === "string" && body.blockBuckets.trim()
           ? body.blockBuckets.trim()

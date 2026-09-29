@@ -2,6 +2,12 @@
 """
 Local age gate for PeachBitch — runs on Railway (CPU), never on Metalnode GPU.
 
+Engines:
+  opencv      — Gil Levi DNN age buckets (default)
+  insightface — buffalo genderage.onnx continuous age years
+                + SCRFD-500M face det + Attribute pad 1.5
+                + Gil Levi tight-crop child corroboration
+
 Stdout JSON:
   { "ok": true, "blocked": false, "uncertain": false, "faces": 1,
     "ageLabel": "(25-32)", "score": 0.91, "reason": "adult_ok", ... }
@@ -40,6 +46,8 @@ MIN_MODEL_BYTES = {
     "face.caffemodel": 2_000_000,
     "age.prototxt": 1_500,
     "age.caffemodel": 40_000_000,
+    "genderage.onnx": 1_200_000,
+    "det_500m.onnx": 2_000_000,
 }
 
 MODEL_URLS = {
@@ -59,6 +67,29 @@ MODEL_URLS = {
         "https://www.dropbox.com/s/xfb20y596869vbb/age_net.caffemodel?dl=1",
     ],
 }
+
+GENDERAGE_URLS = [
+    "https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/genderage.onnx",
+    "https://huggingface.co/lilacvit/insightface-buffalo-l/resolve/main/genderage.onnx",
+]
+
+# SCRFD-500M only (~2.5MB) — not full buffalo_s. Prefer tiny HF mirror; zip fallback extracts one file.
+DET_500M_URLS = [
+    "https://huggingface.co/RuteNL/SCRFD-face-detection-ONNX/resolve/main/500m.onnx",
+]
+BUFFALO_S_ZIP_URL = (
+    "https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_s.zip"
+)
+
+FACE_MODEL_NAMES = ("face.prototxt", "face.caffemodel")
+OPENCV_AGE_NAMES = ("age.prototxt", "age.caffemodel")
+GENDERAGE_NAME = "genderage.onnx"
+DET_500M_NAME = "det_500m.onnx"
+
+# Gil Levi tight-crop corroboration for insightface engine (genderage misses some minors).
+# Adult A scores ~0.61 on pad=0; children score ≥~0.76 — keep gap.
+GIL_CHILD_OVERRIDE_MIN_SCORE = 0.70
+GIL_CHILD_OVERRIDE_MAX_YEARS = 12.0
 
 
 def models_dir() -> Path:
@@ -86,17 +117,17 @@ def _looks_like_html(path: Path) -> bool:
         return False
 
 
-def download(name: str, dest: Path) -> None:
+def download(name: str, dest: Path, urls: list[str] | None = None) -> None:
     min_size = MIN_MODEL_BYTES.get(name, 1000)
     if dest.exists() and dest.stat().st_size >= min_size and not _looks_like_html(dest):
         return
     if dest.exists():
         dest.unlink(missing_ok=True)
 
-    urls = MODEL_URLS[name]
+    url_list = urls if urls is not None else MODEL_URLS[name]
     dest.parent.mkdir(parents=True, exist_ok=True)
     last_err: Exception | None = None
-    for url in urls:
+    for url in url_list:
         tmp = dest.with_suffix(dest.suffix + ".part")
         try:
             if tmp.exists():
@@ -114,13 +145,82 @@ def download(name: str, dest: Path) -> None:
     raise RuntimeError(f"failed to download {name}: {last_err}")
 
 
-def ensure_models(d: Path) -> dict[str, Path]:
-    paths = {}
-    for name in MODEL_URLS:
+def ensure_face_models(d: Path) -> dict[str, Path]:
+    paths: dict[str, Path] = {}
+    for name in FACE_MODEL_NAMES:
         dest = d / name
         download(name, dest)
         paths[name] = dest
     return paths
+
+
+def ensure_opencv_age_models(d: Path) -> dict[str, Path]:
+    paths = ensure_face_models(d)
+    for name in OPENCV_AGE_NAMES:
+        dest = d / name
+        download(name, dest)
+        paths[name] = dest
+    return paths
+
+
+def ensure_genderage_model(d: Path) -> Path:
+    dest = d / GENDERAGE_NAME
+    download(GENDERAGE_NAME, dest, urls=GENDERAGE_URLS)
+    return dest
+
+
+def ensure_det_500m(d: Path) -> Path:
+    """
+    SCRFD-500M detector for the insightface engine (~2–2.5MB).
+    Tries a small direct ONNX mirror first; falls back to extracting
+    det_500m.onnx from the buffalo_s zip (keeps only that file).
+    """
+    dest = d / DET_500M_NAME
+    min_size = MIN_MODEL_BYTES[DET_500M_NAME]
+    if dest.exists() and dest.stat().st_size >= min_size and not _looks_like_html(dest):
+        return dest
+
+    try:
+        download(DET_500M_NAME, dest, urls=DET_500M_URLS)
+        return dest
+    except Exception:
+        pass
+
+    import zipfile
+
+    if dest.exists():
+        dest.unlink(missing_ok=True)
+    zip_path = d / "buffalo_s.zip"
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    try:
+        if zip_path.exists() and zip_path.stat().st_size < 50_000_000:
+            zip_path.unlink(missing_ok=True)
+        if not zip_path.exists():
+            urllib.request.urlretrieve(BUFFALO_S_ZIP_URL, str(zip_path))
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            member = None
+            for name in zf.namelist():
+                if name.replace("\\", "/").endswith("det_500m.onnx"):
+                    member = name
+                    break
+            if member is None:
+                raise RuntimeError("det_500m.onnx not found in buffalo_s.zip")
+            with zf.open(member) as src, open(tmp, "wb") as out:
+                out.write(src.read())
+        if tmp.stat().st_size < min_size or _looks_like_html(tmp):
+            raise RuntimeError(f"bad det_500m extract size={tmp.stat().st_size}")
+        tmp.replace(dest)
+        return dest
+    finally:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+        if zip_path.exists():
+            zip_path.unlink(missing_ok=True)
+
+
+def ensure_models(d: Path) -> dict[str, Path]:
+    """OpenCV path: face + age caffe nets."""
+    return ensure_opencv_age_models(d)
 
 
 def load_image_bytes(data: bytes):
@@ -132,6 +232,14 @@ def load_image_bytes(data: bytes):
     if img is None:
         raise RuntimeError("cannot decode image")
     return img
+
+
+def load_caffe(prototxt: Path, caffemodel: Path):
+    import cv2
+
+    if hasattr(cv2.dnn, "readNetFromCaffe"):
+        return cv2.dnn.readNetFromCaffe(str(prototxt), str(caffemodel))
+    return cv2.dnn.readNet(str(caffemodel), str(prototxt), "caffe")
 
 
 def detect_faces(face_net, img, conf_thresh: float = 0.6):
@@ -155,6 +263,114 @@ def detect_faces(face_net, img, conf_thresh: float = 0.6):
         if x2 - x1 < 40 or y2 - y1 < 40:
             continue
         boxes.append((x1, y1, x2, y2, conf))
+    boxes.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
+    return boxes
+
+
+def _distance2bbox(points, distance):
+    import numpy as np
+
+    x1 = points[:, 0] - distance[:, 0]
+    y1 = points[:, 1] - distance[:, 1]
+    x2 = points[:, 0] + distance[:, 2]
+    y2 = points[:, 1] + distance[:, 3]
+    return np.stack([x1, y1, x2, y2], axis=-1)
+
+
+def _nms_xyxy(dets, thresh: float = 0.4):
+    import numpy as np
+
+    x1, y1, x2, y2, scores = dets[:, 0], dets[:, 1], dets[:, 2], dets[:, 3], dets[:, 4]
+    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+    order = scores.argsort()[::-1]
+    keep = []
+    while order.size > 0:
+        i = int(order[0])
+        keep.append(i)
+        xx1 = np.maximum(x1[i], x1[order[1:]])
+        yy1 = np.maximum(y1[i], y1[order[1:]])
+        xx2 = np.minimum(x2[i], x2[order[1:]])
+        yy2 = np.minimum(y2[i], y2[order[1:]])
+        w = np.maximum(0.0, xx2 - xx1 + 1)
+        h = np.maximum(0.0, yy2 - yy1 + 1)
+        inter = w * h
+        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        order = order[np.where(ovr <= thresh)[0] + 1]
+    return keep
+
+
+def detect_faces_scrfd(
+    session,
+    img,
+    conf_thresh: float = 0.5,
+    input_size: tuple[int, int] = (640, 640),
+):
+    """
+    SCRFD-500M / det_500m ONNX — InsightFace RetinaFace-compatible decode.
+    Returns list of (x1, y1, x2, y2, conf) largest-first, same as detect_faces.
+    """
+    import cv2
+    import numpy as np
+
+    im_ratio = float(img.shape[0]) / img.shape[1]
+    model_ratio = float(input_size[1]) / input_size[0]
+    if im_ratio > model_ratio:
+        new_height = input_size[1]
+        new_width = int(new_height / im_ratio)
+    else:
+        new_width = input_size[0]
+        new_height = int(new_width * im_ratio)
+    det_scale = float(new_height) / img.shape[0]
+    resized = cv2.resize(img, (new_width, new_height))
+    det_img = np.zeros((input_size[1], input_size[0], 3), dtype=np.uint8)
+    det_img[:new_height, :new_width, :] = resized
+    blob = cv2.dnn.blobFromImage(
+        det_img,
+        1.0 / 128.0,
+        input_size,
+        (127.5, 127.5, 127.5),
+        swapRB=True,
+    )
+    input_name = session.get_inputs()[0].name
+    outs = session.run(None, {input_name: blob})
+    fmc = 3
+    strides = [8, 16, 32]
+    scores_list = []
+    bboxes_list = []
+    input_height, input_width = input_size[1], input_size[0]
+    for idx, stride in enumerate(strides):
+        scores = np.asarray(outs[idx], dtype=np.float32).reshape(-1)
+        bbox_preds = np.asarray(outs[idx + fmc], dtype=np.float32).reshape(-1, 4) * stride
+        height = input_height // stride
+        width = input_width // stride
+        anchor_centers = np.stack(
+            np.mgrid[:height, :width][::-1], axis=-1
+        ).astype(np.float32)
+        anchor_centers = (anchor_centers * stride).reshape((-1, 2))
+        if anchor_centers.shape[0] * 2 == bbox_preds.shape[0]:
+            anchor_centers = np.stack([anchor_centers] * 2, axis=1).reshape((-1, 2))
+        pos = np.where(scores >= conf_thresh)[0]
+        if pos.size == 0:
+            continue
+        scores_list.append(scores[pos])
+        bboxes_list.append(_distance2bbox(anchor_centers, bbox_preds)[pos])
+    if not scores_list:
+        return []
+    scores = np.concatenate(scores_list, axis=0)
+    bboxes = np.vstack(bboxes_list) / det_scale
+    order = scores.argsort()[::-1]
+    pre = np.hstack((bboxes, scores.reshape(-1, 1))).astype(np.float32)[order]
+    keep = _nms_xyxy(pre)
+    det = pre[keep]
+    boxes = []
+    h, w = img.shape[:2]
+    for row in det:
+        x1, y1, x2, y2, conf = (float(v) for v in row)
+        x1i, y1i = max(0, int(round(x1))), max(0, int(round(y1)))
+        x2i, y2i = min(w - 1, int(round(x2))), min(h - 1, int(round(y2)))
+        if x2i - x1i < 40 or y2i - y1i < 40:
+            continue
+        boxes.append((x1i, y1i, x2i, y2i, conf))
     boxes.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
     return boxes
 
@@ -216,22 +432,108 @@ def classify_age(
     return False, False, "adult_ok"
 
 
-def analyze(
+def classify_years(
+    age_years: float,
+    min_adult_score: float,
+) -> tuple[bool, bool, str, str, float]:
+    """
+    InsightFace continuous age → (blocked, uncertain, reason, ageLabel, score).
+    soft_adult_max = 18 + (1 - min_adult_score) * 10  (e.g. 0.85 → ~19.5)
+    """
+    soft_adult_max = 18.0 + (1.0 - float(min_adult_score)) * 10.0
+    age_label = f"{int(round(age_years))}y"
+    # Synthetic UI confidence: distance from the 18y boundary, clamped
+    dist = abs(float(age_years) - 18.0)
+    score = float(min(0.99, max(0.05, dist / 20.0)))
+
+    if age_years < 13.0:
+        return True, False, "probable_minor", age_label, score
+    if age_years < 18.0:
+        return False, True, "probable_uncertain", age_label, score
+    if age_years < soft_adult_max:
+        return False, True, "probable_uncertain", age_label, score
+    return False, False, "adult_ok", age_label, score
+
+
+def crop_face(img, box, pad_ratio: float = 0.15):
+    x1, y1, x2, y2 = box[:4]
+    pad_w = int(pad_ratio * (x2 - x1))
+    pad_h = int(pad_ratio * (y2 - y1))
+    xa, ya = max(0, x1 - pad_w), max(0, y1 - pad_h)
+    xb = min(img.shape[1] - 1, x2 + pad_w)
+    yb = min(img.shape[0] - 1, y2 + pad_h)
+    return img[ya:yb, xa:xb]
+
+
+def crop_face_insightface(img, box, input_size: int = 96, box_scale: float = 1.5):
+    """
+    InsightFace Attribute.get() center warp into input_size square.
+
+    Official Attribute:
+      _scale = input_size / (max(w, h) * 1.5)
+      face_align.transform(img, center, input_size, _scale, rotate=0)
+
+    SCRFD boxes are tight; OpenCV SSD boxes are looser — always use 1.5 with SCRFD.
+    """
+    import cv2
+
+    x1, y1, x2, y2 = [float(v) for v in box[:4]]
+    bw, bh = (x2 - x1), (y2 - y1)
+    center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+    scale = float(input_size) / (max(bw, bh) * float(box_scale))
+    M = cv2.getRotationMatrix2D(center, 0.0, scale)
+    M[0, 2] += (input_size / 2.0) - center[0]
+    M[1, 2] += (input_size / 2.0) - center[1]
+    return cv2.warpAffine(
+        img,
+        M,
+        (input_size, input_size),
+        flags=cv2.INTER_LINEAR,
+        borderValue=0.0,
+    )
+
+
+def predict_age_years_insightface(session, face_bgr_96) -> float:
+    """
+    buffalo_l genderage (InsightFace Attribute):
+      blobFromImage(..., 1/std, mean, swapRB=True) with mean=0, std=1
+      (model has built-in _minus/_mul / bn-style nodes).
+      age_years = pred[2] * 100
+    """
+    import cv2
+    import numpy as np
+
+    input_size = (96, 96)
+    # mean=0, std=1 → scalefactor 1.0, mean (0,0,0), swapRB=True
+    blob = cv2.dnn.blobFromImage(
+        face_bgr_96,
+        1.0,
+        input_size,
+        (0.0, 0.0, 0.0),
+        swapRB=True,
+    )
+    input_name = session.get_inputs()[0].name
+    outs = session.run(None, {input_name: blob})
+    out = np.asarray(outs[0], dtype=float)
+    flat = out.reshape(-1)
+    if flat.size >= 3:
+        # InsightFace genderage: pred[2] is age/100
+        return float(flat[2]) * 100.0
+    if flat.size == 1:
+        v = float(flat[0])
+        return v * 100.0 if abs(v) < 2.0 else v
+    raise RuntimeError(f"unexpected genderage output shape: {out.shape}")
+
+
+def analyze_opencv(
     img_bytes: bytes,
     block_buckets: set[str],
     face_thresh: float,
     min_score: float = 0.55,
     min_adult_score: float = 0.85,
 ) -> dict:
-    import cv2
-
     d = models_dir()
-    paths = ensure_models(d)
-
-    def load_caffe(prototxt: Path, caffemodel: Path):
-        if hasattr(cv2.dnn, "readNetFromCaffe"):
-            return cv2.dnn.readNetFromCaffe(str(prototxt), str(caffemodel))
-        return cv2.dnn.readNet(str(caffemodel), str(prototxt), "caffe")
+    paths = ensure_opencv_age_models(d)
 
     face_net = load_caffe(paths["face.prototxt"], paths["face.caffemodel"])
     age_net = load_caffe(paths["age.prototxt"], paths["age.caffemodel"])
@@ -248,6 +550,7 @@ def analyze(
             "reason": "no_face",
             "ageLabel": None,
             "score": None,
+            "ageYears": None,
             "engine": "opencv-dnn-age",
             "models": {k: paths[k].stat().st_size for k in paths},
         }
@@ -256,12 +559,7 @@ def analyze(
     faces = faces[:1]
 
     x1, y1, x2, y2, fconf = faces[0]
-    pad_w = int(0.15 * (x2 - x1))
-    pad_h = int(0.15 * (y2 - y1))
-    xa, ya = max(0, x1 - pad_w), max(0, y1 - pad_h)
-    xb = min(img.shape[1] - 1, x2 + pad_w)
-    yb = min(img.shape[0] - 1, y2 + pad_h)
-    crop = img[ya:yb, xa:xb]
+    crop = crop_face(img, (x1, y1, x2, y2), pad_ratio=0.15)
     label, score, idx, second_label, second_score = predict_age(age_net, crop)
     blocked, uncertain, reason = classify_age(
         label,
@@ -293,10 +591,144 @@ def analyze(
         "secondLabel": second_label,
         "secondScore": round(second_score, 4),
         "bucketIndex": idx,
+        "ageYears": None,
         "engine": "opencv-dnn-age",
         "face": item,
         "models": {k: paths[k].stat().st_size for k in paths},
     }
+
+
+def analyze_insightface(
+    img_bytes: bytes,
+    face_thresh: float,
+    min_adult_score: float = 0.85,
+) -> dict:
+    import onnxruntime as ort
+
+    d = models_dir()
+    # genderage + SCRFD det; Gil Levi age nets for tight-crop child corroboration
+    # (genderage alone ages some clear minors as ~25–30y adults).
+    age_paths = ensure_opencv_age_models(d)
+    genderage_path = ensure_genderage_model(d)
+    det_path = ensure_det_500m(d)
+    paths = {
+        **{k: age_paths[k] for k in (*FACE_MODEL_NAMES, *OPENCV_AGE_NAMES)},
+        GENDERAGE_NAME: genderage_path,
+        DET_500M_NAME: det_path,
+    }
+
+    det_session = ort.InferenceSession(
+        str(det_path),
+        providers=["CPUExecutionProvider"],
+    )
+    session = ort.InferenceSession(
+        str(genderage_path),
+        providers=["CPUExecutionProvider"],
+    )
+    age_net = load_caffe(age_paths["age.prototxt"], age_paths["age.caffemodel"])
+
+    img = load_image_bytes(img_bytes)
+    # SCRFD boxes match Attribute training better than OpenCV SSD.
+    scrfd_thresh = min(0.5, float(face_thresh))
+    faces = detect_faces_scrfd(det_session, img, conf_thresh=scrfd_thresh)
+    if not faces:
+        # Fallback: OpenCV SSD if SCRFD misses
+        face_net = load_caffe(age_paths["face.prototxt"], age_paths["face.caffemodel"])
+        faces = detect_faces(face_net, img, face_thresh)
+    if not faces:
+        return {
+            "ok": True,
+            "blocked": True,
+            "uncertain": False,
+            "faces": 0,
+            "reason": "no_face",
+            "ageLabel": None,
+            "score": None,
+            "ageYears": None,
+            "engine": "insightface-genderage",
+            "models": {k: paths[k].stat().st_size for k in paths},
+        }
+
+    faces = faces[:1]
+    x1, y1, x2, y2, fconf = faces[0]
+    # Official Attribute pad: side = max(w,h)*1.5
+    face96 = crop_face_insightface(
+        img, (x1, y1, x2, y2), input_size=96, box_scale=1.5
+    )
+    age_years = predict_age_years_insightface(session, face96)
+    raw_years = float(age_years)
+
+    # Tight-crop Gil Levi: catches minors that genderage reports as young adults.
+    # Threshold 0.70 keeps adult fixture A (gil ~0.61 on pad=0) from flipping.
+    gil_label, gil_score, _, _, _ = predict_age(
+        age_net, crop_face(img, (x1, y1, x2, y2), pad_ratio=0.0)
+    )
+    gil_override = False
+    if gil_label in CHILD_BUCKETS and gil_score >= GIL_CHILD_OVERRIDE_MIN_SCORE:
+        age_years = min(raw_years, GIL_CHILD_OVERRIDE_MAX_YEARS)
+        gil_override = True
+
+    blocked, uncertain, reason, age_label, score = classify_years(
+        age_years, min_adult_score
+    )
+    item = {
+        "ageLabel": age_label,
+        "ageYears": round(age_years, 2),
+        "rawAgeYears": round(raw_years, 2),
+        "score": round(score, 4),
+        "faceConfidence": round(float(fconf), 4),
+        "blocked": blocked,
+        "uncertain": uncertain,
+        "gilLabel": gil_label,
+        "gilScore": round(float(gil_score), 4),
+        "gilOverride": gil_override,
+    }
+    return {
+        "ok": True,
+        "blocked": blocked,
+        "uncertain": uncertain,
+        "faces": 1,
+        "reason": reason,
+        "ageLabel": age_label,
+        "score": round(score, 4),
+        "ageYears": round(age_years, 2),
+        "rawAgeYears": round(raw_years, 2),
+        "gilOverride": gil_override,
+        "engine": "insightface-genderage",
+        "face": item,
+        "models": {k: paths[k].stat().st_size for k in paths},
+    }
+
+
+def normalize_engine(raw: str | None) -> str:
+    s = (raw or "opencv").strip().lower()
+    if s in ("insightface", "onnx"):
+        return "insightface"
+    return "opencv"
+
+
+def analyze(
+    img_bytes: bytes,
+    block_buckets: set[str],
+    face_thresh: float,
+    min_score: float = 0.55,
+    min_adult_score: float = 0.85,
+    engine: str = "opencv",
+) -> dict:
+    eng = normalize_engine(engine)
+    if eng == "insightface":
+        return analyze_insightface(
+            img_bytes,
+            face_thresh=face_thresh,
+            min_adult_score=min_adult_score,
+        )
+    return analyze_opencv(
+        img_bytes,
+        block_buckets=block_buckets,
+        face_thresh=face_thresh,
+        min_score=min_score,
+        min_adult_score=min_adult_score,
+    )
 
 
 def main() -> int:
@@ -304,9 +736,15 @@ def main() -> int:
     parser.add_argument("path", nargs="?", help="image path")
     parser.add_argument("--stdin", action="store_true")
     parser.add_argument(
+        "--engine",
+        default="opencv",
+        choices=["opencv", "insightface", "onnx"],
+        help="age model: opencv (Gil Levi buckets) or insightface/onnx (genderage years)",
+    )
+    parser.add_argument(
         "--block",
         default=",".join(sorted(DEFAULT_BLOCK)),
-        help="comma-separated age buckets to hard-block (children)",
+        help="comma-separated age buckets to hard-block (children; opencv only)",
     )
     parser.add_argument("--face-thresh", type=float, default=0.6)
     parser.add_argument("--min-score", type=float, default=0.55)
@@ -314,9 +752,14 @@ def main() -> int:
     parser.add_argument("--force-redownload", action="store_true")
     args = parser.parse_args()
 
+    engine = normalize_engine(args.engine)
+    engine_json = (
+        "insightface-genderage" if engine == "insightface" else "opencv-dnn-age"
+    )
+
     if args.force_redownload:
         d = models_dir()
-        for name in MODEL_URLS:
+        for name in list(MODEL_URLS.keys()) + [GENDERAGE_NAME, DET_500M_NAME]:
             p = d / name
             if p.exists():
                 p.unlink(missing_ok=True)
@@ -335,6 +778,7 @@ def main() -> int:
             args.face_thresh,
             args.min_score,
             args.min_adult_score,
+            engine=engine,
         )
     except Exception as e:
         result = {
@@ -342,7 +786,7 @@ def main() -> int:
             "blocked": False,
             "uncertain": False,
             "error": str(e),
-            "engine": "opencv-dnn-age",
+            "engine": engine_json,
         }
         print(json.dumps(result, ensure_ascii=False))
         return 2

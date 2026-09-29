@@ -866,6 +866,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "set_age_gate") {
     const { saveOpsSettings, invalidateOpsSettings } = await import("@/lib/ops/settings");
+    const { normalizeAgeGateEngine } = await import("@/lib/age-gate");
     const enabled = body.enabled === true;
     const failClosed = body.failClosed === true;
     const blockBuckets =
@@ -875,6 +876,7 @@ export async function POST(req: NextRequest) {
     await saveOpsSettings({
       ageGateEnabled: enabled,
       ageGateJson: JSON.stringify({
+        engine: normalizeAgeGateEngine(body.engine),
         blockBuckets,
         faceThresh: typeof body.faceThresh === "number" ? body.faceThresh : 0.6,
         minScore: typeof body.minScore === "number" ? body.minScore : 0.55,

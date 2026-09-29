@@ -3,7 +3,7 @@ buildCommand = "python -m pip install -r requirements-age-gate.txt && node scrip
 
 [deploy]
 # Mise shims (python from mise.toml) must be on PATH for age-gate.
-startCommand = "export PATH=\"/mise/shims:$HOME/.local/share/mise/shims:/opt/venv/bin:$HOME/.local/bin:$PATH\"; command -v python3 || command -v python || true; python -c \"import cv2,numpy; print('age-gate-ok', cv2.__version__)\" || true; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
+startCommand = "export PATH=\"/mise/shims:$HOME/.local/share/mise/shims:/opt/venv/bin:$HOME/.local/bin:$PATH\"; command -v python3 || command -v python || true; python -c \"import cv2,numpy; print('age-gate-ok', cv2.__version__)\" || true; python -c \"import onnxruntime; print('age-gate-onnx', onnxruntime.__version__)\" || true; npx tsx scripts/railway-ensure-data.ts && npx prisma db push && node scripts/start-railway.mjs"
 healthcheckPath = "/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

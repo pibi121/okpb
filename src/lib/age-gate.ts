@@ -1,5 +1,6 @@
 /**
- * Age / minor safety gate — local OpenCV DNN on Railway (CPU).
+ * Age / minor safety gate — local on Railway (CPU).
+ * Engines: opencv (Gil Levi buckets, default) | insightface (genderage years).
  * Does NOT use Metalnode GPU (safe while LoRA train is running).
  *
  * Scope:
@@ -15,6 +16,8 @@ import { getOpsSettings } from "@/lib/ops/settings";
 import { characterImagesDir, listCharacterPhotos } from "@/lib/character-dataset";
 import { prisma } from "@/lib/db";
 
+export type AgeGateEngine = "opencv" | "insightface";
+
 export type AgeGateResult = {
   ok: boolean;
   blocked: boolean;
@@ -22,6 +25,8 @@ export type AgeGateResult = {
   uncertain?: boolean;
   faces?: number;
   ageLabel?: string | null;
+  /** Continuous age years (insightface engine); null for opencv buckets */
+  ageYears?: number | null;
   score?: number | null;
   secondLabel?: string | null;
   secondScore?: number | null;
@@ -34,7 +39,9 @@ export type AgeGateResult = {
 
 export type AgeGateConfig = {
   enabled: boolean;
-  /** Comma buckets e.g. (0-2),(4-6),(8-12) */
+  /** opencv (default) | insightface — model switch; moderation settings stay shared */
+  engine: AgeGateEngine;
+  /** Comma buckets e.g. (0-2),(4-6),(8-12) — opencv-only meaning */
   blockBuckets: string;
   faceThresh: number;
   /** Min softmax score required to block child buckets */
@@ -51,14 +58,24 @@ export type AgeGateConfig = {
 const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12)";
 const DEFAULT_MIN_ADULT_SCORE = 0.85;
 
+export function normalizeAgeGateEngine(raw: unknown): AgeGateEngine {
+  const s = String(raw ?? "opencv")
+    .toLowerCase()
+    .trim();
+  if (s === "insightface" || s === "onnx") return "insightface";
+  return "opencv";
+}
+
 export function parseAgeGateConfig(
   rawJson: string | undefined | null,
   enabledFlag: boolean,
 ): AgeGateConfig {
-  let parsed: Partial<AgeGateConfig> & { minScore?: number } = {};
+  let parsed: Partial<AgeGateConfig> & { minScore?: number; engine?: unknown } =
+    {};
   try {
     parsed = JSON.parse(rawJson || "{}") as Partial<AgeGateConfig> & {
       minScore?: number;
+      engine?: unknown;
     };
   } catch {
     parsed = {};
@@ -74,6 +91,7 @@ export function parseAgeGateConfig(
       : DEFAULT_MIN_ADULT_SCORE;
   return {
     enabled: enabledFlag,
+    engine: normalizeAgeGateEngine(parsed.engine),
     blockBuckets: buckets,
     faceThresh: Number(parsed.faceThresh) > 0 ? Number(parsed.faceThresh) : 0.6,
     failClosed: parsed.failClosed !== false,
@@ -278,6 +296,7 @@ function runPython(
 }
 
 let opencvReady: Promise<boolean> | null = null;
+let onnxReady: Promise<boolean> | null = null;
 
 /** Best-effort: ensure opencv-python-headless is importable (Railway has pip). */
 async function ensureOpenCv(): Promise<boolean> {
@@ -327,6 +346,60 @@ async function ensureOpenCv(): Promise<boolean> {
     })();
   }
   return opencvReady;
+}
+
+/** Best-effort: ensure onnxruntime when InsightFace engine is selected. */
+async function ensureOnnxRuntime(): Promise<boolean> {
+  if (!onnxReady) {
+    onnxReady = (async () => {
+      if (!findPython()) {
+        onnxReady = null;
+        return false;
+      }
+      try {
+        const probe = await runPython(
+          ["-c", "import onnxruntime; print('OK')"],
+          { timeoutMs: 30_000 },
+        );
+        if (probe.stdout.includes("OK")) return true;
+      } catch {
+        /* install */
+      }
+      try {
+        const pip = await runPython(
+          [
+            "-m",
+            "pip",
+            "install",
+            "--user",
+            "-q",
+            "onnxruntime==1.19.2",
+          ],
+          { timeoutMs: 300_000 },
+        );
+        if (pip.code !== 0) {
+          console.error(
+            "[age-gate] onnxruntime pip install failed:",
+            pip.stderr.slice(0, 400),
+          );
+          onnxReady = null;
+          return false;
+        }
+        const probe2 = await runPython(
+          ["-c", "import onnxruntime; print('OK')"],
+          { timeoutMs: 30_000 },
+        );
+        const ok = probe2.stdout.includes("OK");
+        if (!ok) onnxReady = null;
+        return ok;
+      } catch (e) {
+        console.error("[age-gate] onnxruntime ensure failed:", e);
+        onnxReady = null;
+        return false;
+      }
+    })();
+  }
+  return onnxReady;
 }
 
 function scriptPath(): string {
@@ -401,6 +474,33 @@ export async function checkImageBufferAgeGate(
     };
   }
 
+  if (config.engine === "insightface") {
+    const ortOk = await ensureOnnxRuntime();
+    if (!ortOk) {
+      console.error(
+        "[age-gate] onnxruntime_unavailable —",
+        config.failClosed ? "blocking" : "allowing (fail-open)",
+      );
+      if (!config.failClosed) {
+        return {
+          ok: true,
+          blocked: false,
+          skipped: true,
+          error: "onnxruntime_unavailable",
+          reason: "checker_unavailable",
+          photoHash,
+        };
+      }
+      return {
+        ok: false,
+        blocked: true,
+        error: "onnxruntime_unavailable",
+        reason: "checker_unavailable",
+        photoHash,
+      };
+    }
+  }
+
   const script = scriptPath();
   if (!fs.existsSync(script)) {
     console.error("[age-gate] script_missing — blocking (fail-closed)");
@@ -418,6 +518,8 @@ export async function checkImageBufferAgeGate(
       [
         script,
         "--stdin",
+        "--engine",
+        config.engine,
         "--block",
         config.blockBuckets,
         "--face-thresh",
@@ -448,10 +550,12 @@ export async function checkImageBufferAgeGate(
     console.log(
       "[age-gate] result",
       JSON.stringify({
+        engine: parsed.engine || config.engine,
         blocked: parsed.blocked,
         uncertain: parsed.uncertain,
         reason: parsed.reason,
         ageLabel: parsed.ageLabel,
+        ageYears: parsed.ageYears ?? null,
         score: parsed.score,
         faces: parsed.faces,
         error: parsed.error,

@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { opsFetch } from "@/lib/ops/ops-fetch";
 
+type AgeGateEngine = "opencv" | "insightface";
+
 type Payload = {
   ageGateEnabled: boolean;
+  engine: AgeGateEngine;
   blockBuckets: string;
   faceThresh: number;
   minScore: number;
@@ -26,10 +29,12 @@ type PendingItem = {
   gateSummary: {
     reason: string | null;
     ageLabel: string | null;
+    ageYears: number | null;
     score: number | null;
     secondLabel: string | null;
     secondScore: number | null;
     faces: number | null;
+    engine: string | null;
   };
 };
 
@@ -62,6 +67,7 @@ export default function OpsSafetyPage() {
         method: "POST",
         body: JSON.stringify({
           ageGateEnabled: next.ageGateEnabled,
+          engine: next.engine,
           blockBuckets: next.blockBuckets,
           faceThresh: next.faceThresh,
           minScore: next.minScore,
@@ -98,6 +104,8 @@ export default function OpsSafetyPage() {
 
   if (!d) return <p className="text-zinc-500">Загружаю…</p>;
 
+  const engine = d.engine === "insightface" ? "insightface" : "opencv";
+
   return (
     <div className="flex max-w-2xl flex-col gap-5">
       <div>
@@ -125,6 +133,40 @@ export default function OpsSafetyPage() {
             }`}
           >
             {d.ageGateEnabled ? "Вкл" : "Выкл"}
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">
+        <div className="text-sm font-medium">Модель проверки</div>
+        <p className="mt-1 text-xs text-zinc-500">
+          Бакеты применяются к старой модели; новая считает возраст в годах
+          (&lt;13 блок, 13–18 сомнение, soft-adult до ~19.5 зависит от minAdultScore).
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save({ engine: "opencv" })}
+            className={`rounded-full px-4 py-2 text-sm ${
+              engine === "opencv"
+                ? "bg-sky-500/20 text-sky-200"
+                : "bg-zinc-700 text-zinc-300"
+            }`}
+          >
+            Старая (OpenCV)
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save({ engine: "insightface" })}
+            className={`rounded-full px-4 py-2 text-sm ${
+              engine === "insightface"
+                ? "bg-violet-500/20 text-violet-200"
+                : "bg-zinc-700 text-zinc-300"
+            }`}
+          >
+            Новая (InsightFace)
           </button>
         </div>
       </div>
@@ -168,7 +210,7 @@ export default function OpsSafetyPage() {
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 font-mono text-xs"
         />
         <span className="text-xs text-zinc-500">
-          По умолчанию: (0-2),(4-6),(8-12) — блок только детских бакетов (до ~12)
+          Только для старой (OpenCV). По умолчанию: (0-2),(4-6),(8-12)
         </span>
       </label>
 
@@ -198,20 +240,26 @@ export default function OpsSafetyPage() {
         />
       </label>
 
-      <label className="flex items-center justify-between gap-3 text-sm">
-        Мин. score взрослого (иначе uncertain)
-        <input
-          type="number"
-          min={0.1}
-          max={0.99}
-          step={0.05}
-          value={d.minAdultScore ?? 0.85}
-          onChange={(e) =>
-            setD({ ...d, minAdultScore: Number(e.target.value) })
-          }
-          className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
-        />
-      </label>
+      <div className="flex flex-col gap-1 text-sm">
+        <label className="flex items-center justify-between gap-3">
+          Мин. score взрослого (иначе uncertain)
+          <input
+            type="number"
+            min={0.1}
+            max={0.99}
+            step={0.05}
+            value={d.minAdultScore ?? 0.85}
+            onChange={(e) =>
+              setD({ ...d, minAdultScore: Number(e.target.value) })
+            }
+            className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
+          />
+        </label>
+        <span className="text-xs text-zinc-500">
+          OpenCV: порог softmax взрослого бакета. InsightFace: soft-adult band =
+          18+(1−score)×10 (при 0.85 → ~19.5y).
+        </span>
+      </div>
 
       <label className="flex items-center justify-between gap-3 text-sm">
         Fail-closed (если чекер упал — блокировать)
@@ -262,9 +310,15 @@ export default function OpsSafetyPage() {
                     {new Date(item.createdAt).toLocaleString("ru-RU")}
                   </div>
                   <div className="mt-1 font-mono text-xs text-amber-200/90">
+                    {item.gateSummary.engine
+                      ? `${item.gateSummary.engine} · `
+                      : ""}
                     {item.gateSummary.reason || "?"} ·{" "}
-                    {item.gateSummary.ageLabel || "—"} @{" "}
-                    {item.gateSummary.score ?? "—"}
+                    {item.gateSummary.ageLabel || "—"}
+                    {item.gateSummary.ageYears != null
+                      ? ` (${item.gateSummary.ageYears}y)`
+                      : ""}{" "}
+                    @ {item.gateSummary.score ?? "—"}
                     {item.gateSummary.secondLabel
                       ? ` · 2nd ${item.gateSummary.secondLabel}@${item.gateSummary.secondScore ?? "—"}`
                       : ""}

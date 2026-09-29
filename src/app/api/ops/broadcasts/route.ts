@@ -10,6 +10,7 @@ import {
   sendTestBroadcast,
 } from "@/lib/ops/broadcast";
 import { writeAudit } from "@/lib/ops/audit";
+import { normalizeBroadcastBody } from "@/lib/ops/telegram-html";
 
 export async function GET() {
   return withOps("broadcasts", async () => {
@@ -63,8 +64,8 @@ export async function POST(req: Request) {
     if (body.action === "test") {
       const { results } = await sendTestBroadcast({
         actorUserId: actor.id,
-        bodyRu: body.bodyRu || "",
-        bodyEn: body.bodyEn || "",
+        bodyRu: normalizeBroadcastBody(body.bodyRu || ""),
+        bodyEn: normalizeBroadcastBody(body.bodyEn || ""),
         mediaUrl: body.mediaUrl,
         mediaJson: body.mediaJson,
         buttonsJson: body.buttonsJson,
@@ -74,7 +75,9 @@ export async function POST(req: Request) {
       return jsonOk({ ok: true, results });
     }
     if (body.action === "create") {
-      if (!(body.title || "").trim() || !(body.bodyRu || "").trim()) {
+      const bodyRu = normalizeBroadcastBody(body.bodyRu || "");
+      const bodyEn = normalizeBroadcastBody(body.bodyEn || "");
+      if (!(body.title || "").trim() || !bodyRu.trim()) {
         return jsonErr("Нужны название и русский текст");
       }
       const mediaJson = body.mediaJson?.trim() || "[]";
@@ -92,8 +95,8 @@ export async function POST(req: Request) {
       const row = await prisma.broadcast.create({
         data: {
           title: body.title!.trim(),
-          bodyRu: body.bodyRu || "",
-          bodyEn: body.bodyEn || "",
+          bodyRu,
+          bodyEn,
           mediaUrl: firstUrl,
           mediaJson,
           buttonsJson: body.buttonsJson?.trim() || "[]",

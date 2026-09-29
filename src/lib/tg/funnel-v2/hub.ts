@@ -140,7 +140,8 @@ export async function buildFunnelV2HubText(userId: string): Promise<string> {
     `1. Раздеть по 1 фото, поставить её в любую позу 💦 и оживить\n\n` +
     `2. Сделать 🍓 видео с ней по 1 фото с сексом, диалогами, сюжетами по готовым шаблонам\n\n` +
     `3. Сделать PRO образ твоего персонажа, чтобы вывести реализм на новый уровень и делать самые качественные фото/видео в ⭐️ PRO-режиме\n\n` +
-    `<a href="https://telegra.ph/Primery-generacij-v-PeachBitch-09-28">🔗Открыть примеры работ</a>\n\n` +
+    `<a href="https://telegra.ph/Primery-generacij-v-PeachBitch-09-28">🔗Открыть примеры работ</a>\n` +
+    `<a href="https://t.me/offpeachbitch">⭐️ Наш официальный канал</a>\n\n` +
     `Выбери, что тебя интересует по кнопкам ниже 👇`
   );
 }

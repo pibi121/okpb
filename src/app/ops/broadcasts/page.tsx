@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { fmtTime, opsFetch } from "@/lib/ops/ops-fetch";
+import { OpsTgRichText } from "@/components/ops-tg-rich-text";
+import { normalizeBroadcastBody } from "@/lib/ops/telegram-html";
 
 type Row = {
   id: string;
@@ -81,6 +83,8 @@ export default function OpsBroadcastsPage() {
   const [busyId, setBusyId] = useState("");
   const [urlDraft, setUrlDraft] = useState("");
   const [msgTone, setMsgTone] = useState<"ok" | "err">("ok");
+  const [bodyRu, setBodyRu] = useState("");
+  const [bodyEn, setBodyEn] = useState("");
 
   function addButton(opt: Btn) {
     if (buttons.length >= 6) {
@@ -165,8 +169,8 @@ export default function OpsBroadcastsPage() {
     const f = new FormData(form);
     return {
       title: String(f.get("title") || ""),
-      bodyRu: String(f.get("bodyRu") || ""),
-      bodyEn: String(f.get("bodyEn") || ""),
+      bodyRu: normalizeBroadcastBody(bodyRu || String(f.get("bodyRu") || "")),
+      bodyEn: normalizeBroadcastBody(bodyEn || String(f.get("bodyEn") || "")),
       mediaUrl: media[0]?.url || "",
       mediaJson: JSON.stringify(media),
       buttonsJson: JSON.stringify(buttons),
@@ -281,6 +285,8 @@ export default function OpsBroadcastsPage() {
             setMsgTone("ok");
             setMsg("Рассылка запущена");
             form.reset();
+            setBodyRu("");
+            setBodyEn("");
             setMedia([]);
             setButtons([]);
             await load();
@@ -352,18 +358,19 @@ export default function OpsBroadcastsPage() {
             </p>
           )}
         </div>
-        <textarea
+        <OpsTgRichText
           name="bodyRu"
-          rows={4}
-          placeholder="Текст RU"
-          className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
-          required
+          value={bodyRu}
+          onChange={setBodyRu}
+          placeholder="Текст RU — можно вставить из Telegram с форматированием"
+          rows={5}
         />
-        <textarea
+        <OpsTgRichText
           name="bodyEn"
+          value={bodyEn}
+          onChange={setBodyEn}
+          placeholder="Текст EN (опционально)"
           rows={3}
-          placeholder="Текст EN"
-          className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
         />
 
         <div className="rounded-xl border border-dashed border-white/15 p-3">

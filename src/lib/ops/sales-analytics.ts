@@ -242,6 +242,11 @@ export type SalesAnalyticsResult = {
   funnelsTest: FunnelStepRow[];
   /** Воронка оплат: open → amount → method → order → paid. */
   funnelsPay: FunnelStepRow[];
+  /**
+   * Воронка оплат «по факту»: шаги по времени события/оплаты в выбранных датах
+   * (не когорта регистраций).
+   */
+  funnelsPayFact: FunnelStepRow[];
   series: {
     grain: SalesGrain;
     buckets: {
@@ -710,6 +715,72 @@ export async function collectSalesAnalytics(
     usersByEvent,
   );
 
+  // Pay funnel «по факту»: события и оплаты в окне дат (любая дата регистрации).
+  const payFactEventKeys = collectEventKeys(SALES_FUNNEL_PAY_STEPS);
+  const factEventUserFilter: Prisma.FunnelEventWhereInput = partnersNone
+    ? { userId: { in: [] } }
+    : partnerFilterActive
+      ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
+      : {};
+  const [factEventHits, factLegacyHits] = await Promise.all([
+    payFactEventKeys.length
+      ? prisma.funnelEvent.findMany({
+          where: {
+            at: { gte: from, lt: toExclusive },
+            eventKey: { in: payFactEventKeys },
+            ...factEventUserFilter,
+          },
+          select: { userId: true, eventKey: true, metaJson: true },
+          distinct: ["userId", "eventKey"],
+        })
+      : Promise.resolve(
+          [] as { userId: string; eventKey: string; metaJson: string }[],
+        ),
+    prisma.funnelEvent.findMany({
+      where: {
+        at: { gte: from, lt: toExclusive },
+        eventKey: "bot.callback.other",
+        OR: [
+          { metaJson: { contains: "fv2:tu" } },
+          { metaJson: { contains: "tu:pay:" } },
+        ],
+        ...factEventUserFilter,
+      },
+      select: { userId: true, metaJson: true },
+    }),
+  ]);
+  const factUsersByStep = new Map<string, Set<string>>();
+  for (const step of SALES_FUNNEL_PAY_STEPS) {
+    if (step.kind !== "event") continue;
+    factUsersByStep.set(step.key, new Set());
+  }
+  for (const h of factEventHits) {
+    for (const step of SALES_FUNNEL_PAY_STEPS) {
+      if (step.kind !== "event" || !step.eventKeys) continue;
+      if (step.eventKeys.includes(h.eventKey)) {
+        factUsersByStep.get(step.key)!.add(h.userId);
+      }
+    }
+  }
+  for (const h of factLegacyHits) {
+    const meta = h.metaJson || "";
+    for (const step of SALES_FUNNEL_PAY_STEPS) {
+      if (step.kind !== "event" || !step.metaContains) continue;
+      if (step.metaContains.some((needle) => meta.includes(needle))) {
+        factUsersByStep.get(step.key)!.add(h.userId);
+      }
+    }
+  }
+  const factPayers = new Set(cashOrders.map((o) => o.userId)).size;
+  const funnelPayFact = buildFunnelRows(
+    SALES_FUNNEL_PAY_STEPS,
+    0,
+    factPayers,
+    0,
+    0,
+    factUsersByStep,
+  );
+
   // Cash totals
   const cashMethodMap = new Map<
     string,
@@ -834,6 +905,7 @@ export async function collectSalesAnalytics(
     funnels: funnel,
     funnelsTest: funnelTest,
     funnelsPay: funnelPay,
+    funnelsPayFact: funnelPayFact,
     series: {
       grain,
       buckets: buckets.map((b) => ({

@@ -70,6 +70,7 @@ type SalesPayload = {
   funnels: FunnelStep[];
   funnelsTest: FunnelStep[];
   funnelsPay: FunnelStep[];
+  funnelsPayFact: FunnelStep[];
   series: {
     grain: Grain;
     buckets: {
@@ -165,6 +166,7 @@ export default function OpsSalesPage() {
   const [cashGrainManual, setCashGrainManual] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
   const [funnelTab, setFunnelTab] = useState<"main" | "test" | "pay">("main");
+  const [payMode, setPayMode] = useState<"cohort" | "fact">("cohort");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [partnersOpen, setPartnersOpen] = useState(false);
   /** null = все; [] = никто; ids = фильтр */
@@ -368,7 +370,9 @@ export default function OpsSalesPage() {
     funnelTab === "test"
       ? (data?.funnelsTest ?? [])
       : funnelTab === "pay"
-        ? (data?.funnelsPay ?? [])
+        ? payMode === "fact"
+          ? (data?.funnelsPayFact ?? [])
+          : (data?.funnelsPay ?? [])
         : (data?.funnels ?? []);
 
   return (
@@ -750,8 +754,36 @@ export default function OpsSalesPage() {
                 ? "Основная: вход (/start) → правила → хаб → фото → видео → топап → оплаты. «% от всех» — от входа."
                 : funnelTab === "test"
                   ? "Тестовая (faststart): регистрация → правила → запустил генерацию → топап → пополнил → повторно. «% от всех» — от регистраций."
-                  : "Оплаты: открыл пополнение → выбрал сумму → способ → получил ссылку → оплатил. Среди регистраций периода. Новые шаги (сумма/способ/ссылка) — с этого деплоя; «открыл» и «оплатил» уже есть в истории."}
+                  : payMode === "fact"
+                    ? "Оплаты по факту: шаги и оплаты, случившиеся в выбранные даты (дата регистрации не важна). «% от всех» — от «открыл пополнение» за эти даты."
+                    : "Оплаты по регистрации: среди зарегистрированных в выбранные даты. Открыл → сумма → способ → ссылка → оплатил (оплата могла быть позже)."}
             </p>
+            {funnelTab === "pay" ? (
+              <div className="mt-3 flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  className={
+                    payMode === "cohort"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setPayMode("cohort")}
+                >
+                  По дате регистрации
+                </button>
+                <button
+                  type="button"
+                  className={
+                    payMode === "fact"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setPayMode("fact")}
+                >
+                  По факту
+                </button>
+              </div>
+            ) : null}
             <ul className="mt-4 space-y-3">
               {funnel.map((f, i) => {
                 const dropHard = i > 0 && f.pctOfPrev < 50 && f.uniqueUsers > 0;

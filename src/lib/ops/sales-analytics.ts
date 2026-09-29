@@ -14,19 +14,18 @@ export type SalesGrain = "day" | "week" | "period";
 export type SalesFunnelStepDef = {
   key: string;
   title: string;
-  /** Named eventKey(s); null for synthetic cohort/paid */
+  /** Named eventKey(s); null for synthetic cohort/paid/repeat */
   eventKeys: string[] | null;
   /** Legacy match in metaJson (fv2 callbacks before catalog keys) */
   metaContains?: string[];
-  kind: "cohort" | "event" | "paid";
+  kind: "event" | "paid" | "repeat_paid";
 };
 
 /** Funnel v2 steps (named keys + legacy meta.callback fallback). */
 export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
-  { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
   {
     key: "bot.start",
-    title: "Открыл бота (/start)",
+    title: "Вход в воронку",
     eventKeys: ["bot.start", "bot.start.returning"],
     kind: "event",
   },
@@ -66,10 +65,22 @@ export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
     kind: "event",
   },
   { key: "paid", title: "Сделал первую оплату", eventKeys: null, kind: "paid" },
+  {
+    key: "repeat_paid",
+    title: "Сделал повторную оплату",
+    eventKeys: null,
+    kind: "repeat_paid",
+  },
 ];
 
 /** @deprecated alias */
 export const SALES_FUNNEL_V2_STEPS = SALES_FUNNEL_STEPS;
+
+export type SalesPartnerOption = {
+  id: string;
+  code: string;
+  name: string | null;
+};
 
 export type SalesAnalyticsParams = {
   fromYmd: string;
@@ -77,6 +88,11 @@ export type SalesAnalyticsParams = {
   currency: SalesCurrency;
   grain: SalesGrain;
   cashGrain: SalesGrain;
+  /**
+   * PartnerProfile ids to include. Empty / omit = все (без фильтра).
+   * Partial list = только юзеры с attribution на этих партнёров.
+   */
+  partnerIds?: string[];
 };
 
 export type FunnelStepRow = {
@@ -107,8 +123,10 @@ export type SalesAnalyticsResult = {
     cashGrain: SalesGrain;
     minSignupYmd: string | null;
     maxYmd: string;
+    partnerIds: string[] | "all";
     note: string;
   };
+  partners: SalesPartnerOption[];
   kpi: {
     newUsers: number;
     paymentsCount: number;
@@ -291,34 +309,54 @@ function collectEventKeys(steps: SalesFunnelStepDef[]): string[] {
 
 function buildFunnelRows(
   steps: SalesFunnelStepDef[],
-  N: number,
   payers: number,
+  repeatPayers: number,
   payersWithin7d: number,
   usersByStepKey: Map<string, Set<string>>,
 ): FunnelStepRow[] {
-  const funnel: FunnelStepRow[] = [];
-  let prevUniques = N;
+  const counts: number[] = [];
   for (const step of steps) {
-    let uniqueUsers = 0;
-    if (step.kind === "cohort") uniqueUsers = N;
-    else if (step.kind === "paid") uniqueUsers = payers;
-    else uniqueUsers = usersByStepKey.get(step.key)?.size || 0;
-
+    if (step.kind === "paid") counts.push(payers);
+    else if (step.kind === "repeat_paid") counts.push(repeatPayers);
+    else counts.push(usersByStepKey.get(step.key)?.size || 0);
+  }
+  const base = counts[0] || 0;
+  const funnel: FunnelStepRow[] = [];
+  let prevUniques = base;
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    const uniqueUsers = counts[i]!;
     const row: FunnelStepRow = {
       key: step.key,
       title: step.title,
       uniqueUsers,
-      pctOfStart: pct(uniqueUsers, N),
-      pctOfPrev: pct(uniqueUsers, prevUniques),
+      pctOfStart: pct(uniqueUsers, base),
+      pctOfPrev: i === 0 ? 100 : pct(uniqueUsers, prevUniques),
     };
     if (step.kind === "paid") {
       row.uniqueWithin7d = payersWithin7d;
-      row.pctWithin7dOfStart = pct(payersWithin7d, N);
+      row.pctWithin7dOfStart = pct(payersWithin7d, base);
     }
     funnel.push(row);
     prevUniques = uniqueUsers;
   }
   return funnel;
+}
+
+export async function listSalesPartners(): Promise<SalesPartnerOption[]> {
+  const rows = await prisma.partnerProfile.findMany({
+    orderBy: [{ status: "asc" }, { code: "asc" }],
+    select: {
+      id: true,
+      code: true,
+      user: { select: { name: true } },
+    },
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    code: p.code,
+    name: p.user.name,
+  }));
 }
 
 export async function collectSalesAnalytics(
@@ -327,6 +365,8 @@ export async function collectSalesAnalytics(
   const bounds = await getSalesDateBounds();
   const maxYmd = bounds.maxYmd;
   const minYmd = bounds.minSignupYmd || maxYmd;
+  const partners = await listSalesPartners();
+  const knownPartnerIds = new Set(partners.map((p) => p.id));
 
   let fromYmd = isValidYmd(params.fromYmd) ? params.fromYmd : maxYmd;
   let toYmd = isValidYmd(params.toYmd) ? params.toYmd : maxYmd;
@@ -344,11 +384,34 @@ export async function collectSalesAnalytics(
       ? params.currency
       : "rub";
 
+  const rawPartnerIds = (params.partnerIds || []).filter((id) =>
+    knownPartnerIds.has(id),
+  );
+  const partnerFilterActive =
+    rawPartnerIds.length > 0 && rawPartnerIds.length < knownPartnerIds.size;
+  const partnerIds = partnerFilterActive ? rawPartnerIds : [];
+  const partnerMeta: string[] | "all" = partnerFilterActive
+    ? partnerIds
+    : "all";
+
+  const cohortWhere: Prisma.UserWhereInput = {
+    source: "telegram",
+    createdAt: { gte: from, lt: toExclusive },
+    ...(partnerFilterActive
+      ? { partnerAttribution: { partnerId: { in: partnerIds } } }
+      : {}),
+  };
+
+  const cashUserFilter: Prisma.PaymentOrderWhereInput = partnerFilterActive
+    ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
+    : {};
+  const cashLedgerUserFilter: Prisma.LedgerEntryWhereInput =
+    partnerFilterActive
+      ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
+      : {};
+
   const cohortUsers = await prisma.user.findMany({
-    where: {
-      source: "telegram",
-      createdAt: { gte: from, lt: toExclusive },
-    },
+    where: cohortWhere,
     select: { id: true, createdAt: true },
   });
   const cohortIds = cohortUsers.map((u) => u.id);
@@ -413,6 +476,7 @@ export async function collectSalesAnalytics(
         where: {
           status: "paid",
           paidAt: { gte: from, lt: toExclusive },
+          ...cashUserFilter,
         },
         select: {
           userId: true,
@@ -426,6 +490,7 @@ export async function collectSalesAnalytics(
         where: {
           ...LIVE_TOPUP_BASE,
           createdAt: { gte: from, lt: toExclusive },
+          ...cashLedgerUserFilter,
         },
         select: { userId: true, amount: true, createdAt: true, reason: true },
       }),
@@ -467,6 +532,10 @@ export async function collectSalesAnalytics(
   }
 
   const payers = firstPayByUser.size;
+  let repeatPayers = 0;
+  for (const count of payCountByUser.values()) {
+    if (count > 1) repeatPayers += 1;
+  }
   const msToFirst: number[] = [];
   let payersWithin7d = 0;
   const sevenMs = 7 * 86_400_000;
@@ -506,8 +575,8 @@ export async function collectSalesAnalytics(
 
   const funnel = buildFunnelRows(
     SALES_FUNNEL_STEPS,
-    N,
     payers,
+    repeatPayers,
     payersWithin7d,
     usersForSteps(SALES_FUNNEL_STEPS),
   );
@@ -584,9 +653,11 @@ export async function collectSalesAnalytics(
       cashGrain,
       minSignupYmd: bounds.minSignupYmd,
       maxYmd,
+      partnerIds: partnerMeta,
       note:
         "Первичные регистрации = аккаунты, созданные в выбранные даты. Их шаги и оплаты — на момент отчёта (могли оплатить позже). Касса ниже — все оплаты, прошедшие в эти даты, в т.ч. от более ранних регистраций.",
     },
+    partners,
     kpi: {
       newUsers: N,
       paymentsCount,

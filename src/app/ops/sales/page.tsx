@@ -5,6 +5,7 @@ import { fmtMs, opsFetch } from "@/lib/ops/ops-fetch";
 
 type Currency = "rub" | "peaches" | "both";
 type Grain = "day" | "week" | "period";
+type DatePreset = "today" | "yesterday" | "7d" | "30d" | "month" | "custom";
 
 type FunnelStep = {
   key: string;
@@ -16,6 +17,8 @@ type FunnelStep = {
   pctWithin7dOfStart?: number;
 };
 
+type PartnerOption = { id: string; code: string; name: string | null };
+
 type SalesPayload = {
   meta: {
     fromYmd: string;
@@ -23,8 +26,10 @@ type SalesPayload = {
     currency: Currency;
     grain: Grain;
     cashGrain: Grain;
+    partnerIds: string[] | "all";
     note: string;
   };
+  partners: PartnerOption[];
   kpi: {
     newUsers: number;
     paymentsCount: number;
@@ -133,6 +138,15 @@ function pickGrain(f: string, t: string): Grain {
   return days > 14 ? "week" : "day";
 }
 
+const DATE_PRESETS: { key: DatePreset; label: string }[] = [
+  { key: "today", label: "Сегодня" },
+  { key: "yesterday", label: "Вчера" },
+  { key: "7d", label: "7д" },
+  { key: "30d", label: "30д" },
+  { key: "month", label: "Месяц" },
+  { key: "custom", label: "Произвольный период" },
+];
+
 export default function OpsSalesPage() {
   const today = todayMskGuess();
   const [from, setFrom] = useState(today);
@@ -142,11 +156,38 @@ export default function OpsSalesPage() {
   const [cashGrain, setCashGrain] = useState<Grain>("day");
   const [grainManual, setGrainManual] = useState(false);
   const [cashGrainManual, setCashGrainManual] = useState(false);
+  const [datePreset, setDatePreset] = useState<DatePreset>("today");
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [partnersOpen, setPartnersOpen] = useState(false);
+  /** null = все партнёры (без фильтра) */
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[] | null>(
+    null,
+  );
+  const [partnerCatalog, setPartnerCatalog] = useState<PartnerOption[]>([]);
   const [data, setData] = useState<SalesPayload | null>(null);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [minYmd, setMinYmd] = useState<string | null>(null);
   const [maxYmd, setMaxYmd] = useState(today);
+
+  const allPartnerIds = useMemo(
+    () => partnerCatalog.map((p) => p.id),
+    [partnerCatalog],
+  );
+  const partnersAllSelected =
+    selectedPartnerIds == null ||
+    (allPartnerIds.length > 0 &&
+      selectedPartnerIds.length === allPartnerIds.length &&
+      allPartnerIds.every((id) => selectedPartnerIds.includes(id)));
+
+  const partnerSummary = useMemo(() => {
+    if (partnersAllSelected || !selectedPartnerIds?.length) return "Все";
+    if (selectedPartnerIds.length === 1) {
+      const p = partnerCatalog.find((x) => x.id === selectedPartnerIds[0]);
+      return p ? partnerLabel(p) : "1 партнёр";
+    }
+    return `${selectedPartnerIds.length} партнёров`;
+  }, [partnersAllSelected, selectedPartnerIds, partnerCatalog]);
 
   const load = useCallback(
     async (opts?: {
@@ -157,12 +198,15 @@ export default function OpsSalesPage() {
       cashGrain?: Grain;
       grainManual?: boolean;
       cashGrainManual?: boolean;
+      partnerIds?: string[] | null;
     }) => {
       const f = opts?.from ?? from;
       const t = opts?.to ?? to;
       const cur = opts?.currency ?? currency;
       const gManual = opts?.grainManual ?? grainManual;
       const cManual = opts?.cashGrainManual ?? cashGrainManual;
+      const pIds =
+        opts && "partnerIds" in opts ? opts.partnerIds : selectedPartnerIds;
       const auto = pickGrain(f, t);
       const g = gManual ? (opts?.grain ?? grain) : auto;
       const cg = cManual ? (opts?.cashGrain ?? cashGrain) : auto;
@@ -178,8 +222,12 @@ export default function OpsSalesPage() {
           grain: g,
           cashGrain: cg,
         });
+        if (pIds != null && pIds.length > 0) {
+          q.set("partners", pIds.join(","));
+        }
         const d = await opsFetch<SalesPayload>(`/api/ops/sales?${q}`);
         setData(d);
+        if (d.partners?.length) setPartnerCatalog(d.partners);
         if (d.bounds.minSignupYmd) setMinYmd(d.bounds.minSignupYmd);
         setMaxYmd(d.bounds.maxYmd);
       } catch (e) {
@@ -188,7 +236,16 @@ export default function OpsSalesPage() {
         setLoading(false);
       }
     },
-    [from, to, currency, grain, cashGrain, grainManual, cashGrainManual],
+    [
+      from,
+      to,
+      currency,
+      grain,
+      cashGrain,
+      grainManual,
+      cashGrainManual,
+      selectedPartnerIds,
+    ],
   );
 
   useEffect(() => {
@@ -196,7 +253,11 @@ export default function OpsSalesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function applyPreset(kind: string) {
+  function applyPreset(kind: DatePreset) {
+    if (kind === "custom") {
+      setDatePreset("custom");
+      return;
+    }
     const t = maxYmd || today;
     let f = t;
     let toDate = t;
@@ -212,6 +273,7 @@ export default function OpsSalesPage() {
     if (minYmd && f < minYmd) f = minYmd;
     setFrom(f);
     setTo(toDate);
+    setDatePreset(kind);
     setGrainManual(false);
     setCashGrainManual(false);
     void load({
@@ -220,6 +282,32 @@ export default function OpsSalesPage() {
       grainManual: false,
       cashGrainManual: false,
     });
+  }
+
+  function onManualDate(which: "from" | "to", value: string) {
+    if (which === "from") setFrom(value);
+    else setTo(value);
+    setDatePreset("custom");
+    setGrainManual(false);
+    setCashGrainManual(false);
+  }
+
+  function selectAllPartners() {
+    setSelectedPartnerIds(null);
+  }
+
+  function togglePartner(id: string) {
+    const current = partnersAllSelected
+      ? [...allPartnerIds]
+      : [...(selectedPartnerIds || [])];
+    const next = current.includes(id)
+      ? current.filter((x) => x !== id)
+      : [...current, id];
+    if (!next.length || next.length === allPartnerIds.length) {
+      setSelectedPartnerIds(null);
+      return;
+    }
+    setSelectedPartnerIds(next);
   }
 
   const showRub = currency === "rub" || currency === "both";
@@ -252,78 +340,136 @@ export default function OpsSalesPage() {
       </div>
       {msg ? <p className="text-sm text-rose-300">{msg}</p> : null}
 
-      <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-white/10 p-4">
-        <label className="text-xs text-zinc-500">
-          Дата регистрации с
-          <input
-            type="date"
-            value={from}
-            min={minYmd || undefined}
-            max={maxYmd}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              setGrainManual(false);
-              setCashGrainManual(false);
-            }}
-            className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-xs text-zinc-500">
-          по
-          <input
-            type="date"
-            value={to}
-            min={minYmd || undefined}
-            max={maxYmd}
-            onChange={(e) => {
-              setTo(e.target.value);
-              setGrainManual(false);
-              setCashGrainManual(false);
-            }}
-            className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-xs text-zinc-500">
-          Показывать деньги
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as Currency)}
-            className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
-          >
-            <option value="rub">₽</option>
-            <option value="peaches">🍑</option>
-            <option value="both">₽ + 🍑</option>
-          </select>
-        </label>
+      <section className="rounded-2xl border border-white/10">
         <button
           type="button"
-          className="rounded-full btn-grad px-4 py-2 text-sm"
-          disabled={loading}
-          onClick={() => void load()}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-expanded={filtersOpen}
         >
-          {loading ? "Считаю…" : "Обновить"}
+          <span className="font-display text-lg">Фильтры</span>
+          <span className="text-xs text-zinc-500">
+            {filtersOpen ? "Свернуть" : "Развернуть"} · {DATE_PRESETS.find((p) => p.key === datePreset)?.label}
+            {" · "}
+            {partnerSummary}
+          </span>
         </button>
-        <div className="flex flex-wrap gap-1">
-          {(
-            [
-              ["today", "Сегодня"],
-              ["yesterday", "Вчера"],
-              ["7d", "7д"],
-              ["30d", "30д"],
-              ["month", "Месяц"],
-            ] as const
-          ).map(([k, label]) => (
+        {filtersOpen ? (
+          <div className="flex flex-wrap items-end gap-2 border-t border-white/10 px-4 py-4">
+            <div className="mb-1 flex w-full flex-wrap gap-1">
+              {DATE_PRESETS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={
+                    datePreset === key
+                      ? "rounded-full bg-white/15 px-3 py-1.5 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1.5 text-xs text-zinc-400"
+                  }
+                  onClick={() => applyPreset(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="text-xs text-zinc-500">
+              Дата регистрации с
+              <input
+                type="date"
+                value={from}
+                min={minYmd || undefined}
+                max={maxYmd}
+                onChange={(e) => onManualDate("from", e.target.value)}
+                className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="text-xs text-zinc-500">
+              по
+              <input
+                type="date"
+                value={to}
+                min={minYmd || undefined}
+                max={maxYmd}
+                onChange={(e) => onManualDate("to", e.target.value)}
+                className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="text-xs text-zinc-500">
+              Показывать деньги
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as Currency)}
+                className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
+              >
+                <option value="rub">₽</option>
+                <option value="peaches">🍑</option>
+                <option value="both">₽ + 🍑</option>
+              </select>
+            </label>
+            <div className="relative text-xs text-zinc-500">
+              Партнёр
+              <button
+                type="button"
+                className="mt-1 flex min-w-[11rem] items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-left text-sm text-zinc-200"
+                onClick={() => setPartnersOpen((v) => !v)}
+              >
+                <span className="truncate">{partnerSummary}</span>
+                <span className="text-zinc-500">{partnersOpen ? "▴" : "▾"}</span>
+              </button>
+              {partnersOpen ? (
+                <div className="absolute left-0 z-20 mt-1 max-h-64 min-w-[16rem] overflow-auto rounded-xl border border-white/10 bg-[#121214] p-2 shadow-xl">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-white/5">
+                    <input
+                      type="checkbox"
+                      checked={partnersAllSelected}
+                      onChange={() => {
+                        if (partnersAllSelected) return;
+                        selectAllPartners();
+                      }}
+                    />
+                    Все
+                  </label>
+                  {partnerCatalog.length ? (
+                    partnerCatalog.map((p) => {
+                      const checked =
+                        partnersAllSelected ||
+                        Boolean(selectedPartnerIds?.includes(p.id));
+                      return (
+                        <label
+                          key={p.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-300 hover:bg-white/5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePartner(p.id)}
+                          />
+                          <span className="truncate">{partnerLabel(p)}</span>
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p className="px-2 py-1.5 text-xs text-zinc-600">
+                      Список подтянется после загрузки
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
             <button
-              key={k}
               type="button"
-              className="rounded-full border border-white/15 px-3 py-1.5 text-xs text-zinc-300"
-              onClick={() => applyPreset(k)}
+              className="rounded-full btn-grad px-4 py-2 text-sm"
+              disabled={loading}
+              onClick={() => {
+                setPartnersOpen(false);
+                void load({ partnerIds: selectedPartnerIds });
+              }}
             >
-              {label}
+              {loading ? "Считаю…" : "Обновить"}
             </button>
-          ))}
-        </div>
-      </div>
+          </div>
+        ) : null}
+      </section>
 
       {!data ? (
         <p className="text-sm text-zinc-500">Загрузка…</p>
@@ -496,9 +642,9 @@ export default function OpsSalesPage() {
           <section className="rounded-2xl border border-white/10 p-4">
             <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              Шаги актуальной воронки (правила / хаб / фото / видео / топап).
-              Старые клики fv2 тоже учитываются. «% от всех» — от регистраций. «%
-              от шага выше» — от предыдущей строки.
+              Вход = /start среди регистраций периода. Дальше — шаги v2 (правила /
+              хаб / фото / видео / топап), первая и повторная оплата (&gt;1). «%
+              от всех» — от входа. «% от шага выше» — от предыдущей строки.
             </p>
             <ul className="mt-4 space-y-3">
               {funnel.map((f, i) => {
@@ -558,6 +704,10 @@ export default function OpsSalesPage() {
       )}
     </div>
   );
+}
+
+function partnerLabel(p: PartnerOption) {
+  return p.name ? `${p.code} · ${p.name}` : p.code;
 }
 
 function grainHint(g: Grain) {

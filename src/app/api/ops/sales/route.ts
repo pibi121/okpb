@@ -22,6 +22,14 @@ function parseGrain(raw: string | null, fromYmd: string, toYmd: string): SalesGr
   return days > 14 ? "week" : "day";
 }
 
+function parsePartnerIds(raw: string | null): string[] | undefined {
+  if (raw == null || raw === "" || raw === "all") return undefined;
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export async function GET(req: Request) {
   return withOps("analytics", async () => {
     const url = new URL(req.url);
@@ -41,6 +49,7 @@ export async function GET(req: Request) {
       fromYmd,
       toYmd,
     );
+    const partnerIds = parsePartnerIds(url.searchParams.get("partners"));
 
     if (fromYmd > toYmd) {
       return jsonErr("Дата «от» позже «до»");
@@ -52,6 +61,7 @@ export async function GET(req: Request) {
       currency,
       grain,
       cashGrain,
+      partnerIds,
     });
 
     return jsonOk({

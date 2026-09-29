@@ -1,6 +1,6 @@
 # Funnel v2 — media
 
-→ Полный чеклист (файлы + env + Lab + codewords): **[FUNNEL-V2-CHECKLIST.md](./FUNNEL-V2-CHECKLIST.md)**
+Чеклист (файлы + env + Lab + codewords): локально `HANDOFF/FUNNEL-V2-CHECKLIST.md` (в git не коммитится).
 
 Кратко: класть в `public/tg/media/`:
 

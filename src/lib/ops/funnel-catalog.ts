@@ -437,15 +437,50 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "bot.topup.open",
     "bot",
     "monetization",
-    "Пополнение: открыл выбор суммы",
-    "Открыл экран выбора пакета персиков.",
+    "Пополнение: открыл экран",
+    "Нажал «пополнить» / открыл выбор пакетов (fv2:tu, tu:open).",
   ),
   S(
     "bot.topup.amount",
     "bot",
     "monetization",
     "Пополнение: выбрал сумму",
-    "Кликнул конкретный пакет (сумма в meta.amount).",
+    "Выбрал пакет персиков (fv2:tu:a:N или tu:N). Сумма в meta.amount.",
+  ),
+  S(
+    "bot.topup.method",
+    "bot",
+    "monetization",
+    "Пополнение: выбрал способ оплаты",
+    "Выбрал СБП / крипту / CryptoBot (tu:pay:…). Метод в meta.method.",
+  ),
+  S(
+    "bot.topup.order_created",
+    "bot",
+    "monetization",
+    "Пополнение: счёт создан, ссылка готова",
+    "PaymentOrder + ссылка Cashera успешно созданы. Дошёл до кнопки «Оплатить».",
+  ),
+  S(
+    "bot.topup.order_failed",
+    "bot",
+    "monetization",
+    "Пополнение: не удалось создать счёт",
+    "Ошибка Cashera/создания ордера — техсбой, не отказ пользователя.",
+  ),
+  S(
+    "bot.topup.renew",
+    "bot",
+    "monetization",
+    "Пополнение: новая ссылка",
+    "Запросил новую платёжную ссылку по неоплаченному счёту.",
+  ),
+  S(
+    "bot.topup.remind",
+    "bot",
+    "monetization",
+    "Пополнение: напоминание о неоплате",
+    "Система отправила reminder по pending-ордеру.",
   ),
   S(
     "bot.topup.paid",
@@ -816,9 +851,29 @@ export function resolveBotCallback(data: string): {
   if (data.startsWith("lb:") || data.startsWith("look:")) {
     return { key: "bot.lookbook.click", meta: { callback: data } };
   }
-  if (data === "tu:open") return { key: "bot.topup.open" };
+  if (data === "tu:open" || data === "hub:tu") {
+    return { key: "bot.topup.open", meta: { callback: data } };
+  }
+  if (data.startsWith("tu:renew:")) {
+    return {
+      key: "bot.topup.renew",
+      meta: { orderId: data.slice("tu:renew:".length), callback: data },
+    };
+  }
+  if (data.startsWith("tu:pay:")) {
+    return {
+      key: "bot.topup.method",
+      meta: { method: data.slice("tu:pay:".length), callback: data },
+    };
+  }
+  if (/^tu:\d+$/.test(data)) {
+    return {
+      key: "bot.topup.amount",
+      meta: { amount: Number(data.slice(3)) || 0, callback: data },
+    };
+  }
   if (data.startsWith("tu:")) {
-    return { key: "bot.topup.amount", meta: { amount: Number(data.slice(3)) || 0 } };
+    return { key: "bot.topup.open", meta: { callback: data } };
   }
   if (data === "help:lang") return { key: "bot.help.lang" };
 
@@ -834,8 +889,20 @@ export function resolveBotCallback(data: string): {
   if (data === "fv2:pro" || data.startsWith("fv2:pro")) {
     return { key: "bot.fv2.pro", meta: { callback: data } };
   }
-  if (data === "fv2:tu" || data.startsWith("fv2:tu:")) {
-    return { key: "bot.fv2.topup", meta: { callback: data } };
+  if (data === "fv2:tu" || data === "fv2:tu:blur") {
+    return { key: "bot.topup.open", meta: { callback: data } };
+  }
+  {
+    const tuAmt = /^fv2:tu:a:(\d+)$/.exec(data);
+    if (tuAmt) {
+      return {
+        key: "bot.topup.amount",
+        meta: { amount: Number(tuAmt[1]), callback: data },
+      };
+    }
+  }
+  if (data.startsWith("fv2:tu")) {
+    return { key: "bot.topup.open", meta: { callback: data } };
   }
   if (data === "fv2:earn" || data.startsWith("fv2:earn:")) {
     return { key: "bot.fv2.earn", meta: { callback: data } };

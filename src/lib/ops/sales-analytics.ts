@@ -60,7 +60,7 @@ export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
   {
     key: "bot.fv2.topup",
     title: "Открыл пополнение",
-    eventKeys: ["bot.fv2.topup"],
+    eventKeys: ["bot.fv2.topup", "bot.topup.open"],
     metaContains: ["fv2:tu"],
     kind: "event",
   },
@@ -95,7 +95,7 @@ export const SALES_FUNNEL_TEST_STEPS: SalesFunnelStepDef[] = [
   {
     key: "bot.fv2.topup",
     title: "Перешёл к пополнению",
-    eventKeys: ["bot.fv2.topup"],
+    eventKeys: ["bot.fv2.topup", "bot.topup.open"],
     metaContains: ["fv2:tu"],
     kind: "event",
   },
@@ -106,6 +106,41 @@ export const SALES_FUNNEL_TEST_STEPS: SalesFunnelStepDef[] = [
     eventKeys: null,
     kind: "repeat_paid",
   },
+];
+
+/**
+ * Воронка оплат (микроконверсия кассы):
+ * открыл → сумма → способ → ссылка готова → оплатил.
+ */
+export const SALES_FUNNEL_PAY_STEPS: SalesFunnelStepDef[] = [
+  {
+    key: "bot.topup.open",
+    title: "Открыл пополнение",
+    eventKeys: ["bot.topup.open", "bot.fv2.topup"],
+    metaContains: ['"callback":"fv2:tu"', "fv2:tu"],
+    kind: "event",
+  },
+  {
+    key: "bot.topup.amount",
+    title: "Выбрал сумму",
+    eventKeys: ["bot.topup.amount"],
+    metaContains: ["fv2:tu:a:"],
+    kind: "event",
+  },
+  {
+    key: "bot.topup.method",
+    title: "Выбрал способ оплаты",
+    eventKeys: ["bot.topup.method"],
+    metaContains: ["tu:pay:"],
+    kind: "event",
+  },
+  {
+    key: "bot.topup.order_created",
+    title: "Получил ссылку на оплату",
+    eventKeys: ["bot.topup.order_created"],
+    kind: "event",
+  },
+  { key: "paid", title: "Оплатил", eventKeys: null, kind: "paid" },
 ];
 
 /** @deprecated alias → main */
@@ -205,6 +240,8 @@ export type SalesAnalyticsResult = {
   funnels: FunnelStepRow[];
   /** Тестовая воронка (faststart-срез). */
   funnelsTest: FunnelStepRow[];
+  /** Воронка оплат: open → amount → method → order → paid. */
+  funnelsPay: FunnelStepRow[];
   series: {
     grain: SalesGrain;
     buckets: {
@@ -487,6 +524,7 @@ export async function collectSalesAnalytics(
   const allEventKeys = collectEventKeys([
     ...SALES_FUNNEL_MAIN_STEPS,
     ...SALES_FUNNEL_TEST_STEPS,
+    ...SALES_FUNNEL_PAY_STEPS,
   ]);
 
   const [eventHits, fv2LegacyHits, paidOrdersRaw, cashOrders, cashLedgerRaw] =
@@ -645,6 +683,7 @@ export async function collectSalesAnalytics(
   const usersByEvent = usersForSteps([
     ...SALES_FUNNEL_MAIN_STEPS,
     ...SALES_FUNNEL_TEST_STEPS,
+    ...SALES_FUNNEL_PAY_STEPS,
   ]);
   const funnel = buildFunnelRows(
     SALES_FUNNEL_MAIN_STEPS,
@@ -656,6 +695,14 @@ export async function collectSalesAnalytics(
   );
   const funnelTest = buildFunnelRows(
     SALES_FUNNEL_TEST_STEPS,
+    N,
+    payers,
+    repeatPayers,
+    payersWithin7d,
+    usersByEvent,
+  );
+  const funnelPay = buildFunnelRows(
+    SALES_FUNNEL_PAY_STEPS,
     N,
     payers,
     repeatPayers,
@@ -786,6 +833,7 @@ export async function collectSalesAnalytics(
     },
     funnels: funnel,
     funnelsTest: funnelTest,
+    funnelsPay: funnelPay,
     series: {
       grain,
       buckets: buckets.map((b) => ({

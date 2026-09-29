@@ -124,6 +124,19 @@ export async function tickTopupReminders(): Promise<number> {
         token,
       );
       sent += 1;
+      const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+      trackFunnelEventBg({
+        userId: order.userId,
+        platformUserId: acc.platformUserId,
+        eventKey: "bot.topup.remind",
+        surface: "system",
+        meta: {
+          orderId: order.id,
+          method: order.paymentMethod,
+          peaches: order.peaches,
+          remindCount: order.remindCount + 1,
+        },
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn("[topup-remind] send failed", order.id, msg);

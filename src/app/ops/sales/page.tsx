@@ -69,6 +69,7 @@ type SalesPayload = {
   };
   funnels: FunnelStep[];
   funnelsTest: FunnelStep[];
+  funnelsPay: FunnelStep[];
   series: {
     grain: Grain;
     buckets: {
@@ -163,7 +164,7 @@ export default function OpsSalesPage() {
   const [grainManual, setGrainManual] = useState(false);
   const [cashGrainManual, setCashGrainManual] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
-  const [funnelTab, setFunnelTab] = useState<"main" | "test">("main");
+  const [funnelTab, setFunnelTab] = useState<"main" | "test" | "pay">("main");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [partnersOpen, setPartnersOpen] = useState(false);
   /** null = все; [] = никто; ids = фильтр */
@@ -366,7 +367,9 @@ export default function OpsSalesPage() {
   const funnel =
     funnelTab === "test"
       ? (data?.funnelsTest ?? [])
-      : (data?.funnels ?? []);
+      : funnelTab === "pay"
+        ? (data?.funnelsPay ?? [])
+        : (data?.funnels ?? []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -729,12 +732,25 @@ export default function OpsSalesPage() {
                 >
                   Тестовая
                 </button>
+                <button
+                  type="button"
+                  className={
+                    funnelTab === "pay"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setFunnelTab("pay")}
+                >
+                  Оплаты
+                </button>
               </div>
             </div>
             <p className="mt-1 text-xs text-zinc-500">
               {funnelTab === "main"
                 ? "Основная: вход (/start) → правила → хаб → фото → видео → топап → оплаты. «% от всех» — от входа."
-                : "Тестовая (faststart): регистрация → правила → запустил генерацию → топап → пополнил → повторно. «% от всех» — от регистраций. Событие генерации пишется с этого деплоя."}
+                : funnelTab === "test"
+                  ? "Тестовая (faststart): регистрация → правила → запустил генерацию → топап → пополнил → повторно. «% от всех» — от регистраций."
+                  : "Оплаты: открыл пополнение → выбрал сумму → способ → получил ссылку → оплатил. Среди регистраций периода. Новые шаги (сумма/способ/ссылка) — с этого деплоя; «открыл» и «оплатил» уже есть в истории."}
             </p>
             <ul className="mt-4 space-y-3">
               {funnel.map((f, i) => {

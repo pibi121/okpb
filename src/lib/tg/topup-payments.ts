@@ -169,6 +169,19 @@ export async function createTopupPayment(opts: {
       },
     });
 
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId: opts.userId,
+      eventKey: "bot.topup.order_created",
+      meta: {
+        orderId: order.id,
+        method: opts.method,
+        peaches,
+        packBonus,
+        amountMinor,
+      },
+    });
+
     return {
       orderId: order.id,
       externalId: order.externalId,
@@ -187,6 +200,17 @@ export async function createTopupPayment(opts: {
         rawStatusJson: JSON.stringify({
           error: e instanceof Error ? e.message : String(e),
         }).slice(0, 4000),
+      },
+    });
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId: opts.userId,
+      eventKey: "bot.topup.order_failed",
+      meta: {
+        orderId: order.id,
+        method: opts.method,
+        peaches,
+        error: e instanceof Error ? e.message : String(e),
       },
     });
     throw e;

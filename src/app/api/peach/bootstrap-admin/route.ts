@@ -878,6 +878,9 @@ export async function POST(req: NextRequest) {
         blockBuckets,
         faceThresh: typeof body.faceThresh === "number" ? body.faceThresh : 0.6,
         minScore: typeof body.minScore === "number" ? body.minScore : 0.55,
+        minAdultScore:
+          typeof body.minAdultScore === "number" ? body.minAdultScore : 0.85,
+        manualUncertainModeration: body.manualUncertainModeration === true,
         failClosed,
       }),
     });

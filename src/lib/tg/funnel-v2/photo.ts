@@ -459,6 +459,45 @@ export async function runFunnelV2PhotoGen(opts: {
   }
 
   const useBlur = !opts.forcePaid && bal < price;
+
+  // Gate before charging — uncertain/manual must not debit or start jobs.
+  let photoBytes: Buffer;
+  try {
+    photoBytes = await loadPhotoBytes(opts.photoUrl);
+    const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
+    await assertImageAllowedForGeneration(photoBytes, opts.locale);
+  } catch (e) {
+    const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+      "@/lib/age-gate"
+    );
+    if (e instanceof AgeGateUncertainError) {
+      const bytes = e.buf;
+      if (bytes?.length) {
+        const { submitAgeGateUncertainReview } = await import(
+          "@/lib/age-gate-review"
+        );
+        await submitAgeGateUncertainReview({
+          userId: opts.userId,
+          platformUserId: opts.platformUserId,
+          chatId: opts.chatId,
+          locale: opts.locale,
+          photoBytes: bytes,
+          result: e.result,
+          notifyUser: false,
+        });
+      }
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
+    if (e instanceof AgeGateBlockedError) {
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    await tgSendMessage(opts.chatId, `Не удалось загрузить фото: ${msg}`);
+    return;
+  }
+
   if (!useBlur) {
     const deb = await debitFunnelBalance(opts.userId, price);
     if (!deb.ok) {
@@ -492,7 +531,7 @@ export async function runFunnelV2PhotoGen(opts: {
         blur: useBlur,
       },
     });
-    const bytes = await loadPhotoBytes(opts.photoUrl);
+    const bytes = photoBytes;
     const sess = await getTgSession(opts.platformUserId);
     const sessPend = parsePending(sess?.pendingJson || "{}") as {
       funnelV2PhotoKey?: string;
@@ -715,7 +754,25 @@ export async function handleFunnelV2PhotoUpload(opts: {
     const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
     await assertImageAllowedForGeneration(opts.photoBytes, opts.locale);
   } catch (e) {
-    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+      "@/lib/age-gate"
+    );
+    if (e instanceof AgeGateUncertainError) {
+      const { submitAgeGateUncertainReview } = await import(
+        "@/lib/age-gate-review"
+      );
+      await submitAgeGateUncertainReview({
+        userId: opts.userId,
+        platformUserId: opts.platformUserId,
+        chatId: opts.chatId,
+        locale: opts.locale,
+        photoBytes: opts.photoBytes,
+        result: e.result,
+        notifyUser: false,
+      });
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
     if (e instanceof AgeGateBlockedError) {
       await tgSendMessage(opts.chatId, e.message);
       return;

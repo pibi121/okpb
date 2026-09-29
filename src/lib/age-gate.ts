@@ -6,43 +6,60 @@
  * - Telegram onboarding / TG gens: enforced (character-service + generation-service).
  * - Peach lab web (/api/characters photos+train, /api/peach/*): intentionally NOT gated.
  */
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "fs";
 import path from "path";
 import { dataRoot, ensureDataDirs } from "@/lib/paths";
 import { getOpsSettings } from "@/lib/ops/settings";
 import { characterImagesDir, listCharacterPhotos } from "@/lib/character-dataset";
+import { prisma } from "@/lib/db";
 
 export type AgeGateResult = {
   ok: boolean;
   blocked: boolean;
+  /** Soft doubt — manual queue or hard-block depending on config */
+  uncertain?: boolean;
   faces?: number;
   ageLabel?: string | null;
   score?: number | null;
+  secondLabel?: string | null;
+  secondScore?: number | null;
   reason?: string;
   error?: string;
   engine?: string;
   skipped?: boolean;
+  photoHash?: string;
 };
 
 export type AgeGateConfig = {
   enabled: boolean;
-  /** Comma buckets e.g. (0-2),(4-6),(8-12),(15-20) */
+  /** Comma buckets e.g. (0-2),(4-6),(8-12) */
   blockBuckets: string;
   faceThresh: number;
   /** Min softmax score required to block child buckets */
   minScore: number;
+  /** Adult top-label must meet this score, else uncertain (default 0.85) */
+  minAdultScore: number;
+  /** If true, uncertain photos go to OPS queue; if false, uncertain = hard block */
+  manualUncertainModeration: boolean;
   /** If checker crashes while enabled — block (true) or allow (false) */
   failClosed: boolean;
 };
 
-/** Block child face buckets only (up to ~12). Teen (15-20) removed — too many false adult blocks. */
+/** Block child face buckets only (up to ~12). Teen (15-20) is uncertain, not hard-block. */
 const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12)";
+const DEFAULT_MIN_ADULT_SCORE = 0.85;
 
-export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFlag: boolean): AgeGateConfig {
+export function parseAgeGateConfig(
+  rawJson: string | undefined | null,
+  enabledFlag: boolean,
+): AgeGateConfig {
   let parsed: Partial<AgeGateConfig> & { minScore?: number } = {};
   try {
-    parsed = JSON.parse(rawJson || "{}") as Partial<AgeGateConfig> & { minScore?: number };
+    parsed = JSON.parse(rawJson || "{}") as Partial<AgeGateConfig> & {
+      minScore?: number;
+    };
   } catch {
     parsed = {};
   }
@@ -51,18 +68,36 @@ export function parseAgeGateConfig(rawJson: string | undefined | null, enabledFl
   if (buckets.replace(/\s/g, "") === "(0-2),(4-6),(8-12),(15-20)") {
     buckets = DEFAULT_BUCKETS;
   }
+  const minAdult =
+    Number(parsed.minAdultScore) > 0
+      ? Number(parsed.minAdultScore)
+      : DEFAULT_MIN_ADULT_SCORE;
   return {
     enabled: enabledFlag,
     blockBuckets: buckets,
     faceThresh: Number(parsed.faceThresh) > 0 ? Number(parsed.faceThresh) : 0.6,
     failClosed: parsed.failClosed !== false,
     minScore: Number(parsed.minScore) > 0 ? Number(parsed.minScore) : 0.55,
+    minAdultScore: Math.min(0.99, Math.max(0.1, minAdult)),
+    manualUncertainModeration: parsed.manualUncertainModeration === true,
   };
 }
 
 export async function getAgeGateConfig(): Promise<AgeGateConfig> {
   const s = await getOpsSettings();
   return parseAgeGateConfig(s.ageGateJson, s.ageGateEnabled);
+}
+
+export function ageGatePhotoHash(buf: Buffer): string {
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+async function isPhotoHashApproved(hash: string): Promise<boolean> {
+  const row = await prisma.ageGateReview.findFirst({
+    where: { photoHash: hash, status: "approved" },
+    select: { id: true },
+  });
+  return Boolean(row);
 }
 
 let cachedPython: string | null = null;
@@ -298,6 +333,29 @@ function scriptPath(): string {
   return path.join(process.cwd(), "scripts", "age-gate-check.py");
 }
 
+/** Apply manual-moderation policy: uncertain + !manual → treat as blocked. */
+function applyUncertainPolicy(
+  parsed: AgeGateResult,
+  config: AgeGateConfig,
+): AgeGateResult {
+  if (!parsed.uncertain) return parsed;
+  if (config.manualUncertainModeration) {
+    return {
+      ...parsed,
+      blocked: false,
+      uncertain: true,
+      reason: parsed.reason || "probable_uncertain",
+    };
+  }
+  // OFF: uncertain → immediate block (same as minor)
+  return {
+    ...parsed,
+    blocked: true,
+    uncertain: true,
+    reason: parsed.reason || "probable_uncertain",
+  };
+}
+
 export async function checkImageBufferAgeGate(
   buf: Buffer,
   cfg?: AgeGateConfig,
@@ -310,6 +368,25 @@ export async function checkImageBufferAgeGate(
     return { ok: false, blocked: config.failClosed, error: "empty_image", reason: "empty_image" };
   }
 
+  const photoHash = ageGatePhotoHash(buf);
+  try {
+    if (await isPhotoHashApproved(photoHash)) {
+      return {
+        ok: true,
+        blocked: false,
+        uncertain: false,
+        reason: "allowlisted",
+        photoHash,
+        engine: "allowlist",
+      };
+    }
+  } catch (e) {
+    console.warn(
+      "[age-gate] allowlist check failed:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+
   ensureDataDirs();
   const ready = await ensureOpenCv();
   if (!ready) {
@@ -320,6 +397,7 @@ export async function checkImageBufferAgeGate(
       blocked: true,
       error: "opencv_unavailable",
       reason: "checker_unavailable",
+      photoHash,
     };
   }
 
@@ -331,6 +409,7 @@ export async function checkImageBufferAgeGate(
       blocked: true,
       error: "script_missing",
       reason: "checker_unavailable",
+      photoHash,
     };
   }
 
@@ -345,6 +424,8 @@ export async function checkImageBufferAgeGate(
         String(config.faceThresh),
         "--min-score",
         String(config.minScore),
+        "--min-adult-score",
+        String(config.minAdultScore),
       ],
       { input: buf, timeoutMs: 120_000 },
     );
@@ -359,12 +440,16 @@ export async function checkImageBufferAgeGate(
         blocked: config.failClosed,
         error: "bad_checker_json",
         reason: "checker_error",
+        photoHash,
       };
     }
+    parsed.photoHash = photoHash;
+    parsed = applyUncertainPolicy(parsed, config);
     console.log(
       "[age-gate] result",
       JSON.stringify({
         blocked: parsed.blocked,
+        uncertain: parsed.uncertain,
         reason: parsed.reason,
         ageLabel: parsed.ageLabel,
         score: parsed.score,
@@ -374,8 +459,6 @@ export async function checkImageBufferAgeGate(
     );
     if (!parsed.ok) {
       // Infra/download errors must not brick all uploads with the "minor" message.
-      // Fail-open on checker_error; keep fail-closed only when ops explicitly wants it
-      // AND we treat it as unavailable messaging (not probable_minor).
       console.error("[age-gate] checker error:", parsed.error || parsed.reason);
       if (!config.failClosed) {
         return {
@@ -384,12 +467,14 @@ export async function checkImageBufferAgeGate(
           blocked: false,
           skipped: true,
           reason: parsed.reason || "checker_error",
+          photoHash,
         };
       }
       return {
         ...parsed,
         blocked: true,
         reason: "checker_unavailable",
+        photoHash,
       };
     }
     return parsed;
@@ -401,6 +486,7 @@ export async function checkImageBufferAgeGate(
       blocked: config.failClosed,
       error: msg,
       reason: "checker_error",
+      photoHash,
     };
   }
 }
@@ -436,6 +522,20 @@ export function ageGateBlockMessage(
   return "По фото похоже, что на снимке несовершеннолетний. Из соображений безопасности мы не можем использовать его для генерации. Загрузите чёткое фото взрослого человека (18+).";
 }
 
+export function ageGateUncertainMessage(locale: "ru" | "en" = "ru"): string {
+  if (locale === "en") {
+    return "Your photo is under review — we'll let you know once we've checked it.";
+  }
+  return "Ваше фото на проверке, сообщим когда проверим.";
+}
+
+export function ageGateApprovedMessage(locale: "ru" | "en" = "ru"): string {
+  if (locale === "en") {
+    return "Your photo was approved — you can continue.";
+  }
+  return "Фото проверено и одобрено — можно продолжать.";
+}
+
 export class AgeGateBlockedError extends Error {
   code = "age_gate_blocked" as const;
   result: AgeGateResult;
@@ -445,17 +545,31 @@ export class AgeGateBlockedError extends Error {
   }
 }
 
-/** Assert buffer is allowed; throws AgeGateBlockedError when blocked. */
+/** Uncertain photo while manual moderation is ON — callers should enqueue review. */
+export class AgeGateUncertainError extends Error {
+  code = "age_gate_uncertain" as const;
+  result: AgeGateResult;
+  /** Optional bytes (e.g. from character photo scan) for enqueue */
+  buf?: Buffer;
+  constructor(result: AgeGateResult, locale: "ru" | "en" = "ru", buf?: Buffer) {
+    super(ageGateUncertainMessage(locale));
+    this.result = result;
+    this.buf = buf;
+  }
+}
+
+/** Assert buffer is allowed; throws AgeGateBlockedError / AgeGateUncertainError. */
 export async function assertImageAllowedForGeneration(
   buf: Buffer,
   locale: "ru" | "en" = "ru",
 ): Promise<AgeGateResult> {
   const result = await checkImageBufferAgeGate(buf);
   if (result.blocked) throw new AgeGateBlockedError(result, locale);
+  if (result.uncertain) throw new AgeGateUncertainError(result, locale, buf);
   return result;
 }
 
-/** Scan all character dataset photos; throws if any look underage. */
+/** Scan all character dataset photos; throws if any look underage or uncertain. */
 export async function assertCharacterPhotosAllowed(
   characterId: string,
   locale: "ru" | "en" = "ru",
@@ -470,8 +584,10 @@ export async function assertCharacterPhotosAllowed(
   for (const p of photos) {
     const abs = path.join(dir, p.name);
     if (!fs.existsSync(abs)) continue;
-    last = await checkImageBufferAgeGate(fs.readFileSync(abs), cfg);
+    const buf = fs.readFileSync(abs);
+    last = await checkImageBufferAgeGate(buf, cfg);
     if (last.blocked) throw new AgeGateBlockedError(last, locale);
+    if (last.uncertain) throw new AgeGateUncertainError(last, locale, buf);
   }
   return last;
 }

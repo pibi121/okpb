@@ -3,7 +3,8 @@
 Local age gate for PeachBitch — runs on Railway (CPU), never on Metalnode GPU.
 
 Stdout JSON:
-  { "ok": true, "blocked": false, "faces": 1, "ageLabel": "(25-32)", "score": 0.91, ... }
+  { "ok": true, "blocked": false, "uncertain": false, "faces": 1,
+    "ageLabel": "(25-32)", "score": 0.91, "reason": "adult_ok", ... }
 """
 from __future__ import annotations
 
@@ -26,10 +27,12 @@ AGE_BUCKETS = [
     "(60-100)",
 ]
 
-# Clear child buckets + teen (13–20ish). Teen needs higher confidence in should_block.
-DEFAULT_BLOCK = {"(0-2)", "(4-6)", "(8-12)", "(15-20)"}
 CHILD_BUCKETS = {"(0-2)", "(4-6)", "(8-12)"}
 TEEN_BUCKET = "(15-20)"
+ADULT_BUCKETS = {"(25-32)", "(38-43)", "(48-53)", "(60-100)"}
+
+# Default hard-block buckets (child only). Teen is uncertain, not hard-block.
+DEFAULT_BLOCK = set(CHILD_BUCKETS)
 
 # Expected model sizes (reject HTML/LFS stubs)
 MIN_MODEL_BYTES = {
@@ -175,28 +178,42 @@ def predict_age(age_net, face_bgr):
     return AGE_BUCKETS[idx], score, idx, AGE_BUCKETS[second_idx], second_score
 
 
-def should_block(
+def classify_age(
     label: str,
     score: float,
     second_label: str,
     second_score: float,
     block_buckets: set[str],
     min_score: float,
-) -> bool:
-    if label not in block_buckets:
-        return False
-    if score < min_score:
-        return False
-    # Clear children: block when confident enough
-    if label in CHILD_BUCKETS:
-        return score >= min_score
-    # Teen bucket (~13–20): only if confident AND 2nd isn't clearly adult
+    min_adult_score: float,
+) -> tuple[bool, bool, str]:
+    """
+    Returns (blocked, uncertain, reason).
+    - Clear child buckets with enough score → blocked (probable_minor)
+    - Top teen (15-20) → uncertain (probable_uncertain)
+    - Adult top but score < minAdultScore → uncertain
+    - Adult top but second in child buckets with secondScore >= 0.15 → uncertain
+    """
+    # Clear children: hard-block when confident enough
+    if label in CHILD_BUCKETS and (label in block_buckets or label in DEFAULT_BLOCK):
+        if score >= min_score:
+            return True, False, "probable_minor"
+
     if label == TEEN_BUCKET:
-        adultish = second_label in {"(25-32)", "(38-43)", "(48-53)", "(60-100)"}
-        if adultish and second_score >= 0.18:
-            return False
-        return score >= max(0.75, min_score)
-    return score >= min_score
+        return False, True, "probable_uncertain"
+
+    if label in ADULT_BUCKETS:
+        if score < min_adult_score:
+            return False, True, "probable_uncertain"
+        if second_label in CHILD_BUCKETS and second_score >= 0.15:
+            return False, True, "probable_uncertain"
+        return False, False, "adult_ok"
+
+    # Legacy / unexpected: label in configured block list
+    if label in block_buckets and score >= min_score:
+        return True, False, "probable_minor"
+
+    return False, False, "adult_ok"
 
 
 def analyze(
@@ -204,6 +221,7 @@ def analyze(
     block_buckets: set[str],
     face_thresh: float,
     min_score: float = 0.55,
+    min_adult_score: float = 0.85,
 ) -> dict:
     import cv2
 
@@ -225,6 +243,7 @@ def analyze(
         return {
             "ok": True,
             "blocked": True,
+            "uncertain": False,
             "faces": 0,
             "reason": "no_face",
             "ageLabel": None,
@@ -244,7 +263,15 @@ def analyze(
     yb = min(img.shape[0] - 1, y2 + pad_h)
     crop = img[ya:yb, xa:xb]
     label, score, idx, second_label, second_score = predict_age(age_net, crop)
-    blocked = should_block(label, score, second_label, second_score, block_buckets, min_score)
+    blocked, uncertain, reason = classify_age(
+        label,
+        score,
+        second_label,
+        second_score,
+        block_buckets,
+        min_score,
+        min_adult_score,
+    )
     item = {
         "ageLabel": label,
         "score": round(score, 4),
@@ -253,14 +280,18 @@ def analyze(
         "secondScore": round(second_score, 4),
         "faceConfidence": round(float(fconf), 4),
         "blocked": blocked,
+        "uncertain": uncertain,
     }
     return {
         "ok": True,
         "blocked": blocked,
+        "uncertain": uncertain,
         "faces": 1,
-        "reason": "probable_minor" if blocked else "adult_ok",
+        "reason": reason,
         "ageLabel": label,
         "score": round(score, 4),
+        "secondLabel": second_label,
+        "secondScore": round(second_score, 4),
         "bucketIndex": idx,
         "engine": "opencv-dnn-age",
         "face": item,
@@ -275,10 +306,11 @@ def main() -> int:
     parser.add_argument(
         "--block",
         default=",".join(sorted(DEFAULT_BLOCK)),
-        help="comma-separated age buckets to block",
+        help="comma-separated age buckets to hard-block (children)",
     )
     parser.add_argument("--face-thresh", type=float, default=0.6)
     parser.add_argument("--min-score", type=float, default=0.55)
+    parser.add_argument("--min-adult-score", type=float, default=0.85)
     parser.add_argument("--force-redownload", action="store_true")
     args = parser.parse_args()
 
@@ -297,11 +329,18 @@ def main() -> int:
             data = Path(args.path).read_bytes()
         if len(data) < 50:
             raise RuntimeError("empty image")
-        result = analyze(data, block, args.face_thresh, args.min_score)
+        result = analyze(
+            data,
+            block,
+            args.face_thresh,
+            args.min_score,
+            args.min_adult_score,
+        )
     except Exception as e:
         result = {
             "ok": False,
             "blocked": False,
+            "uncertain": False,
             "error": str(e),
             "engine": "opencv-dnn-age",
         }

@@ -1498,3 +1498,26 @@ model TgUserMessage {
   @@index([direction, readAt])
   @@index([platformUserId, createdAt])
 }
+
+/// Age-gate uncertain photos awaiting OPS manual moderation.
+model AgeGateReview {
+  id                  String    @id @default(cuid())
+  userId              String
+  platformUserId      String
+  chatId              String
+  locale              String    @default("ru")
+  photoRelKey         String
+  photoUrl            String
+  /// sha256 of original bytes — approved hashes skip the gate
+  photoHash           String
+  /// pending | approved | rejected
+  status              String    @default("pending")
+  gateJson            String    @default("{}")
+  createdAt           DateTime  @default(now())
+  reviewedAt          DateTime?
+  reviewedByOpsUserId String?
+
+  @@index([status, createdAt])
+  @@index([photoHash, status])
+  @@index([userId, status])
+}

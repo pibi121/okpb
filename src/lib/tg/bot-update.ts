@@ -336,7 +336,25 @@ async function handlePhoto(
       { maxPhotos, locale },
     );
   } catch (e) {
-    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+      "@/lib/age-gate"
+    );
+    if (e instanceof AgeGateUncertainError) {
+      const { submitAgeGateUncertainReview } = await import(
+        "@/lib/age-gate-review"
+      );
+      await submitAgeGateUncertainReview({
+        userId,
+        platformUserId,
+        chatId,
+        locale,
+        photoBytes: buf,
+        result: e.result,
+        notifyUser: false,
+      });
+      await tgSendMessage(chatId, e.message);
+      return;
+    }
     if (e instanceof AgeGateBlockedError) {
       await tgSendMessage(chatId, e.message);
       return;
@@ -1066,7 +1084,28 @@ async function beginGeneration(
     }
     await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
   } catch (e) {
-    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+      "@/lib/age-gate"
+    );
+    if (e instanceof AgeGateUncertainError) {
+      if (e.buf) {
+        const { submitAgeGateUncertainReview } = await import(
+          "@/lib/age-gate-review"
+        );
+        await submitAgeGateUncertainReview({
+          userId,
+          platformUserId,
+          chatId,
+          locale,
+          photoBytes: e.buf,
+          result: e.result,
+          notifyUser: false,
+        });
+      }
+      await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
+      await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
+      return;
+    }
     if (e instanceof AgeGateBlockedError) {
       await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
       await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
@@ -2340,7 +2379,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         );
         await assertImageAllowedForGeneration(buf, locale);
       } catch (e) {
-        const { AgeGateBlockedError } = await import("@/lib/age-gate");
+        const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+          "@/lib/age-gate"
+        );
+        if (e instanceof AgeGateUncertainError) {
+          const { submitAgeGateUncertainReview } = await import(
+            "@/lib/age-gate-review"
+          );
+          await submitAgeGateUncertainReview({
+            userId: user.id,
+            platformUserId,
+            chatId,
+            locale,
+            photoBytes: buf,
+            result: e.result,
+            notifyUser: false,
+          });
+          await tgSendMessage(chatId, e.message);
+          return;
+        }
         if (e instanceof AgeGateBlockedError) {
           await tgSendMessage(chatId, e.message);
           return;
@@ -2363,7 +2420,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           locale,
         });
       } catch (e) {
-        const { AgeGateBlockedError } = await import("@/lib/age-gate");
+        const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+          "@/lib/age-gate"
+        );
+        if (e instanceof AgeGateUncertainError) {
+          const { submitAgeGateUncertainReview } = await import(
+            "@/lib/age-gate-review"
+          );
+          await submitAgeGateUncertainReview({
+            userId: user.id,
+            platformUserId,
+            chatId,
+            locale,
+            photoBytes: buf,
+            result: e.result,
+            notifyUser: false,
+          });
+          await tgSendMessage(chatId, e.message);
+          return;
+        }
         if (e instanceof AgeGateBlockedError) {
           await tgSendMessage(chatId, e.message);
           return;
@@ -2414,7 +2489,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       );
       await assertImageAllowedForGeneration(buf, locale);
     } catch (e) {
-      const { AgeGateBlockedError } = await import("@/lib/age-gate");
+      const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+        "@/lib/age-gate"
+      );
+      if (e instanceof AgeGateUncertainError) {
+        const { submitAgeGateUncertainReview } = await import(
+          "@/lib/age-gate-review"
+        );
+        await submitAgeGateUncertainReview({
+          userId: user.id,
+          platformUserId,
+          chatId,
+          locale,
+          photoBytes: buf,
+          result: e.result,
+          notifyUser: false,
+        });
+        await tgSendMessage(chatId, e.message);
+        return;
+      }
       if (e instanceof AgeGateBlockedError) {
         await tgSendMessage(chatId, e.message);
         return;
@@ -2437,7 +2530,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         locale,
       });
     } catch (e) {
-      const { AgeGateBlockedError } = await import("@/lib/age-gate");
+      const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+        "@/lib/age-gate"
+      );
+      if (e instanceof AgeGateUncertainError) {
+        const { submitAgeGateUncertainReview } = await import(
+          "@/lib/age-gate-review"
+        );
+        await submitAgeGateUncertainReview({
+          userId: user.id,
+          platformUserId,
+          chatId,
+          locale,
+          photoBytes: buf,
+          result: e.result,
+          notifyUser: false,
+        });
+        await tgSendMessage(chatId, e.message);
+        return;
+      }
       if (e instanceof AgeGateBlockedError) {
         await tgSendMessage(chatId, e.message);
         return;

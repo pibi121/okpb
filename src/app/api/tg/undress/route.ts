@@ -91,6 +91,32 @@ export async function POST(req: Request) {
       usedFree: out.usedFree,
     });
   } catch (e) {
+    const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+      "@/lib/age-gate"
+    );
+    if (e instanceof AgeGateUncertainError) {
+      const { submitAgeGateUncertainReview } = await import(
+        "@/lib/age-gate-review"
+      );
+      await submitAgeGateUncertainReview({
+        userId,
+        platformUserId,
+        chatId: platformUserId,
+        locale,
+        photoBytes,
+        result: e.result,
+      });
+      return NextResponse.json(
+        { error: e.message, code: e.code, ageGate: e.result },
+        { status: 400 },
+      );
+    }
+    if (e instanceof AgeGateBlockedError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, ageGate: e.result },
+        { status: 400 },
+      );
+    }
     const msg = e instanceof Error ? e.message : String(e);
     const status = /Недостаточно|free_race/i.test(msg) ? 402 : 500;
     return NextResponse.json({ error: msg }, { status });

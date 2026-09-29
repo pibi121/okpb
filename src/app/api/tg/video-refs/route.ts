@@ -72,7 +72,32 @@ export async function PUT(req: Request) {
   try {
     await addCharacterPhotoFromBuffer(userId, characterId, buf, name);
   } catch (e) {
-    const { AgeGateBlockedError } = await import("@/lib/age-gate");
+    const { AgeGateBlockedError, AgeGateUncertainError } = await import(
+      "@/lib/age-gate"
+    );
+    if (e instanceof AgeGateUncertainError) {
+      const acc = await prisma.platformAccount.findFirst({
+        where: { userId, platform: "telegram" },
+        select: { platformUserId: true },
+      });
+      if (acc?.platformUserId) {
+        const { submitAgeGateUncertainReview } = await import(
+          "@/lib/age-gate-review"
+        );
+        await submitAgeGateUncertainReview({
+          userId,
+          platformUserId: acc.platformUserId,
+          chatId: acc.platformUserId,
+          locale: "ru",
+          photoBytes: buf,
+          result: e.result,
+        });
+      }
+      return NextResponse.json(
+        { error: e.message, code: e.code, ageGate: e.result },
+        { status: 400 },
+      );
+    }
     if (e instanceof AgeGateBlockedError) {
       return NextResponse.json(
         { error: e.message, code: e.code, ageGate: e.result },

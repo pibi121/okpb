@@ -170,29 +170,45 @@ async function sendIdleWinback(
   chatId: number,
   locale: "ru" | "en",
   kind: "3d" | "7d",
+  token: string,
 ) {
   const body = kind === "3d" ? t("idle_3d", locale) : t("idle_7d", locale);
-  await tgSendMessage(chatId, body, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: t("idle_view_templates_btn", locale),
-            web_app: { url: tgMiniAppUrl() },
-          },
+  await tgSendMessage(
+    chatId,
+    body,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: t("idle_view_templates_btn", locale),
+              web_app: { url: tgMiniAppUrl() },
+            },
+          ],
+          [
+            {
+              text: t("idle_topup_btn", locale),
+              callback_data: "tu:open",
+            },
+          ],
         ],
-        [
-          {
-            text: t("idle_topup_btn", locale),
-            callback_data: "tu:open",
-          },
-        ],
-      ],
+      },
     },
+    token,
+  );
+}
+
+async function silenceIdleWinbacks(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { tgIdle3dSent: true, tgIdle7dSent: true },
   });
 }
 
-/** Winback for users idle in bot + Mini App for 3 / 7 days. */
+/**
+ * Winback for users idle 3 / 7 days.
+ * Sends only via the user's last **active** bot (standby/retired → no send).
+ */
 export async function maybeSendIdleWinbacks(
   chatId: number,
   userId: string,
@@ -207,9 +223,17 @@ export async function maybeSendIdleWinbacks(
       tgLastMiniAppAt: true,
       tgIdle3dSent: true,
       tgIdle7dSent: true,
+      tgFunnelV2Preview: true,
     },
   });
   if (!user?.ageConfirmed) return;
+
+  const { isFunnelV2Live } = await import("@/lib/tg/funnel-v2/mode");
+  if (user.tgFunnelV2Preview || (await isFunnelV2Live())) {
+    // New funnel: old idle templates/topup copy must not fire.
+    await silenceIdleWinbacks(userId);
+    return;
+  }
 
   const locale = user.locale === "en" ? "en" : "ru";
 
@@ -222,12 +246,27 @@ export async function maybeSendIdleWinbacks(
     return;
   }
 
+  const acc = await prisma.platformAccount.findFirst({
+    where: { userId, platform: "telegram" },
+    select: { lastBotInstanceId: true },
+    orderBy: { lastSeenAt: "desc" },
+  });
+  const { resolveBotTokenByInstanceId } = await import(
+    "@/lib/tg/bot-registry"
+  );
+  const token = await resolveBotTokenByInstanceId(acc?.lastBotInstanceId);
+  if (!token) {
+    // Standby / retired / unknown bot — never fall back to env primary.
+    await silenceIdleWinbacks(userId);
+    return;
+  }
+
   const last = user.tgLastActiveAt;
   const idleFor = Date.now() - last.getTime();
 
   if (!user.tgIdle7dSent && idleFor >= MS_7D) {
     try {
-      await sendIdleWinback(chatId, locale, "7d");
+      await sendIdleWinback(chatId, locale, "7d", token);
     } catch (e) {
       console.error("[tg-idle] 7d", userId, e);
       // Still mark sent — blocked users / hard fails must not retry forever.
@@ -248,7 +287,7 @@ export async function maybeSendIdleWinbacks(
 
   if (!user.tgIdle3dSent && idleFor >= MS_3D) {
     try {
-      await sendIdleWinback(chatId, locale, "3d");
+      await sendIdleWinback(chatId, locale, "3d", token);
     } catch (e) {
       console.error("[tg-idle] 3d", userId, e);
       // Still mark sent — blocked users / hard fails must not retry forever.

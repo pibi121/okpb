@@ -706,22 +706,32 @@ function VerticalDynamicsChart({
     <div className="mt-4 overflow-x-auto pb-1">
       <div
         className="flex min-w-full items-end justify-center gap-3 sm:gap-4"
-        style={{ minHeight: CHART_H + 44 }}
+        style={{ minHeight: CHART_H + 56 }}
       >
         {buckets.map((b) => (
           <div
             key={b.key}
             className="flex shrink-0 flex-col items-center gap-1"
           >
-            <div className="flex h-32 items-end gap-0.5">
-              {series.map((s) => (
-                <div
-                  key={s.key}
-                  className={`w-2.5 rounded-t-sm ${s.color}`}
-                  style={{ height: colHeight(s.get(b), max) }}
-                  title={`${s.key}: ${s.get(b)}`}
-                />
-              ))}
+            <div className="flex items-end gap-1">
+              {series.map((s) => {
+                const v = s.get(b);
+                return (
+                  <div
+                    key={s.key}
+                    className="flex w-6 flex-col items-center gap-0.5"
+                  >
+                    <span className="font-mono text-[9px] leading-none text-zinc-400">
+                      {v}
+                    </span>
+                    <div
+                      className={`w-2.5 rounded-t-sm ${s.color}`}
+                      style={{ height: colHeight(v, max) }}
+                      title={`${s.key}: ${v}`}
+                    />
+                  </div>
+                );
+              })}
             </div>
             <span className="max-w-[4.5rem] truncate text-center font-mono text-[9px] leading-tight text-zinc-500">
               {b.label}

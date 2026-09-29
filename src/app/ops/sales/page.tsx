@@ -5,6 +5,7 @@ import { fmtMs, opsFetch } from "@/lib/ops/ops-fetch";
 
 type Currency = "rub" | "peaches" | "both";
 type Grain = "day" | "week";
+type FunnelVer = "v1" | "v2";
 
 type FunnelStep = {
   key: string;
@@ -22,20 +23,19 @@ type SalesPayload = {
     toYmd: string;
     currency: Currency;
     grain: Grain;
-    minSignupYmd: string | null;
-    maxYmd: string;
+    cashGrain: Grain;
     note: string;
   };
   kpi: {
     newUsers: number;
     paymentsCount: number;
+    revenueSumRub: number;
+    revenueSumPeaches: number;
     avgMsToFirstPay: number | null;
     medianMsToFirstPay: number | null;
     revenuePerRegRub: number;
     revenuePerRegPeaches: number;
     paymentsPerReg: number;
-    payers: number;
-    payersWithin7d: number;
   };
   cash: {
     note: string;
@@ -45,8 +45,17 @@ type SalesPayload = {
     rubPayers: number;
     peachPayers: number;
     methods: { method: string; count: number; rubMinor: number; peaches: number }[];
+    series: {
+      grain: Grain;
+      buckets: {
+        key: string;
+        label: string;
+        total: number;
+        byMethod: { method: string; count: number }[];
+      }[];
+    };
   };
-  funnel: FunnelStep[];
+  funnels: { v1: FunnelStep[]; v2: FunnelStep[] };
   series: {
     grain: Grain;
     buckets: {
@@ -54,12 +63,18 @@ type SalesPayload = {
       label: string;
       registrations: number;
       cohortPaid: number;
-      cashRub: number;
-      cashPeaches: number;
-      cashPayments: number;
+      repeatPayers: number;
     }[];
   };
   bounds: { minSignupYmd: string | null; maxYmd: string };
+};
+
+const METHOD_COLOR: Record<string, string> = {
+  sbp: "bg-sky-500",
+  crypto: "bg-violet-500",
+  cryptobot: "bg-amber-500",
+  card: "bg-zinc-400",
+  other: "bg-rose-400",
 };
 
 function todayMskGuess() {
@@ -90,6 +105,10 @@ function methodLabel(m: string) {
   return m;
 }
 
+function methodColor(m: string) {
+  return METHOD_COLOR[m] || METHOD_COLOR.other!;
+}
+
 function fmtDur(ms: number | null) {
   if (ms == null) return "—";
   return fmtMs(ms);
@@ -115,7 +134,10 @@ export default function OpsSalesPage() {
   const [to, setTo] = useState(today);
   const [currency, setCurrency] = useState<Currency>("rub");
   const [grain, setGrain] = useState<Grain>("day");
+  const [cashGrain, setCashGrain] = useState<Grain>("day");
   const [grainManual, setGrainManual] = useState(false);
+  const [cashGrainManual, setCashGrainManual] = useState(false);
+  const [funnelVer, setFunnelVer] = useState<FunnelVer>("v1");
   const [data, setData] = useState<SalesPayload | null>(null);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -128,14 +150,20 @@ export default function OpsSalesPage() {
       to?: string;
       currency?: Currency;
       grain?: Grain;
+      cashGrain?: Grain;
       grainManual?: boolean;
+      cashGrainManual?: boolean;
     }) => {
       const f = opts?.from ?? from;
       const t = opts?.to ?? to;
       const cur = opts?.currency ?? currency;
-      const manual = opts?.grainManual ?? grainManual;
-      const g = manual ? (opts?.grain ?? grain) : pickGrain(f, t);
-      if (!manual) setGrain(g);
+      const gManual = opts?.grainManual ?? grainManual;
+      const cManual = opts?.cashGrainManual ?? cashGrainManual;
+      const auto = pickGrain(f, t);
+      const g = gManual ? (opts?.grain ?? grain) : auto;
+      const cg = cManual ? (opts?.cashGrain ?? cashGrain) : auto;
+      if (!gManual) setGrain(g);
+      if (!cManual) setCashGrain(cg);
       setLoading(true);
       setMsg("");
       try {
@@ -144,6 +172,7 @@ export default function OpsSalesPage() {
           to: t,
           currency: cur,
           grain: g,
+          cashGrain: cg,
         });
         const d = await opsFetch<SalesPayload>(`/api/ops/sales?${q}`);
         setData(d);
@@ -155,7 +184,7 @@ export default function OpsSalesPage() {
         setLoading(false);
       }
     },
-    [from, to, currency, grain, grainManual],
+    [from, to, currency, grain, cashGrain, grainManual, cashGrainManual],
   );
 
   useEffect(() => {
@@ -180,33 +209,45 @@ export default function OpsSalesPage() {
     setFrom(f);
     setTo(toDate);
     setGrainManual(false);
-    void load({ from: f, to: toDate, grainManual: false });
+    setCashGrainManual(false);
+    void load({
+      from: f,
+      to: toDate,
+      grainManual: false,
+      cashGrainManual: false,
+    });
   }
 
   const showRub = currency === "rub" || currency === "both";
   const showPeaches = currency === "peaches" || currency === "both";
 
-  const chartMax = useMemo(() => {
+  const dynMax = useMemo(() => {
     if (!data?.series.buckets.length) return 1;
     let m = 1;
     for (const b of data.series.buckets) {
-      m = Math.max(
-        m,
-        b.registrations,
-        b.cohortPaid,
-        showRub ? b.cashRub : 0,
-        showPeaches ? b.cashPeaches : 0,
-      );
+      m = Math.max(m, b.registrations, b.cohortPaid, b.repeatPayers);
     }
     return m;
-  }, [data, showRub, showPeaches]);
+  }, [data]);
+
+  const cashChartMax = useMemo(() => {
+    if (!data?.cash.series.buckets.length) return 1;
+    return Math.max(1, ...data.cash.series.buckets.map((b) => b.total));
+  }, [data]);
+
+  const funnel = data
+    ? funnelVer === "v2"
+      ? data.funnels.v2
+      : data.funnels.v1
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="font-display text-3xl">Аналитика</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Первичные регистрации выбранных дат и отдельно — касса за эти же даты. Часовой пояс: Москва.
+          Первичные регистрации выбранных дат и отдельно — касса за эти же даты.
+          Часовой пояс: Москва.
         </p>
       </div>
       {msg ? <p className="text-sm text-rose-300">{msg}</p> : null}
@@ -222,6 +263,7 @@ export default function OpsSalesPage() {
             onChange={(e) => {
               setFrom(e.target.value);
               setGrainManual(false);
+              setCashGrainManual(false);
             }}
             className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
           />
@@ -236,6 +278,7 @@ export default function OpsSalesPage() {
             onChange={(e) => {
               setTo(e.target.value);
               setGrainManual(false);
+              setCashGrainManual(false);
             }}
             className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
           />
@@ -250,20 +293,6 @@ export default function OpsSalesPage() {
             <option value="rub">₽</option>
             <option value="peaches">🍑</option>
             <option value="both">₽ + 🍑</option>
-          </select>
-        </label>
-        <label className="text-xs text-zinc-500">
-          График по
-          <select
-            value={grain}
-            onChange={(e) => {
-              setGrain(e.target.value as Grain);
-              setGrainManual(true);
-            }}
-            className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
-          >
-            <option value="day">дням</option>
-            <option value="week">неделям</option>
           </select>
         </label>
         <button
@@ -306,12 +335,31 @@ export default function OpsSalesPage() {
             <h2 className="mb-2 text-sm font-medium text-zinc-300">
               Первичные регистрации (даты из фильтра)
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Kpi
                 label="Регистраций"
-                hint="Сколько новых TG-юзеров за период"
+                hint="Сколько новых TG-аккаунтов за период"
                 value={String(data.kpi.newUsers)}
               />
+              <Kpi
+                label="Оплат"
+                hint="Успешные оплаты этих регистраций (на момент отчёта)"
+                value={String(data.kpi.paymentsCount)}
+              />
+              {showRub ? (
+                <Kpi
+                  label="Сумма оплат, ₽"
+                  hint="Сумма ₽ по оплатам этих регистраций"
+                  value={fmtMoney(data.kpi.revenueSumRub)}
+                />
+              ) : null}
+              {showPeaches ? (
+                <Kpi
+                  label="Сумма оплат, 🍑"
+                  hint="Topup-персики этих регистраций"
+                  value={fmtMoney(data.kpi.revenueSumPeaches)}
+                />
+              ) : null}
               <Kpi
                 label="Время до первой оплаты"
                 hint="Среди тех с первичной регистрацией в периоде, кто уже оплатил"
@@ -320,27 +368,37 @@ export default function OpsSalesPage() {
               {showRub ? (
                 <Kpi
                   label="Доход на регистрацию, ₽"
-                  hint="Все ₽ оплат этих регистраций ÷ их число"
+                  hint="Сумма оплат ÷ число регистраций"
                   value={fmtMoney(data.kpi.revenuePerRegRub)}
                 />
               ) : null}
               {showPeaches ? (
                 <Kpi
                   label="Доход на регистрацию, 🍑"
-                  hint="Все topup-персики этих регистраций ÷ их число"
+                  hint="Сумма 🍑 ÷ число регистраций"
                   value={fmtMoney(data.kpi.revenuePerRegPeaches)}
                 />
               ) : null}
               <Kpi
                 label="Оплат на регистрацию"
-                hint="Число успешных оплат этих регистраций ÷ их число"
+                hint="Число оплат ÷ число регистраций"
                 value={fmtMoney(data.kpi.paymentsPerReg)}
               />
             </div>
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
-            <h2 className="font-display text-xl">Касса за эти даты</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-xl">Касса за эти даты</h2>
+              <GrainToggle
+                value={cashGrain}
+                onChange={(g) => {
+                  setCashGrain(g);
+                  setCashGrainManual(true);
+                  void load({ cashGrain: g, cashGrainManual: true });
+                }}
+              />
+            </div>
             <p className="mt-1 text-xs text-zinc-500">{data.cash.note}</p>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
               {showRub ? (
@@ -363,6 +421,47 @@ export default function OpsSalesPage() {
                 </span>
               ) : null}
             </div>
+
+            <p className="mt-4 text-xs text-zinc-500">
+              Число оплат по {cashGrain === "day" ? "дням" : "неделям"}, цвет =
+              метод оплаты
+            </p>
+            <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-zinc-500">
+              {["sbp", "crypto", "cryptobot", "card", "other"].map((m) => (
+                <span key={m} className="inline-flex items-center gap-1.5">
+                  <span className={`h-2 w-2 rounded-sm ${methodColor(m)}`} />
+                  {methodLabel(m)}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 space-y-2">
+              {data.cash.series.buckets.map((b) => (
+                <div
+                  key={b.key}
+                  className="grid grid-cols-[4.5rem_1fr_2.5rem] items-center gap-2 text-xs"
+                >
+                  <span className="font-mono text-zinc-500">{b.label}</span>
+                  <div className="flex h-3 overflow-hidden rounded-full bg-white/5">
+                    {b.total === 0 ? null : (
+                      b.byMethod.map((slice) => (
+                        <div
+                          key={slice.method}
+                          className={methodColor(slice.method)}
+                          style={{
+                            width: `${(slice.count / cashChartMax) * 100}%`,
+                          }}
+                          title={`${methodLabel(slice.method)}: ${slice.count}`}
+                        />
+                      ))
+                    )}
+                  </div>
+                  <span className="text-right font-mono text-[10px] text-zinc-500">
+                    {b.total}
+                  </span>
+                </div>
+              ))}
+            </div>
+
             {data.cash.methods.length ? (
               <ul className="mt-3 space-y-1 text-sm text-zinc-400">
                 {data.cash.methods.map((m) => (
@@ -370,7 +469,12 @@ export default function OpsSalesPage() {
                     key={m.method}
                     className="flex justify-between gap-2 border-t border-white/5 py-1"
                   >
-                    <span>{methodLabel(m.method)}</span>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className={`h-2 w-2 rounded-sm ${methodColor(m.method)}`}
+                      />
+                      {methodLabel(m.method)}
+                    </span>
                     <span className="font-mono text-zinc-300">
                       {m.count} опл.
                       {showRub ? ` · ${fmtMoney(m.rubMinor / 100)} ₽` : ""}
@@ -386,52 +490,28 @@ export default function OpsSalesPage() {
 
           <section className="rounded-2xl border border-white/10 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-xl">Динамика по дням / неделям</h2>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  className={
-                    grain === "day"
-                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-                  }
-                  onClick={() => {
-                    setGrain("day");
-                    setGrainManual(true);
-                    void load({ grain: "day", grainManual: true });
-                  }}
-                >
-                  Дни
-                </button>
-                <button
-                  type="button"
-                  className={
-                    grain === "week"
-                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-                  }
-                  onClick={() => {
-                    setGrain("week");
-                    setGrainManual(true);
-                    void load({ grain: "week", grainManual: true });
-                  }}
-                >
-                  Недели
-                </button>
-              </div>
+              <h2 className="font-display text-xl">Динамика первичных регистраций</h2>
+              <GrainToggle
+                value={grain}
+                onChange={(g) => {
+                  setGrain(g);
+                  setGrainManual(true);
+                  void load({ grain: g, grainManual: true });
+                }}
+              />
             </div>
             <ul className="mt-2 space-y-0.5 text-xs text-zinc-500">
               <li>
-                <span className="text-zinc-400">серый</span> — сколько человек
-                зарегистрировалось в этот день/неделю
+                <span className="text-zinc-400">серый</span> — регистрации в
+                этот день/неделю
               </li>
               <li>
-                <span className="text-emerald-400/90">зелёный</span> — сколько из
-                них уже оплатили хотя бы раз (на момент отчёта)
+                <span className="text-emerald-400/90">зелёный</span> — из них уже
+                оплатили хотя бы раз
               </li>
               <li>
-                <span className="text-peach">персик / жёлтый</span> — касса: деньги,
-                зашедшие в этот день/неделю (любые юзеры)
+                <span className="text-amber-300">жёлтый</span> — повторные оплаты:
+                из них у кого строго больше одной успешной оплаты
               </li>
             </ul>
             <div className="mt-4 space-y-2">
@@ -445,31 +525,21 @@ export default function OpsSalesPage() {
                     <Bar
                       color="bg-zinc-400"
                       value={b.registrations}
-                      max={chartMax}
+                      max={dynMax}
                       label={`рег. ${b.registrations}`}
                     />
                     <Bar
                       color="bg-emerald-500/80"
                       value={b.cohortPaid}
-                      max={chartMax}
-                      label={`из них оплатили ${b.cohortPaid}`}
+                      max={dynMax}
+                      label={`оплатили ${b.cohortPaid}`}
                     />
-                    {showRub ? (
-                      <Bar
-                        color="bg-peach/80"
-                        value={b.cashRub}
-                        max={chartMax}
-                        label={`касса ${fmtMoney(b.cashRub)} ₽`}
-                      />
-                    ) : null}
-                    {showPeaches ? (
-                      <Bar
-                        color="bg-amber-400/70"
-                        value={b.cashPeaches}
-                        max={chartMax}
-                        label={`касса ${b.cashPeaches} 🍑`}
-                      />
-                    ) : null}
+                    <Bar
+                      color="bg-amber-400/80"
+                      value={b.repeatPayers}
+                      max={dynMax}
+                      label={`повторные ${b.repeatPayers}`}
+                    />
                   </div>
                 </div>
               ))}
@@ -477,14 +547,41 @@ export default function OpsSalesPage() {
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
-            <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  className={
+                    funnelVer === "v1"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setFunnelVer("v1")}
+                >
+                  Старая
+                </button>
+                <button
+                  type="button"
+                  className={
+                    funnelVer === "v2"
+                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+                  }
+                  onClick={() => setFunnelVer("v2")}
+                >
+                  Новая (v2)
+                </button>
+              </div>
+            </div>
             <p className="mt-1 text-xs text-zinc-500">
-              Сколько из первичных регистраций дошли до шага. «% от всех» — от числа регистраций.
-              «% от шага выше» — от предыдущей строки. Полоска = доля от всех регистраций.
-              Шаги не всегда идут строго по порядку (часть событий может не трекаться).
+              {funnelVer === "v1"
+                ? "Шаги классической воронки бота."
+                : "Шаги Funnel v2 (правила / хаб / фото / видео / топап). Старые клики fv2: тоже учитываются."}{" "}
+              «% от всех» — от регистраций. «% от шага выше» — от предыдущей строки.
             </p>
             <ul className="mt-4 space-y-3">
-              {data.funnel.map((f, i) => {
+              {funnel.map((f, i) => {
                 const dropHard = i > 0 && f.pctOfPrev < 50 && f.uniqueUsers > 0;
                 const jumpUp = i > 0 && f.uniqueUsers > 0 && f.pctOfPrev > 100;
                 return (
@@ -543,6 +640,41 @@ export default function OpsSalesPage() {
   );
 }
 
+function GrainToggle({
+  value,
+  onChange,
+}: {
+  value: Grain;
+  onChange: (g: Grain) => void;
+}) {
+  return (
+    <div className="flex gap-1">
+      <button
+        type="button"
+        className={
+          value === "day"
+            ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+            : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+        }
+        onClick={() => onChange("day")}
+      >
+        Дни
+      </button>
+      <button
+        type="button"
+        className={
+          value === "week"
+            ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+            : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+        }
+        onClick={() => onChange("week")}
+      >
+        Недели
+      </button>
+    </div>
+  );
+}
+
 function Kpi({
   label,
   value,
@@ -558,7 +690,9 @@ function Kpi({
         {label}
       </div>
       <div className="mt-1 text-lg leading-snug">{value}</div>
-      {hint ? <p className="mt-1 text-[11px] leading-snug text-zinc-600">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-1 text-[11px] leading-snug text-zinc-600">{hint}</p>
+      ) : null}
     </div>
   );
 }

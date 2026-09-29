@@ -454,6 +454,70 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "Пополнение: оплата прошла",
     "Успешное зачисление персиков (критическая конверсия).",
   ),
+  // —— funnel v2 ——
+  S(
+    "bot.fv2.rules",
+    "bot",
+    "onboarding",
+    "Funnel v2: согласился с правилами",
+    "Кнопка согласия в новой воронке (fv2:rules).",
+  ),
+  S(
+    "bot.fv2.hub",
+    "bot",
+    "navigation",
+    "Funnel v2: главное меню",
+    "Открыл / вернулся в хаб новой воронки.",
+  ),
+  S(
+    "bot.fv2.photo",
+    "bot",
+    "generation",
+    "Funnel v2: раздел фото",
+    "Клики фото/undress/позы/edit/animate в новой воронке.",
+  ),
+  S(
+    "bot.fv2.video",
+    "bot",
+    "generation",
+    "Funnel v2: раздел видео",
+    "Клики видео-шаблонов в новой воронке.",
+  ),
+  S(
+    "bot.fv2.pro",
+    "bot",
+    "generation",
+    "Funnel v2: PRO / LoRA",
+    "Вход в PRO-раздел новой воронки.",
+  ),
+  S(
+    "bot.fv2.topup",
+    "bot",
+    "monetization",
+    "Funnel v2: пополнение",
+    "Открыл пакеты / выбрал сумму в новой воронке.",
+  ),
+  S(
+    "bot.fv2.earn",
+    "bot",
+    "partner",
+    "Funnel v2: заработок",
+    "Партнёрка / ссылки в новой воронке.",
+  ),
+  S(
+    "bot.fv2.help",
+    "bot",
+    "support",
+    "Funnel v2: помощь",
+    "Раздел помощи в новой воронке.",
+  ),
+  S(
+    "bot.fv2.other",
+    "bot",
+    "navigation",
+    "Funnel v2: прочий клик",
+    "Другой fv2:-callback.",
+  ),
   S(
     "bot.help.lang",
     "bot",
@@ -750,6 +814,30 @@ export function resolveBotCallback(data: string): {
     return { key: "bot.topup.amount", meta: { amount: Number(data.slice(3)) || 0 } };
   }
   if (data === "help:lang") return { key: "bot.help.lang" };
+
+  // Funnel v2 callbacks
+  if (data === "fv2:rules") return { key: "bot.fv2.rules" };
+  if (data === "fv2:hub") return { key: "bot.fv2.hub" };
+  if (data === "fv2:ph" || data.startsWith("fv2:ph:")) {
+    return { key: "bot.fv2.photo", meta: { callback: data } };
+  }
+  if (data === "fv2:vid" || data.startsWith("fv2:vid:")) {
+    return { key: "bot.fv2.video", meta: { callback: data } };
+  }
+  if (data === "fv2:pro" || data.startsWith("fv2:pro")) {
+    return { key: "bot.fv2.pro", meta: { callback: data } };
+  }
+  if (data === "fv2:tu" || data.startsWith("fv2:tu:")) {
+    return { key: "bot.fv2.topup", meta: { callback: data } };
+  }
+  if (data === "fv2:earn" || data.startsWith("fv2:earn:")) {
+    return { key: "bot.fv2.earn", meta: { callback: data } };
+  }
+  if (data === "fv2:help") return { key: "bot.fv2.help" };
+  if (data.startsWith("fv2:")) {
+    return { key: "bot.fv2.other", meta: { callback: data } };
+  }
+
   return { key: "bot.callback.other", meta: { callback: data } };
 }
 

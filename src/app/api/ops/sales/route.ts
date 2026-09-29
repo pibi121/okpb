@@ -36,6 +36,11 @@ export async function GET(req: Request) {
     const toYmd = url.searchParams.get("to") || today;
     const currency = parseCurrency(url.searchParams.get("currency"));
     const grain = parseGrain(url.searchParams.get("grain"), fromYmd, toYmd);
+    const cashGrain = parseGrain(
+      url.searchParams.get("cashGrain") || url.searchParams.get("grain"),
+      fromYmd,
+      toYmd,
+    );
 
     if (fromYmd > toYmd) {
       return jsonErr("Дата «от» позже «до»");
@@ -46,6 +51,7 @@ export async function GET(req: Request) {
       toYmd,
       currency,
       grain,
+      cashGrain,
     });
 
     return jsonOk({

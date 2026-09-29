@@ -10,79 +10,127 @@ const MSK_OFFSET_MS = 3 * 3600_000;
 
 export type SalesCurrency = "rub" | "peaches" | "both";
 export type SalesGrain = "day" | "week";
+export type SalesFunnelVersion = "v1" | "v2";
 
 export type SalesFunnelStepDef = {
   key: string;
   title: string;
-  /** Funnel eventKey; null = synthetic (registrations / paid order) */
-  eventKey: string | null;
+  /** Named eventKey(s); null for synthetic cohort/paid */
+  eventKeys: string[] | null;
+  /** Legacy match in metaJson (fv2 callbacks before catalog keys) */
+  metaContains?: string[];
   kind: "cohort" | "event" | "paid";
 };
 
-/** Fixed sales funnel: cohort start → monetization. Short OPS titles. */
-export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
-  {
-    key: "registered",
-    title: "Регистрация",
-    eventKey: null,
-    kind: "cohort",
-  },
+/** Classic bot funnel. */
+export const SALES_FUNNEL_V1_STEPS: SalesFunnelStepDef[] = [
+  { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
   {
     key: "bot.start",
     title: "Открыл бота (/start)",
-    eventKey: "bot.start",
+    eventKeys: ["bot.start"],
     kind: "event",
   },
   {
     key: "bot.rules.agree",
     title: "Согласился с правилами (18+)",
-    eventKey: "bot.rules.agree",
+    eventKeys: ["bot.rules.agree"],
     kind: "event",
   },
   {
     key: "bot.welcome.after_rules",
     title: "Показал welcome после правил",
-    eventKey: "bot.welcome.after_rules",
+    eventKeys: ["bot.welcome.after_rules"],
     kind: "event",
   },
   {
     key: "bot.gen.started",
     title: "Запустил генерацию",
-    eventKey: "bot.gen.started",
+    eventKeys: ["bot.gen.started"],
     kind: "event",
   },
   {
     key: "bot.topup.open",
     title: "Открыл пополнение",
-    eventKey: "bot.topup.open",
+    eventKeys: ["bot.topup.open"],
+    kind: "event",
+  },
+  { key: "paid", title: "Сделал первую оплату", eventKeys: null, kind: "paid" },
+];
+
+/** Funnel v2 steps (named keys + legacy meta.callback fallback). */
+export const SALES_FUNNEL_V2_STEPS: SalesFunnelStepDef[] = [
+  { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
+  {
+    key: "bot.start",
+    title: "Открыл бота (/start)",
+    eventKeys: ["bot.start", "bot.start.returning"],
     kind: "event",
   },
   {
-    key: "paid",
-    title: "Сделал первую оплату",
-    eventKey: null,
-    kind: "paid",
+    key: "bot.fv2.rules",
+    title: "Согласился с правилами (v2)",
+    eventKeys: ["bot.fv2.rules"],
+    metaContains: ["fv2:rules"],
+    kind: "event",
   },
+  {
+    key: "bot.fv2.hub",
+    title: "Главное меню v2",
+    eventKeys: ["bot.fv2.hub"],
+    metaContains: ["fv2:hub"],
+    kind: "event",
+  },
+  {
+    key: "bot.fv2.photo",
+    title: "Раздел фото",
+    eventKeys: ["bot.fv2.photo"],
+    metaContains: ["fv2:ph"],
+    kind: "event",
+  },
+  {
+    key: "bot.fv2.video",
+    title: "Раздел видео",
+    eventKeys: ["bot.fv2.video"],
+    metaContains: ["fv2:vid"],
+    kind: "event",
+  },
+  {
+    key: "bot.fv2.topup",
+    title: "Открыл пополнение (v2)",
+    eventKeys: ["bot.fv2.topup"],
+    metaContains: ["fv2:tu"],
+    kind: "event",
+  },
+  { key: "paid", title: "Сделал первую оплату", eventKeys: null, kind: "paid" },
 ];
+
+/** @deprecated alias */
+export const SALES_FUNNEL_STEPS = SALES_FUNNEL_V1_STEPS;
 
 export type SalesAnalyticsParams = {
   fromYmd: string;
   toYmd: string;
   currency: SalesCurrency;
   grain: SalesGrain;
+  cashGrain: SalesGrain;
 };
 
 export type FunnelStepRow = {
   key: string;
   title: string;
   uniqueUsers: number;
-  /** % of cohort start */
   pctOfStart: number;
-  /** % of previous step */
   pctOfPrev: number;
-  /** For paid step: paid within 7d of signup */
   uniqueWithin7d?: number;
   pctWithin7dOfStart?: number;
+};
+
+export type CashMethodSlice = {
+  method: string;
+  count: number;
+  rubMinor: number;
+  peaches: number;
 };
 
 export type SalesAnalyticsResult = {
@@ -93,24 +141,21 @@ export type SalesAnalyticsResult = {
     toIsoExclusive: string;
     currency: SalesCurrency;
     grain: SalesGrain;
+    cashGrain: SalesGrain;
     minSignupYmd: string | null;
     maxYmd: string;
     note: string;
   };
   kpi: {
-    /** Cohort size: telegram users created in window */
     newUsers: number;
-    /** All paid PaymentOrders by cohort users (ever, as of report) */
     paymentsCount: number;
+    revenueSumRub: number;
+    revenueSumPeaches: number;
     avgMsToFirstPay: number | null;
     medianMsToFirstPay: number | null;
-    /** Cohort ₽ revenue / registrations */
     revenuePerRegRub: number;
-    /** Cohort 🍑 topups / registrations */
     revenuePerRegPeaches: number;
-    /** paymentsCount / registrations */
     paymentsPerReg: number;
-    /** Kept for funnel «первая оплата» / ≤7д */
     payers: number;
     payersWithin7d: number;
   };
@@ -119,15 +164,24 @@ export type SalesAnalyticsResult = {
     rubMinor: number;
     rub: number;
     peaches: number;
-    /** Paid PaymentOrder count in window */
     paymentsCount: number;
-    /** Unique payers by PaymentOrder in window (₽) */
     rubPayers: number;
-    /** Unique users with live topup ledger in window (🍑) */
     peachPayers: number;
-    methods: { method: string; count: number; rubMinor: number; peaches: number }[];
+    methods: CashMethodSlice[];
+    series: {
+      grain: SalesGrain;
+      buckets: {
+        key: string;
+        label: string;
+        total: number;
+        byMethod: { method: string; count: number }[];
+      }[];
+    };
   };
-  funnel: FunnelStepRow[];
+  funnels: {
+    v1: FunnelStepRow[];
+    v2: FunnelStepRow[];
+  };
   series: {
     grain: SalesGrain;
     buckets: {
@@ -137,9 +191,8 @@ export type SalesAnalyticsResult = {
       toYmd: string;
       registrations: number;
       cohortPaid: number;
-      cashRub: number;
-      cashPeaches: number;
-      cashPayments: number;
+      /** Cohort regs in bucket with strictly >1 paid orders */
+      repeatPayers: number;
     }[];
   };
 };
@@ -153,7 +206,6 @@ export function mskYmd(d = new Date()): string {
   }).format(d);
 }
 
-/** MSK calendar midnight → UTC Instant */
 export function mskDayStartUtc(ymd: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   if (!m) throw new Error(`Некорректная дата: ${ymd}`);
@@ -172,11 +224,10 @@ function isValidYmd(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(mskDayStartUtc(s).getTime());
 }
 
-/** Monday (MSK) of the week containing ymd */
 function mskWeekMonday(ymd: string): string {
   const start = mskDayStartUtc(ymd);
   const shifted = new Date(start.getTime() + MSK_OFFSET_MS);
-  const dow = shifted.getUTCDay(); // 0=Sun … 6=Sat
+  const dow = shifted.getUTCDay();
   const mondayOffset = dow === 0 ? -6 : 1 - dow;
   return addYmdDays(ymd, mondayOffset);
 }
@@ -227,6 +278,46 @@ export async function getSalesDateBounds(): Promise<{
   };
 }
 
+function collectEventKeys(steps: SalesFunnelStepDef[]): string[] {
+  const keys = new Set<string>();
+  for (const s of steps) {
+    if (s.eventKeys) for (const k of s.eventKeys) keys.add(k);
+  }
+  return [...keys];
+}
+
+function buildFunnelRows(
+  steps: SalesFunnelStepDef[],
+  N: number,
+  payers: number,
+  payersWithin7d: number,
+  usersByStepKey: Map<string, Set<string>>,
+): FunnelStepRow[] {
+  const funnel: FunnelStepRow[] = [];
+  let prevUniques = N;
+  for (const step of steps) {
+    let uniqueUsers = 0;
+    if (step.kind === "cohort") uniqueUsers = N;
+    else if (step.kind === "paid") uniqueUsers = payers;
+    else uniqueUsers = usersByStepKey.get(step.key)?.size || 0;
+
+    const row: FunnelStepRow = {
+      key: step.key,
+      title: step.title,
+      uniqueUsers,
+      pctOfStart: pct(uniqueUsers, N),
+      pctOfPrev: pct(uniqueUsers, prevUniques),
+    };
+    if (step.kind === "paid") {
+      row.uniqueWithin7d = payersWithin7d;
+      row.pctWithin7dOfStart = pct(payersWithin7d, N);
+    }
+    funnel.push(row);
+    prevUniques = uniqueUsers;
+  }
+  return funnel;
+}
+
 export async function collectSalesAnalytics(
   params: SalesAnalyticsParams,
 ): Promise<SalesAnalyticsResult> {
@@ -242,12 +333,13 @@ export async function collectSalesAnalytics(
 
   const from = mskDayStartUtc(fromYmd);
   const toExclusive = mskDayStartUtc(addYmdDays(toYmd, 1));
+  const defaultGrain: SalesGrain = daySpan(fromYmd, toYmd) > 14 ? "week" : "day";
   const grain: SalesGrain =
-    params.grain === "week" || params.grain === "day"
-      ? params.grain
-      : daySpan(fromYmd, toYmd) > 14
-        ? "week"
-        : "day";
+    params.grain === "week" || params.grain === "day" ? params.grain : defaultGrain;
+  const cashGrain: SalesGrain =
+    params.cashGrain === "week" || params.cashGrain === "day"
+      ? params.cashGrain
+      : defaultGrain;
   const currency: SalesCurrency =
     params.currency === "peaches" || params.currency === "both"
       ? params.currency
@@ -264,76 +356,81 @@ export async function collectSalesAnalytics(
   const createdById = new Map(cohortUsers.map((u) => [u.id, u.createdAt]));
   const N = cohortIds.length;
 
-  const eventKeys = SALES_FUNNEL_STEPS.filter((s) => s.kind === "event").map(
-    (s) => s.eventKey!,
-  );
+  const allEventKeys = [
+    ...collectEventKeys(SALES_FUNNEL_V1_STEPS),
+    ...collectEventKeys(SALES_FUNNEL_V2_STEPS),
+  ];
 
-  const [eventHits, paidOrders, cashOrders, cashLedger] = await Promise.all([
-    N
-      ? prisma.funnelEvent.findMany({
-          where: {
-            userId: { in: cohortIds },
-            eventKey: { in: eventKeys },
-          },
-          select: { userId: true, eventKey: true },
-          distinct: ["userId", "eventKey"],
-        })
-      : Promise.resolve([] as { userId: string; eventKey: string }[]),
-    N
-      ? prisma.paymentOrder.findMany({
-          where: {
-            userId: { in: cohortIds },
-            status: "paid",
-            paidAt: { not: null },
-          },
-          select: {
-            userId: true,
-            paidAt: true,
-            amountMinor: true,
-            peaches: true,
-          },
-          orderBy: { paidAt: "asc" },
-        })
-      : Promise.resolve(
-          [] as {
-            userId: string;
-            paidAt: Date | null;
-            amountMinor: number;
-            peaches: number;
-          }[],
-        ),
-    prisma.paymentOrder.findMany({
-      where: {
-        status: "paid",
-        paidAt: { gte: from, lt: toExclusive },
-      },
-      select: {
-        userId: true,
-        paidAt: true,
-        amountMinor: true,
-        peaches: true,
-        paymentMethod: true,
-      },
-    }),
-    prisma.ledgerEntry.findMany({
-      where: {
-        ...LIVE_TOPUP_WHERE,
-        createdAt: { gte: from, lt: toExclusive },
-      },
-      select: { userId: true, amount: true, createdAt: true },
-    }),
-  ]);
+  const [eventHits, fv2LegacyHits, paidOrders, cashOrders, cashLedger] =
+    await Promise.all([
+      N
+        ? prisma.funnelEvent.findMany({
+            where: {
+              userId: { in: cohortIds },
+              eventKey: { in: allEventKeys },
+            },
+            select: { userId: true, eventKey: true, metaJson: true },
+            distinct: ["userId", "eventKey"],
+          })
+        : Promise.resolve(
+            [] as { userId: string; eventKey: string; metaJson: string }[],
+          ),
+      N
+        ? prisma.funnelEvent.findMany({
+            where: {
+              userId: { in: cohortIds },
+              eventKey: "bot.callback.other",
+              metaJson: { contains: "fv2:" },
+            },
+            select: { userId: true, metaJson: true },
+          })
+        : Promise.resolve([] as { userId: string; metaJson: string }[]),
+      N
+        ? prisma.paymentOrder.findMany({
+            where: {
+              userId: { in: cohortIds },
+              status: "paid",
+              paidAt: { not: null },
+            },
+            select: {
+              userId: true,
+              paidAt: true,
+              amountMinor: true,
+              peaches: true,
+            },
+            orderBy: { paidAt: "asc" },
+          })
+        : Promise.resolve(
+            [] as {
+              userId: string;
+              paidAt: Date | null;
+              amountMinor: number;
+              peaches: number;
+            }[],
+          ),
+      prisma.paymentOrder.findMany({
+        where: {
+          status: "paid",
+          paidAt: { gte: from, lt: toExclusive },
+        },
+        select: {
+          userId: true,
+          paidAt: true,
+          amountMinor: true,
+          peaches: true,
+          paymentMethod: true,
+        },
+      }),
+      prisma.ledgerEntry.findMany({
+        where: {
+          ...LIVE_TOPUP_WHERE,
+          createdAt: { gte: from, lt: toExclusive },
+        },
+        select: { userId: true, amount: true, createdAt: true },
+      }),
+    ]);
 
-  const usersByEvent = new Map<string, Set<string>>();
-  for (const h of eventHits) {
-    let set = usersByEvent.get(h.eventKey);
-    if (!set) {
-      set = new Set();
-      usersByEvent.set(h.eventKey, set);
-    }
-    set.add(h.userId);
-  }
-
+  const payCountByUser = new Map<string, number>();
   const firstPayByUser = new Map<string, Date>();
   let cohortRubMinor = 0;
   let cohortPeachesFromOrders = 0;
@@ -343,11 +440,11 @@ export async function collectSalesAnalytics(
     paymentsCount += 1;
     cohortRubMinor += o.amountMinor;
     cohortPeachesFromOrders += o.peaches;
+    payCountByUser.set(o.userId, (payCountByUser.get(o.userId) || 0) + 1);
     const prev = firstPayByUser.get(o.userId);
     if (!prev || o.paidAt < prev) firstPayByUser.set(o.userId, o.paidAt);
   }
 
-  // Cohort peaches via live ledger (боевые topup, не stub/preview)
   let cohortPeachesTotal = cohortPeachesFromOrders;
   if (N) {
     const ledgerCohort = await prisma.ledgerEntry.aggregate({
@@ -372,32 +469,48 @@ export async function collectSalesAnalytics(
     if (ms >= 0 && ms <= sevenMs) payersWithin7d += 1;
   }
 
-  const funnel: FunnelStepRow[] = [];
-  let prevUniques = N;
-  for (const step of SALES_FUNNEL_STEPS) {
-    let uniqueUsers = 0;
-    if (step.kind === "cohort") uniqueUsers = N;
-    else if (step.kind === "event") {
-      uniqueUsers = usersByEvent.get(step.eventKey!)?.size || 0;
-    } else {
-      uniqueUsers = payers;
+  function usersForSteps(steps: SalesFunnelStepDef[]): Map<string, Set<string>> {
+    const byStep = new Map<string, Set<string>>();
+    for (const step of steps) {
+      if (step.kind !== "event") continue;
+      byStep.set(step.key, new Set());
     }
-    const row: FunnelStepRow = {
-      key: step.key,
-      title: step.title,
-      uniqueUsers,
-      pctOfStart: pct(uniqueUsers, N),
-      pctOfPrev: pct(uniqueUsers, prevUniques),
-    };
-    if (step.kind === "paid") {
-      row.uniqueWithin7d = payersWithin7d;
-      row.pctWithin7dOfStart = pct(payersWithin7d, N);
+    for (const h of eventHits) {
+      for (const step of steps) {
+        if (step.kind !== "event" || !step.eventKeys) continue;
+        if (step.eventKeys.includes(h.eventKey)) {
+          byStep.get(step.key)!.add(h.userId);
+        }
+      }
     }
-    funnel.push(row);
-    prevUniques = uniqueUsers;
+    for (const h of fv2LegacyHits) {
+      const meta = h.metaJson || "";
+      for (const step of steps) {
+        if (step.kind !== "event" || !step.metaContains) continue;
+        if (step.metaContains.some((needle) => meta.includes(needle))) {
+          byStep.get(step.key)!.add(h.userId);
+        }
+      }
+    }
+    return byStep;
   }
 
-  // Cash widget (paidAt / ledger createdAt in window — not cohort)
+  const funnelV1 = buildFunnelRows(
+    SALES_FUNNEL_V1_STEPS,
+    N,
+    payers,
+    payersWithin7d,
+    usersForSteps(SALES_FUNNEL_V1_STEPS),
+  );
+  const funnelV2 = buildFunnelRows(
+    SALES_FUNNEL_V2_STEPS,
+    N,
+    payers,
+    payersWithin7d,
+    usersForSteps(SALES_FUNNEL_V2_STEPS),
+  );
+
+  // Cash totals
   const cashMethodMap = new Map<
     string,
     { count: number; rubMinor: number; peaches: number }
@@ -417,48 +530,44 @@ export async function collectSalesAnalytics(
   const cashPeaches = cashLedger.reduce((s, r) => s + r.amount, 0);
   const peachPayerSet = new Set(cashLedger.map((r) => r.userId));
 
-  // Dynamics series
+  // Cash series by cashGrain + method
+  const cashBuckets = buildBuckets(fromYmd, toYmd, cashGrain);
+  const cashSeriesMap = new Map<string, Map<string, number>>();
+  for (const b of cashBuckets) cashSeriesMap.set(b.key, new Map());
+  for (const o of cashOrders) {
+    if (!o.paidAt) continue;
+    const key = bucketKeyForInstant(o.paidAt, cashGrain, fromYmd);
+    if (!key || !cashSeriesMap.has(key)) continue;
+    const method = o.paymentMethod || "other";
+    const m = cashSeriesMap.get(key)!;
+    m.set(method, (m.get(method) || 0) + 1);
+  }
+
+  // Dynamics (registration grain)
   const buckets = buildBuckets(fromYmd, toYmd, grain);
   const regByBucket = new Map<string, number>();
   const cohortPaidByBucket = new Map<string, number>();
+  const repeatByBucket = new Map<string, number>();
   for (const b of buckets) {
     regByBucket.set(b.key, 0);
     cohortPaidByBucket.set(b.key, 0);
+    repeatByBucket.set(b.key, 0);
   }
   for (const u of cohortUsers) {
     const key = bucketKeyForInstant(u.createdAt, grain, fromYmd);
     if (!key || !regByBucket.has(key)) continue;
     regByBucket.set(key, (regByBucket.get(key) || 0) + 1);
-    if (firstPayByUser.has(u.id)) {
+    const pays = payCountByUser.get(u.id) || 0;
+    if (pays >= 1) {
       cohortPaidByBucket.set(key, (cohortPaidByBucket.get(key) || 0) + 1);
+    }
+    if (pays > 1) {
+      repeatByBucket.set(key, (repeatByBucket.get(key) || 0) + 1);
     }
   }
 
-  const cashRubByBucket = new Map<string, number>();
-  const cashPeachesByBucket = new Map<string, number>();
-  const cashPayByBucket = new Map<string, number>();
-  for (const b of buckets) {
-    cashRubByBucket.set(b.key, 0);
-    cashPeachesByBucket.set(b.key, 0);
-    cashPayByBucket.set(b.key, 0);
-  }
-  for (const o of cashOrders) {
-    if (!o.paidAt) continue;
-    const key = bucketKeyForInstant(o.paidAt, grain, fromYmd);
-    if (!key || !cashRubByBucket.has(key)) continue;
-    cashRubByBucket.set(key, (cashRubByBucket.get(key) || 0) + o.amountMinor / 100);
-    cashPayByBucket.set(key, (cashPayByBucket.get(key) || 0) + 1);
-  }
-  for (const r of cashLedger) {
-    const key = bucketKeyForInstant(r.createdAt, grain, fromYmd);
-    if (!key || !cashPeachesByBucket.has(key)) continue;
-    cashPeachesByBucket.set(
-      key,
-      (cashPeachesByBucket.get(key) || 0) + r.amount,
-    );
-  }
-
-  const revenuePerRegRub = N ? cohortRubMinor / 100 / N : 0;
+  const revenueSumRub = round2(cohortRubMinor / 100);
+  const revenuePerRegRub = N ? revenueSumRub / N : 0;
   const revenuePerRegPeaches = N ? cohortPeachesTotal / N : 0;
   const paymentsPerReg = N ? paymentsCount / N : 0;
 
@@ -470,6 +579,7 @@ export async function collectSalesAnalytics(
       toIsoExclusive: toExclusive.toISOString(),
       currency,
       grain,
+      cashGrain,
       minSignupYmd: bounds.minSignupYmd,
       maxYmd,
       note:
@@ -478,6 +588,8 @@ export async function collectSalesAnalytics(
     kpi: {
       newUsers: N,
       paymentsCount,
+      revenueSumRub,
+      revenueSumPeaches: cohortPeachesTotal,
       avgMsToFirstPay: mean(msToFirst),
       medianMsToFirstPay: median(msToFirst),
       revenuePerRegRub: round2(revenuePerRegRub),
@@ -498,8 +610,23 @@ export async function collectSalesAnalytics(
       methods: [...cashMethodMap.entries()]
         .map(([method, v]) => ({ method, ...v }))
         .sort((a, b) => b.count - a.count),
+      series: {
+        grain: cashGrain,
+        buckets: cashBuckets.map((b) => {
+          const methods = cashSeriesMap.get(b.key) || new Map();
+          const byMethod = [...methods.entries()]
+            .map(([method, count]) => ({ method, count }))
+            .sort((a, b) => b.count - a.count);
+          return {
+            key: b.key,
+            label: b.label,
+            total: byMethod.reduce((s, x) => s + x.count, 0),
+            byMethod,
+          };
+        }),
+      },
     },
-    funnel,
+    funnels: { v1: funnelV1, v2: funnelV2 },
     series: {
       grain,
       buckets: buckets.map((b) => ({
@@ -509,9 +636,7 @@ export async function collectSalesAnalytics(
         toYmd: b.toYmd,
         registrations: regByBucket.get(b.key) || 0,
         cohortPaid: cohortPaidByBucket.get(b.key) || 0,
-        cashRub: round2(cashRubByBucket.get(b.key) || 0),
-        cashPeaches: cashPeachesByBucket.get(b.key) || 0,
-        cashPayments: cashPayByBucket.get(b.key) || 0,
+        repeatPayers: repeatByBucket.get(b.key) || 0,
       })),
     },
   };
@@ -562,7 +687,6 @@ function bucketKeyForInstant(
   const ymd = mskYmd(at);
   if (grain === "day") return ymd;
   const mon = mskWeekMonday(ymd);
-  // Only count if Monday key is within built buckets (week overlapping range)
   const rangeMon = mskWeekMonday(rangeFromYmd);
   if (mon < rangeMon && ymd < rangeFromYmd) return null;
   return mon;

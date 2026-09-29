@@ -661,6 +661,15 @@ export async function tryRecoverQuickVideoFromComfy(
   return true;
 }
 
+/** Fail busy/error quick-video run: gallery error + refund + TG notify. */
+export async function failQuickVideoRun(
+  runId: string,
+  userId: string,
+  rawMsg: string,
+) {
+  return markQuickVideoRunError(runId, userId, rawMsg);
+}
+
 async function markQuickVideoRunError(
   runId: string,
   userId: string,

@@ -211,28 +211,35 @@ export async function sweepStaleGpuJobs(): Promise<number> {
     }
     if (job.refType === "galleryItem" && job.refId) {
       try {
-        const item = await prisma.galleryItem.findUnique({
-          where: { id: job.refId },
+        const { failAbandonedGalleryItem } = await import(
+          "@/lib/gpu/orphan-gallery-heal"
+        );
+        await failAbandonedGalleryItem({
+          itemId: job.refId,
+          reason: `stale timeout after ${mins} min`,
+          userMessage: `Таймаут GPU (~${mins} мин)`,
+          gpuJobId: job.id,
         });
-        if (item) {
-          let meta: Record<string, unknown> = {};
-          try {
-            meta = JSON.parse(item.metaJson || "{}") as Record<string, unknown>;
-          } catch {
-            meta = {};
-          }
-          if (meta.status === "pending") {
-            await prisma.galleryItem.update({
-              where: { id: item.id },
-              data: {
-                metaJson: JSON.stringify({
-                  ...meta,
-                  status: "error",
-                  error: `Таймаут GPU (~${mins} мин)`,
-                }),
-              },
-            });
-          }
+      } catch {
+        /* ignore */
+      }
+    } else if (job.refType === "quickVideoRun" && job.refId) {
+      try {
+        let userId = job.userId;
+        if (!userId) {
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { userId: true },
+          });
+          userId = run?.userId ?? null;
+        }
+        if (userId) {
+          const { failQuickVideoRun } = await import("@/lib/quick-video");
+          await failQuickVideoRun(
+            job.refId,
+            userId,
+            `stale timeout after ${mins} min`,
+          );
         }
       } catch {
         /* ignore */

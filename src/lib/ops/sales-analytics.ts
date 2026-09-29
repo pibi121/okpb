@@ -173,6 +173,9 @@ export type SalesAnalyticsResult = {
       buckets: {
         key: string;
         label: string;
+        fromYmd: string;
+        toYmd: string;
+        title: string;
         total: number;
         byMethod: { method: string; count: number }[];
       }[];
@@ -189,6 +192,7 @@ export type SalesAnalyticsResult = {
       label: string;
       fromYmd: string;
       toYmd: string;
+      title: string;
       registrations: number;
       cohortPaid: number;
       /** Cohort regs in bucket with strictly >1 paid orders */
@@ -232,9 +236,22 @@ function mskWeekMonday(ymd: string): string {
   return addYmdDays(ymd, mondayOffset);
 }
 
+/** Compact axis label: 29.09 or 21–29.09 (same month) or 28.09–04.10 */
 function bucketRangeLabel(fromYmd: string, toYmd: string): string {
-  if (fromYmd === toYmd) return fromYmd.slice(5);
-  return `${fromYmd.slice(5)}–${toYmd.slice(5)}`;
+  const d = (ymd: string) => {
+    const mo = ymd.slice(5, 7);
+    const day = ymd.slice(8, 10);
+    return `${day}.${mo}`;
+  };
+  if (fromYmd === toYmd) return d(fromYmd);
+  const sameMonth = fromYmd.slice(0, 7) === toYmd.slice(0, 7);
+  if (sameMonth) return `${fromYmd.slice(8, 10)}–${d(toYmd)}`;
+  return `${d(fromYmd)}–${d(toYmd)}`;
+}
+
+function bucketFullTitle(fromYmd: string, toYmd: string): string {
+  if (fromYmd === toYmd) return fromYmd;
+  return `${fromYmd} – ${toYmd}`;
 }
 
 function parseGrainParam(raw: SalesGrain | undefined, fallback: SalesGrain): SalesGrain {
@@ -259,14 +276,35 @@ function pct(part: number, whole: number): number {
   return Math.round((part / whole) * 1000) / 10;
 }
 
-const LIVE_TOPUP_WHERE: Prisma.LedgerEntryWhereInput = {
+const LIVE_TOPUP_BASE: Prisma.LedgerEntryWhereInput = {
   amount: { gt: 0 },
   reason: { contains: "topup" },
-  AND: [
-    { NOT: { reason: { contains: "stub" } } },
-    { NOT: { reason: { contains: "preview" } } },
-  ],
 };
+
+function isLiveTopupReason(reason: string) {
+  const r = reason.toLowerCase();
+  return r.includes("topup") && !r.includes("stub") && !r.includes("preview");
+}
+
+/** SQLite + Prisma: large `in` + NOT/`not` can't auto-split — chunk ourselves. */
+const IN_CHUNK = 200;
+
+function chunkIds(ids: string[], size = IN_CHUNK): string[][] {
+  if (!ids.length) return [];
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) {
+    out.push(ids.slice(i, i + size));
+  }
+  return out;
+}
+
+async function mapChunks<T>(
+  ids: string[],
+  fn: (chunk: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  const parts = await Promise.all(chunkIds(ids).map(fn));
+  return parts.flat();
+}
 
 export async function getSalesDateBounds(): Promise<{
   minSignupYmd: string | null;
@@ -362,45 +400,50 @@ export async function collectSalesAnalytics(
     ...collectEventKeys(SALES_FUNNEL_V2_STEPS),
   ];
 
-  const [eventHits, fv2LegacyHits, paidOrders, cashOrders, cashLedger] =
+  const [eventHits, fv2LegacyHits, paidOrdersRaw, cashOrders, cashLedgerRaw] =
     await Promise.all([
       N
-        ? prisma.funnelEvent.findMany({
-            where: {
-              userId: { in: cohortIds },
-              eventKey: { in: allEventKeys },
-            },
-            select: { userId: true, eventKey: true, metaJson: true },
-            distinct: ["userId", "eventKey"],
-          })
+        ? mapChunks(cohortIds, (chunk) =>
+            prisma.funnelEvent.findMany({
+              where: {
+                userId: { in: chunk },
+                eventKey: { in: allEventKeys },
+              },
+              select: { userId: true, eventKey: true, metaJson: true },
+              distinct: ["userId", "eventKey"],
+            }),
+          )
         : Promise.resolve(
             [] as { userId: string; eventKey: string; metaJson: string }[],
           ),
       N
-        ? prisma.funnelEvent.findMany({
-            where: {
-              userId: { in: cohortIds },
-              eventKey: "bot.callback.other",
-              metaJson: { contains: "fv2:" },
-            },
-            select: { userId: true, metaJson: true },
-          })
+        ? mapChunks(cohortIds, (chunk) =>
+            prisma.funnelEvent.findMany({
+              where: {
+                userId: { in: chunk },
+                eventKey: "bot.callback.other",
+                metaJson: { contains: "fv2:" },
+              },
+              select: { userId: true, metaJson: true },
+            }),
+          )
         : Promise.resolve([] as { userId: string; metaJson: string }[]),
       N
-        ? prisma.paymentOrder.findMany({
-            where: {
-              userId: { in: cohortIds },
-              status: "paid",
-              paidAt: { not: null },
-            },
-            select: {
-              userId: true,
-              paidAt: true,
-              amountMinor: true,
-              peaches: true,
-            },
-            orderBy: { paidAt: "asc" },
-          })
+        ? mapChunks(cohortIds, (chunk) =>
+            prisma.paymentOrder.findMany({
+              where: {
+                userId: { in: chunk },
+                status: "paid",
+              },
+              select: {
+                userId: true,
+                paidAt: true,
+                amountMinor: true,
+                peaches: true,
+              },
+              orderBy: { paidAt: "asc" },
+            }),
+          )
         : Promise.resolve(
             [] as {
               userId: string;
@@ -424,12 +467,15 @@ export async function collectSalesAnalytics(
       }),
       prisma.ledgerEntry.findMany({
         where: {
-          ...LIVE_TOPUP_WHERE,
+          ...LIVE_TOPUP_BASE,
           createdAt: { gte: from, lt: toExclusive },
         },
-        select: { userId: true, amount: true, createdAt: true },
+        select: { userId: true, amount: true, createdAt: true, reason: true },
       }),
     ]);
+
+  const paidOrders = paidOrdersRaw.filter((o) => o.paidAt != null);
+  const cashLedger = cashLedgerRaw.filter((r) => isLiveTopupReason(r.reason));
 
   const payCountByUser = new Map<string, number>();
   const firstPayByUser = new Map<string, Date>();
@@ -448,14 +494,19 @@ export async function collectSalesAnalytics(
 
   let cohortPeachesTotal = cohortPeachesFromOrders;
   if (N) {
-    const ledgerCohort = await prisma.ledgerEntry.aggregate({
-      where: {
-        ...LIVE_TOPUP_WHERE,
-        userId: { in: cohortIds },
-      },
-      _sum: { amount: true },
-    });
-    cohortPeachesTotal = ledgerCohort._sum?.amount || cohortPeachesFromOrders;
+    const ledgerRows = await mapChunks(cohortIds, (chunk) =>
+      prisma.ledgerEntry.findMany({
+        where: {
+          ...LIVE_TOPUP_BASE,
+          userId: { in: chunk },
+        },
+        select: { amount: true, reason: true },
+      }),
+    );
+    cohortPeachesTotal = ledgerRows
+      .filter((r) => isLiveTopupReason(r.reason))
+      .reduce((s, r) => s + r.amount, 0);
+    if (!cohortPeachesTotal) cohortPeachesTotal = cohortPeachesFromOrders;
   }
 
   const payers = firstPayByUser.size;
@@ -621,6 +672,9 @@ export async function collectSalesAnalytics(
           return {
             key: b.key,
             label: b.label,
+            fromYmd: b.fromYmd,
+            toYmd: b.toYmd,
+            title: bucketFullTitle(b.fromYmd, b.toYmd),
             total: byMethod.reduce((s, x) => s + x.count, 0),
             byMethod,
           };
@@ -635,6 +689,7 @@ export async function collectSalesAnalytics(
         label: b.label,
         fromYmd: b.fromYmd,
         toYmd: b.toYmd,
+        title: bucketFullTitle(b.fromYmd, b.toYmd),
         registrations: regByBucket.get(b.key) || 0,
         cohortPaid: cohortPaidByBucket.get(b.key) || 0,
         repeatPayers: repeatByBucket.get(b.key) || 0,
@@ -668,7 +723,12 @@ function buildBuckets(fromYmd: string, toYmd: string, grain: SalesGrain) {
   if (grain === "day") {
     let cur = fromYmd;
     while (cur <= toYmd) {
-      out.push({ key: cur, label: cur.slice(5), fromYmd: cur, toYmd: cur });
+      out.push({
+        key: cur,
+        label: bucketRangeLabel(cur, cur),
+        fromYmd: cur,
+        toYmd: cur,
+      });
       cur = addYmdDays(cur, 1);
     }
     return out;

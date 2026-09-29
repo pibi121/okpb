@@ -81,27 +81,21 @@ export async function register() {
         );
       }
 
-      // Mark orphaned running GpuJobs after redeploy (process memory gone).
+      // Mark orphaned running GpuJobs after redeploy + heal pending gallery
+      // (error + refund + TG notify), including already-stuck pendings.
       try {
         const { prisma } = await import("@/lib/db");
         const { sweepStaleGpuJobs } = await import("@/lib/gpu/worker-admin");
         const stale = await sweepStaleGpuJobs();
-        // Also catch ledger rows left after redeploy with no live process.
-        const orphans = await prisma.gpuJob.updateMany({
-          where: {
-            status: { in: ["queued", "assigned", "running"] },
-            updatedAt: { lt: new Date(Date.now() - 12 * 60 * 1000) },
-          },
-          data: {
-            status: "error",
-            stage: "error",
-            error: "orphaned after process restart — check recover / retry",
-            finishedAt: new Date(),
-          },
+        const { recoverOrphanedGpuWork } = await import(
+          "@/lib/gpu/orphan-gallery-heal"
+        );
+        const orphans = await recoverOrphanedGpuWork({
+          minAgeMs: 12 * 60 * 1000,
         });
-        if (stale > 0 || orphans.count > 0) {
+        if (stale > 0 || orphans.jobsHealed > 0 || orphans.galleryHealed > 0) {
           console.log(
-            `[peach] gpu jobs: stale=${stale} orphaned=${orphans.count}`,
+            `[peach] gpu jobs: stale=${stale} orphanedJobs=${orphans.jobsHealed} galleryHealed=${orphans.galleryHealed}`,
           );
         }
         await prisma.gpuWorker.updateMany({

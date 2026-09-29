@@ -200,58 +200,30 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
     }
     if (job.refType === "galleryItem" && job.refId) {
       try {
-        const item = await prisma.galleryItem.findUnique({
-          where: { id: job.refId },
+        const { failAbandonedGalleryItem } = await import(
+          "@/lib/gpu/orphan-gallery-heal"
+        );
+        await failAbandonedGalleryItem({
+          itemId: job.refId,
+          reason,
+          gpuJobId: job.id,
         });
-        if (item) {
-          let meta: Record<string, unknown> = {};
-          try {
-            meta = JSON.parse(item.metaJson || "{}") as Record<string, unknown>;
-          } catch {
-            meta = {};
-          }
-          if (meta.status === "pending" || meta.status === "busy") {
-            const charged = Number(meta.chargedPeaches || 0) || 0;
-            await prisma.galleryItem.update({
-              where: { id: item.id },
-              data: {
-                metaJson: JSON.stringify({
-                  ...meta,
-                  status: "error",
-                  error: "Связь с GPU оборвалась — нажми Повторить",
-                  healerAt: new Date().toISOString(),
-                }),
-              },
-            });
-            // Refund paid gens orphaned by redeploy / hung worker.
-            if (charged > 0 && item.userId) {
-              try {
-                const funnel =
-                  meta.funnelV2 === true ||
-                  meta.source === "funnel_v2" ||
-                  String(meta.engine || "").includes("funnel_v2");
-                if (funnel) {
-                  const { creditFunnelBalance } = await import(
-                    "@/lib/tg/funnel-v2/mode"
-                  );
-                  await creditFunnelBalance(item.userId, charged);
-                } else {
-                  const { creditPeaches } = await import("@/lib/tg/wallet");
-                  await creditPeaches(
-                    item.userId,
-                    charged,
-                    "gpu_healer_refund",
-                    {
-                      galleryItemId: item.id,
-                      gpuJobId: job.id,
-                    },
-                  );
-                }
-              } catch {
-                /* ignore */
-              }
-            }
-          }
+      } catch {
+        /* ignore */
+      }
+    } else if (job.refType === "quickVideoRun" && job.refId) {
+      try {
+        let userId = job.userId;
+        if (!userId) {
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { userId: true },
+          });
+          userId = run?.userId ?? null;
+        }
+        if (userId) {
+          const { failQuickVideoRun } = await import("@/lib/quick-video");
+          await failQuickVideoRun(job.refId, userId, reason);
         }
       } catch {
         /* ignore */

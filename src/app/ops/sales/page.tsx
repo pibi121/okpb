@@ -50,6 +50,9 @@ type SalesPayload = {
       buckets: {
         key: string;
         label: string;
+        fromYmd?: string;
+        toYmd?: string;
+        title?: string;
         total: number;
         byMethod: { method: string; count: number }[];
       }[];
@@ -61,6 +64,9 @@ type SalesPayload = {
     buckets: {
       key: string;
       label: string;
+      fromYmd: string;
+      toYmd: string;
+      title?: string;
       registrations: number;
       cohortPaid: number;
       repeatPayers: number;
@@ -629,6 +635,54 @@ function colHeight(value: number, max: number) {
   return Math.max(4, Math.round((value / max) * CHART_H));
 }
 
+function fmtDdMm(ymd: string) {
+  return `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}`;
+}
+
+function ChartAxisLabel({
+  label,
+  fromYmd,
+  toYmd,
+  title,
+}: {
+  label: string;
+  fromYmd?: string;
+  toYmd?: string;
+  title?: string;
+}) {
+  const full =
+    title ||
+    (fromYmd && toYmd
+      ? fromYmd === toYmd
+        ? fromYmd
+        : `${fromYmd} – ${toYmd}`
+      : label);
+  const isRange = Boolean(fromYmd && toYmd && fromYmd !== toYmd);
+
+  // Диапазон всегда в 2 строки — без truncate/…; hover = полные YYYY-MM-DD
+  if (isRange && fromYmd && toYmd) {
+    return (
+      <span
+        className="block min-w-[2.75rem] cursor-default text-center font-mono text-[9px] leading-tight text-zinc-500"
+        title={full}
+      >
+        <span className="block">{fmtDdMm(fromYmd)}</span>
+        <span className="block text-[8px] text-zinc-600">–</span>
+        <span className="block">{fmtDdMm(toYmd)}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="block min-w-[2.5rem] cursor-default whitespace-nowrap text-center font-mono text-[9px] leading-tight text-zinc-500"
+      title={full}
+    >
+      {fromYmd ? fmtDdMm(fromYmd) : label}
+    </span>
+  );
+}
+
 function VerticalStackedCashChart({
   buckets,
   maxTotal,
@@ -640,16 +694,18 @@ function VerticalStackedCashChart({
     <div className="mt-4 overflow-x-auto pb-1">
       <div
         className="flex min-w-full items-end justify-center gap-2 sm:gap-3"
-        style={{ minHeight: CHART_H + 44 }}
+        style={{ minHeight: CHART_H + 52 }}
       >
         {buckets.map((b) => {
           const h = colHeight(b.total, maxTotal);
           return (
             <div
               key={b.key}
-              className="flex w-10 shrink-0 flex-col items-center gap-1 sm:w-12"
+              className="flex w-12 shrink-0 flex-col items-center gap-1 sm:w-14"
             >
-              <span className="font-mono text-[10px] text-zinc-500">{b.total || ""}</span>
+              <span className="font-mono text-[10px] text-zinc-500">
+                {b.total || ""}
+              </span>
               <div
                 className="flex w-full flex-col-reverse overflow-hidden rounded-t-md bg-white/5"
                 style={{ height: h || 2 }}
@@ -671,9 +727,12 @@ function VerticalStackedCashChart({
                     ))
                   : null}
               </div>
-              <span className="max-w-full truncate text-center font-mono text-[9px] leading-tight text-zinc-500">
-                {b.label}
-              </span>
+              <ChartAxisLabel
+                label={b.label}
+                fromYmd={b.fromYmd}
+                toYmd={b.toYmd}
+                title={b.title}
+              />
             </div>
           );
         })}
@@ -706,12 +765,12 @@ function VerticalDynamicsChart({
     <div className="mt-4 overflow-x-auto pb-1">
       <div
         className="flex min-w-full items-end justify-center gap-3 sm:gap-4"
-        style={{ minHeight: CHART_H + 56 }}
+        style={{ minHeight: CHART_H + 64 }}
       >
         {buckets.map((b) => (
           <div
             key={b.key}
-            className="flex shrink-0 flex-col items-center gap-1"
+            className="flex min-w-[3.5rem] shrink-0 flex-col items-center gap-1"
           >
             <div className="flex items-end gap-1">
               {series.map((s) => {
@@ -733,9 +792,12 @@ function VerticalDynamicsChart({
                 );
               })}
             </div>
-            <span className="max-w-[4.5rem] truncate text-center font-mono text-[9px] leading-tight text-zinc-500">
-              {b.label}
-            </span>
+            <ChartAxisLabel
+              label={b.label}
+              fromYmd={b.fromYmd}
+              toYmd={b.toYmd}
+              title={b.title}
+            />
           </div>
         ))}
       </div>

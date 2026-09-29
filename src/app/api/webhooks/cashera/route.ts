@@ -76,6 +76,14 @@ export async function POST(req: NextRequest) {
         text,
         allLive: true,
       });
+      void import("@/lib/tg/funnel-v2/faststart")
+        .then(({ afterFunnelV2TopupCredited }) =>
+          afterFunnelV2TopupCredited({
+            userId: result.userId!,
+            peaches: result.peaches!,
+          }),
+        )
+        .catch((e) => console.error("[cashera] fv2 after topup:", e));
     } catch (e) {
       console.error("[cashera] notify user failed:", e);
       void import("@/lib/ops/errors")

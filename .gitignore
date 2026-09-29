@@ -84,3 +84,7 @@ klein_fix_latest.png
 !/presets/tease_cta.png
 
 # keep workflows — needed for Comfy later
+
+# funnel faststart media (local / railway --no-gitignore only)
+/public/tg/media/funnel-faststart.mp4
+

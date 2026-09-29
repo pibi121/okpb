@@ -52,6 +52,13 @@ export async function handleFunnelV2Callback(opts: {
 
   await tgAnswerCallbackQuery(opts.callbackId);
 
+  const { handleFunnelV2FaststartCallback } = await import(
+    "@/lib/tg/funnel-v2/faststart"
+  );
+  if (await handleFunnelV2FaststartCallback(opts)) {
+    return true;
+  }
+
   if (opts.data === FV2.rulesOk) {
     await acceptFunnelV2Rules(
       opts.chatId,
@@ -109,7 +116,13 @@ export async function handleFunnelV2Callback(opts: {
     await sendFunnelV2Pro(opts.chatId, opts.locale);
     return true;
   }
-  if (opts.data === FV2.topup) {
+  if (opts.data === FV2.topup || opts.data === FV2.topupFromBlur) {
+    const { clearFunnelV2UnblurIntent } = await import(
+      "@/lib/tg/funnel-v2/faststart"
+    );
+    await clearFunnelV2UnblurIntent(opts.platformUserId, {
+      returnHubAfterTopup: opts.data === FV2.topupFromBlur,
+    });
     await sendFunnelV2Topup(opts.chatId, opts.userId, opts.locale);
     return true;
   }

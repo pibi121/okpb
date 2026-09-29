@@ -32,6 +32,15 @@ export async function startTgUndressGeneration(opts: {
    * store as chargedPeaches for QC refund.
    */
   funnelChargedPeaches?: number;
+  /** Stored on gallery meta for «Снять блюр» after topup. */
+  unblurRecipe?: {
+    kind: "ud" | "tpl";
+    templateId: string;
+    photoUrl: string;
+    photoKey?: string;
+    price: number;
+    poseTitle: string;
+  };
 }): Promise<{
   galleryItemId: string;
   chargedPeaches: number;
@@ -81,6 +90,7 @@ export async function startTgUndressGeneration(opts: {
         funnelV2: Boolean(opts.funnelV2 || opts.funnelV2Blur),
         blurTrial: Boolean(opts.funnelV2Blur),
         ...(opts.funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
+        ...(opts.unblurRecipe ? { unblurRecipe: opts.unblurRecipe } : {}),
       }),
     },
   });
@@ -92,6 +102,7 @@ export async function startTgUndressGeneration(opts: {
   const funnelV2 = Boolean(opts.funnelV2);
   const funnelV2Blur = Boolean(opts.funnelV2Blur);
   const funnelPaidAmt = funnelPaid;
+  const unblurRecipe = opts.unblurRecipe;
 
   void enqueueGpuJob(
     async () => {
@@ -154,6 +165,7 @@ export async function startTgUndressGeneration(opts: {
               funnelV2: funnelV2 || funnelV2Blur,
               blurTrial: funnelV2Blur,
               ...(funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
+              ...(unblurRecipe ? { unblurRecipe } : {}),
             }),
           },
         });
@@ -166,6 +178,11 @@ export async function startTgUndressGeneration(opts: {
           const { enqueueFunnelV2Result } = await import(
             "@/lib/tg/funnel-v2/enqueue-result"
           );
+          const blurCaption = funnelV2Blur
+            ? `Готово! Я сделал фото с ней в позе: «${unblurRecipe?.poseTitle || "Раздеть полностью"}»\n\n` +
+              `Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. ` +
+              `За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑`
+            : undefined;
           await enqueueFunnelV2Result({
             userId: opts.userId,
             platformUserId,
@@ -173,14 +190,27 @@ export async function startTgUndressGeneration(opts: {
             kind: "photo",
             url: saved.publicUrl,
             galleryItemId,
-            successKind,
+            successKind: funnelV2Blur ? "funnel_v2_blur" : "funnel_v2_photo",
             blurTrial: funnelV2Blur,
             offerQcDislike: funnelV2 && !funnelV2Blur && chargedPeaches > 0,
+            caption: blurCaption,
             extraPayload: {
               chargedPeaches,
               undressFreeUsed: usedFree,
+              ...(unblurRecipe
+                ? {
+                    poseTitle: unblurRecipe.poseTitle,
+                    pricePeaches: unblurRecipe.price,
+                  }
+                : {}),
             },
           });
+          if (funnelV2Blur) {
+            const { markFunnelV2BlurOffered } = await import(
+              "@/lib/tg/funnel-v2/faststart"
+            );
+            await markFunnelV2BlurOffered(opts.userId);
+          }
         } else {
           await enqueueTgOutbox({
             platformUserId,

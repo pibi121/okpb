@@ -2629,11 +2629,27 @@ export async function flushTgOutbox() {
         } = await import("@/lib/tg/funnel-v2/result-keyboards");
         if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
           if (!payload.caption?.trim()) {
+            const pose =
+              typeof (payload as { poseTitle?: string }).poseTitle === "string"
+                ? (payload as { poseTitle?: string }).poseTitle
+                : null;
             payload.caption =
-              "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс.\nКстати, сейчас тебя ждёт много бонусных 🍑 за пополнение баланса";
+              (pose
+                ? `Готово! Я сделал фото с ней в позе: «${pose}»\n\n`
+                : "") +
+              "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. " +
+              "За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑";
           }
+          const pricePeaches = Number(
+            (payload as { pricePeaches?: number }).pricePeaches || 0,
+          );
           funnelMediaExtra = {
-            reply_markup: funnelV2PhotoBlurKeyboard(locale),
+            reply_markup: funnelV2PhotoBlurKeyboard(locale, {
+              pricePeaches,
+              galleryItemId: payload.galleryItemId
+                ? String(payload.galleryItemId)
+                : undefined,
+            }),
           };
         } else if (row.kind === "video" || payload.successKind === "funnel_v2_video") {
           // Prefer result copy over template title on the video itself.
@@ -2703,8 +2719,18 @@ export async function flushTgOutbox() {
             } = await import("@/lib/tg/funnel-v2/result-keyboards");
             if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
               await sendMessage(
-                "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс.\nКстати, сейчас тебя ждёт много бонусных 🍑 за пополнение баланса",
-                { reply_markup: funnelV2PhotoBlurKeyboard(locale) },
+                payload.caption?.trim() ||
+                  "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑",
+                {
+                  reply_markup: funnelV2PhotoBlurKeyboard(locale, {
+                    pricePeaches: Number(
+                      (payload as { pricePeaches?: number }).pricePeaches || 0,
+                    ),
+                    galleryItemId: payload.galleryItemId
+                      ? String(payload.galleryItemId)
+                      : undefined,
+                  }),
+                },
               );
             } else if (
               row.kind === "video" ||

@@ -58,6 +58,41 @@ async function attachV2ReplyKb(chatId: number) {
   }
 }
 
+/**
+ * Install reply «Главное меню» without leaving the sticky notice as last message.
+ * Sends a silent carrier, remembers it, then deletes it (keyboard stays).
+ */
+export async function attachV2ReplyKbSilent(chatId: number) {
+  const platformUserId = String(chatId);
+  try {
+    const acc = await getTgSession(platformUserId);
+    if (acc && parsePending(acc.pendingJson).replyKbCarrierId) return;
+  } catch {
+    /* ignore */
+  }
+
+  let sent: { message_id?: number } | undefined;
+  try {
+    sent = (await tgSendMessage(chatId, "\u200b", {
+      ...funnelV2ReplyKeyboard(),
+      disable_notification: true,
+    })) as { message_id?: number };
+  } catch {
+    return;
+  }
+  const mid = sent?.message_id;
+  if (mid) {
+    await setTgSession(platformUserId, {
+      pending: { replyKbCarrierId: mid },
+    }).catch(() => undefined);
+    try {
+      await tgDeleteMessage(chatId, mid);
+    } catch {
+      /* keyboard still applied */
+    }
+  }
+}
+
 export function funnelV2RulesKeyboard() {
   return {
     inline_keyboard: [
@@ -164,6 +199,10 @@ export async function sendFunnelV2Hub(
     clearPending: true,
   });
 
+  void import("@/lib/tg/funnel-v2/faststart").then(({ cancelFunnelV2FaststartIdle }) =>
+    cancelFunnelV2FaststartIdle(userId),
+  );
+
   const text = await buildFunnelV2HubText(userId);
   const markup = funnelV2HubKeyboard();
   const platformUserId = String(chatId);
@@ -204,5 +243,8 @@ export async function acceptFunnelV2Rules(
       /* ignore */
     }
   }
-  await sendFunnelV2Hub(chatId, userId, locale);
+  const { afterFunnelV2RulesAccepted } = await import(
+    "@/lib/tg/funnel-v2/faststart"
+  );
+  await afterFunnelV2RulesAccepted(chatId, userId, locale);
 }

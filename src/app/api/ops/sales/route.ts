@@ -22,8 +22,11 @@ function parseGrain(raw: string | null, fromYmd: string, toYmd: string): SalesGr
   return days > 14 ? "week" : "day";
 }
 
-function parsePartnerIds(raw: string | null): string[] | undefined {
+function parsePartnerIds(
+  raw: string | null,
+): string[] | null | undefined {
   if (raw == null || raw === "" || raw === "all") return undefined;
+  if (raw === "none") return [];
   return raw
     .split(",")
     .map((s) => s.trim())

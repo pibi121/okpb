@@ -90,6 +90,20 @@ export type TgPending = {
   funnelV2EditItemId?: string;
   funnelV2TopupPeaches?: number;
   funnelV2TopupBonus?: number;
+  /** Faststart: next photo upload starts random blur trial */
+  funnelV2FaststartRandom?: boolean;
+  /** After blur: topup should charge + regenerate clear photo */
+  funnelV2Unblur?: {
+    galleryItemId: string;
+    kind: "ud" | "tpl";
+    templateId: string;
+    photoUrl: string;
+    photoKey?: string;
+    price: number;
+    poseTitle: string;
+  };
+  /** After plain topup from blur screen → open hub */
+  funnelV2ReturnHubAfterTopup?: boolean;
   /** Last silent message that carries the bottom reply keyboard */
   replyKbCarrierId?: number;
   /** Funnel v2 navigable UI message (menus/confirms) — replaced on each step */

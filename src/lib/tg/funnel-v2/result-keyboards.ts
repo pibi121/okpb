@@ -68,18 +68,32 @@ export function funnelV2PhotoReadyKeyboard(
   return { inline_keyboard: rows };
 }
 
-export function funnelV2PhotoBlurKeyboard(_locale: TgLocale) {
+export function funnelV2PhotoBlurKeyboard(
+  _locale: TgLocale,
+  opts?: { pricePeaches?: number; galleryItemId?: string },
+) {
+  const price = Math.max(0, Math.floor(opts?.pricePeaches || 0));
+  const itemId = opts?.galleryItemId?.trim();
+  const unblurRow = itemId
+    ? [
+        {
+          text: `Снять блюр за ${price || "?"} руб 🔑`,
+          callback_data: FV2.unblur(itemId),
+          style: "danger",
+        },
+      ]
+    : [];
   return {
     inline_keyboard: [
       [
         {
           text: "Пополнить баланс 🍑",
-          callback_data: FV2.topup,
+          callback_data: FV2.topupFromBlur,
           style: "success",
         },
       ],
-      [{ text: "Выбрать другой шаблон 💦", callback_data: FV2.photo }],
-      [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
+      ...(unblurRow.length ? [unblurRow] : []),
+      [{ text: "⬅️ Открыть главное меню", callback_data: FV2.hub }],
     ],
   };
 }

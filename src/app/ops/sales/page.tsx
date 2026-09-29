@@ -17,7 +17,12 @@ type FunnelStep = {
   pctWithin7dOfStart?: number;
 };
 
-type PartnerOption = { id: string; code: string; name: string | null };
+type PartnerOption = {
+  id: string;
+  code: string;
+  name: string | null;
+  tgId?: string | null;
+};
 
 type SalesPayload = {
   meta: {
@@ -26,7 +31,7 @@ type SalesPayload = {
     currency: Currency;
     grain: Grain;
     cashGrain: Grain;
-    partnerIds: string[] | "all";
+    partnerIds: string[] | "all" | "none";
     note: string;
   };
   partners: PartnerOption[];
@@ -159,10 +164,11 @@ export default function OpsSalesPage() {
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [partnersOpen, setPartnersOpen] = useState(false);
-  /** null = все партнёры (без фильтра) */
+  /** null = все; [] = никто; ids = фильтр */
   const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[] | null>(
     null,
   );
+  const [partnerSearch, setPartnerSearch] = useState("");
   const [partnerCatalog, setPartnerCatalog] = useState<PartnerOption[]>([]);
   const [data, setData] = useState<SalesPayload | null>(null);
   const [msg, setMsg] = useState("");
@@ -174,20 +180,36 @@ export default function OpsSalesPage() {
     () => partnerCatalog.map((p) => p.id),
     [partnerCatalog],
   );
+  const partnersNoneSelected = selectedPartnerIds?.length === 0;
   const partnersAllSelected =
     selectedPartnerIds == null ||
     (allPartnerIds.length > 0 &&
       selectedPartnerIds.length === allPartnerIds.length &&
       allPartnerIds.every((id) => selectedPartnerIds.includes(id)));
 
+  const filteredPartners = useMemo(() => {
+    const q = partnerSearch.trim().toLowerCase();
+    if (!q) return partnerCatalog;
+    return partnerCatalog.filter((p) => {
+      const blob = `${p.code} ${p.name || ""} ${p.tgId || ""}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [partnerCatalog, partnerSearch]);
+
   const partnerSummary = useMemo(() => {
-    if (partnersAllSelected || !selectedPartnerIds?.length) return "Все";
-    if (selectedPartnerIds.length === 1) {
+    if (partnersNoneSelected) return "Никого";
+    if (partnersAllSelected) return "Все";
+    if (selectedPartnerIds?.length === 1) {
       const p = partnerCatalog.find((x) => x.id === selectedPartnerIds[0]);
       return p ? partnerLabel(p) : "1 партнёр";
     }
-    return `${selectedPartnerIds.length} партнёров`;
-  }, [partnersAllSelected, selectedPartnerIds, partnerCatalog]);
+    return `${selectedPartnerIds?.length || 0} партнёров`;
+  }, [
+    partnersNoneSelected,
+    partnersAllSelected,
+    selectedPartnerIds,
+    partnerCatalog,
+  ]);
 
   const load = useCallback(
     async (opts?: {
@@ -222,8 +244,8 @@ export default function OpsSalesPage() {
           grain: g,
           cashGrain: cg,
         });
-        if (pIds != null && pIds.length > 0) {
-          q.set("partners", pIds.join(","));
+        if (pIds != null) {
+          q.set("partners", pIds.length ? pIds.join(",") : "none");
         }
         const d = await opsFetch<SalesPayload>(`/api/ops/sales?${q}`);
         setData(d);
@@ -296,14 +318,26 @@ export default function OpsSalesPage() {
     setSelectedPartnerIds(null);
   }
 
+  function clearAllPartners() {
+    setSelectedPartnerIds([]);
+  }
+
   function togglePartner(id: string) {
+    if (partnersNoneSelected) {
+      setSelectedPartnerIds([id]);
+      return;
+    }
     const current = partnersAllSelected
       ? [...allPartnerIds]
       : [...(selectedPartnerIds || [])];
     const next = current.includes(id)
       ? current.filter((x) => x !== id)
       : [...current, id];
-    if (!next.length || next.length === allPartnerIds.length) {
+    if (!next.length) {
+      setSelectedPartnerIds([]);
+      return;
+    }
+    if (next.length === allPartnerIds.length) {
       setSelectedPartnerIds(null);
       return;
     }
@@ -417,20 +451,43 @@ export default function OpsSalesPage() {
                 <span className="text-zinc-500">{partnersOpen ? "▴" : "▾"}</span>
               </button>
               {partnersOpen ? (
-                <div className="absolute left-0 z-20 mt-1 max-h-64 min-w-[16rem] overflow-auto rounded-xl border border-white/10 bg-[#121214] p-2 shadow-xl">
+                <div className="absolute left-0 z-20 mt-1 max-h-72 min-w-[18rem] overflow-auto rounded-xl border border-white/10 bg-[#121214] p-2 shadow-xl">
+                  <input
+                    type="search"
+                    value={partnerSearch}
+                    onChange={(e) => setPartnerSearch(e.target.value)}
+                    placeholder="Поиск: имя, code, TG id"
+                    className="mb-2 w-full rounded-lg border border-white/10 bg-[#0c0c0e] px-2 py-1.5 text-sm text-zinc-200"
+                  />
+                  <div className="mb-1 flex gap-1">
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-zinc-300"
+                      onClick={() => selectAllPartners()}
+                    >
+                      Все
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-zinc-300"
+                      onClick={() => clearAllPartners()}
+                    >
+                      Снять все
+                    </button>
+                  </div>
                   <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-white/5">
                     <input
                       type="checkbox"
                       checked={partnersAllSelected}
                       onChange={() => {
-                        if (partnersAllSelected) return;
-                        selectAllPartners();
+                        if (partnersAllSelected) clearAllPartners();
+                        else selectAllPartners();
                       }}
                     />
                     Все
                   </label>
-                  {partnerCatalog.length ? (
-                    partnerCatalog.map((p) => {
+                  {filteredPartners.length ? (
+                    filteredPartners.map((p) => {
                       const checked =
                         partnersAllSelected ||
                         Boolean(selectedPartnerIds?.includes(p.id));
@@ -450,7 +507,9 @@ export default function OpsSalesPage() {
                     })
                   ) : (
                     <p className="px-2 py-1.5 text-xs text-zinc-600">
-                      Список подтянется после загрузки
+                      {partnerCatalog.length
+                        ? "Ничего не найдено"
+                        : "Список подтянется после загрузки"}
                     </p>
                   )}
                 </div>
@@ -707,7 +766,8 @@ export default function OpsSalesPage() {
 }
 
 function partnerLabel(p: PartnerOption) {
-  return p.name ? `${p.code} · ${p.name}` : p.code;
+  const who = p.name ? `${p.code} · ${p.name}` : p.code;
+  return p.tgId ? `${who} · ${p.tgId}` : who;
 }
 
 function grainHint(g: Grain) {

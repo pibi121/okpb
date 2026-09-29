@@ -56,6 +56,12 @@ model User {
   tgFunnelV2BlurTrialsUsed Int @default(0)
   /// Accepted v2 rules in preview (independent of ageConfirmed)
   tgFunnelV2RulesOk Boolean @default(false)
+  /// Faststart screen shown (30m idle nudge clock)
+  tgFunnelV2FaststartAt DateTime?
+  tgFunnelV2FaststartNudgeSent Boolean @default(false)
+  /// Blur trial offered (30m unpaid nudge clock)
+  tgFunnelV2BlurOfferAt DateTime?
+  tgFunnelV2BlurNudgeSent Boolean @default(false)
   /// Undress: unused free credits (max stack 1)
   tgUndressFreeCredits Int @default(0)
   /// Undress: welcome free already granted (existing + new users)

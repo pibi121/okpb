@@ -46,12 +46,37 @@ export async function tryFunnelV2Codeword(opts: {
     return true;
   }
 
+  if (key === "FUNNEL_FRESH") {
+    await enterFunnelV2Preview(opts.userId);
+    await prisma.user.update({
+      where: { id: opts.userId },
+      data: {
+        tgFunnelV2FaststartAt: null,
+        tgFunnelV2FaststartNudgeSent: false,
+        tgFunnelV2BlurOfferAt: null,
+        tgFunnelV2BlurNudgeSent: false,
+        tgFunnelV2BlurTrialsUsed: 0,
+        tgFunnelV2RulesOk: false,
+      },
+    });
+    await setTgSession(opts.platformUserId, {
+      chatState: "funnel_v2_awaiting_rules",
+      clearPending: true,
+    });
+    await tgSendMessage(
+      opts.chatId,
+      "🧪 <b>FUNNEL_FRESH</b>\nКак первый запуск: правила → faststart (если включён).",
+    );
+    await sendFunnelV2Rules(opts.chatId, opts.userId, opts.locale);
+    return true;
+  }
+
   if (TOPUP_MAP[key] != null) {
     const user = await prisma.user.findUnique({ where: { id: opts.userId } });
     if (!user?.tgFunnelV2Preview) {
       await tgSendMessage(
         opts.chatId,
-        "Сначала отправь <code>FUNNEL_PREVIEW</code>, чтобы войти в тестовую воронку.",
+        "Сначала отправь <code>FUNNEL_PREVIEW</code> или <code>FUNNEL_FRESH</code>, чтобы войти в тестовую воронку.",
       );
       return true;
     }
@@ -61,6 +86,13 @@ export async function tryFunnelV2Codeword(opts: {
       opts.chatId,
       `🧪 Симуляция пополнения: <b>+${amount}🍑</b>\nБаланс preview: <b>${bal}🍑</b>`,
     );
+    const { afterFunnelV2TopupCredited } = await import(
+      "@/lib/tg/funnel-v2/faststart"
+    );
+    await afterFunnelV2TopupCredited({
+      userId: opts.userId,
+      peaches: amount,
+    });
     return true;
   }
 

@@ -5,9 +5,17 @@ export const FV2 = {
   video: "fv2:vid",
   pro: "fv2:pro",
   topup: "fv2:tu",
+  /** Topup opened from blur result — after pay → hub */
+  topupFromBlur: "fv2:tu:blur",
   earn: "fv2:earn",
   help: "fv2:help",
   hub: "fv2:hub",
+  /** Faststart: pick pose templates */
+  fsPose: "fv2:fs:pose",
+  /** Faststart: later → hub */
+  fsLater: "fv2:fs:later",
+  /** After blur: unlock full photo (sets unblur intent → topup) */
+  unblur: (itemId: string) => `fv2:ub:${itemId}`,
   /** Photo: undress full */
   phUndress: "fv2:ph:ud",
   /** Photo: template page */

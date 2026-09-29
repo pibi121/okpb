@@ -80,6 +80,7 @@ export type SalesPartnerOption = {
   id: string;
   code: string;
   name: string | null;
+  tgId: string | null;
 };
 
 export type SalesAnalyticsParams = {
@@ -89,10 +90,12 @@ export type SalesAnalyticsParams = {
   grain: SalesGrain;
   cashGrain: SalesGrain;
   /**
-   * PartnerProfile ids to include. Empty / omit = все (без фильтра).
-   * Partial list = только юзеры с attribution на этих партнёров.
+   * PartnerProfile ids to include.
+   * omit / undefined = все (без фильтра).
+   * [] = никто (пустая когорта).
+   * partial = только эти партнёры.
    */
-  partnerIds?: string[];
+  partnerIds?: string[] | null;
 };
 
 export type FunnelStepRow = {
@@ -123,7 +126,7 @@ export type SalesAnalyticsResult = {
     cashGrain: SalesGrain;
     minSignupYmd: string | null;
     maxYmd: string;
-    partnerIds: string[] | "all";
+    partnerIds: string[] | "all" | "none";
     note: string;
   };
   partners: SalesPartnerOption[];
@@ -349,13 +352,24 @@ export async function listSalesPartners(): Promise<SalesPartnerOption[]> {
     select: {
       id: true,
       code: true,
-      user: { select: { name: true } },
+      user: {
+        select: {
+          name: true,
+          platformAccounts: {
+            where: { platform: "telegram" },
+            select: { platformUserId: true },
+            take: 1,
+            orderBy: { lastSeenAt: "desc" },
+          },
+        },
+      },
     },
   });
   return rows.map((p) => ({
     id: p.id,
     code: p.code,
     name: p.user.name,
+    tgId: p.user.platformAccounts[0]?.platformUserId ?? null,
   }));
 }
 
@@ -384,29 +398,40 @@ export async function collectSalesAnalytics(
       ? params.currency
       : "rub";
 
+  const partnersNone =
+    params.partnerIds != null && params.partnerIds.length === 0;
   const rawPartnerIds = (params.partnerIds || []).filter((id) =>
     knownPartnerIds.has(id),
   );
   const partnerFilterActive =
-    rawPartnerIds.length > 0 && rawPartnerIds.length < knownPartnerIds.size;
+    !partnersNone &&
+    rawPartnerIds.length > 0 &&
+    rawPartnerIds.length < knownPartnerIds.size;
   const partnerIds = partnerFilterActive ? rawPartnerIds : [];
-  const partnerMeta: string[] | "all" = partnerFilterActive
-    ? partnerIds
-    : "all";
+  const partnerMeta: string[] | "all" | "none" = partnersNone
+    ? "none"
+    : partnerFilterActive
+      ? partnerIds
+      : "all";
 
-  const cohortWhere: Prisma.UserWhereInput = {
-    source: "telegram",
-    createdAt: { gte: from, lt: toExclusive },
-    ...(partnerFilterActive
-      ? { partnerAttribution: { partnerId: { in: partnerIds } } }
-      : {}),
-  };
+  const cohortWhere: Prisma.UserWhereInput = partnersNone
+    ? { id: { in: [] } }
+    : {
+        source: "telegram",
+        createdAt: { gte: from, lt: toExclusive },
+        ...(partnerFilterActive
+          ? { partnerAttribution: { partnerId: { in: partnerIds } } }
+          : {}),
+      };
 
-  const cashUserFilter: Prisma.PaymentOrderWhereInput = partnerFilterActive
-    ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
-    : {};
-  const cashLedgerUserFilter: Prisma.LedgerEntryWhereInput =
-    partnerFilterActive
+  const cashUserFilter: Prisma.PaymentOrderWhereInput = partnersNone
+    ? { id: { in: [] } }
+    : partnerFilterActive
+      ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
+      : {};
+  const cashLedgerUserFilter: Prisma.LedgerEntryWhereInput = partnersNone
+    ? { id: { in: [] } }
+    : partnerFilterActive
       ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
       : {};
 

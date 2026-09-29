@@ -402,7 +402,7 @@ async function loadPhotoBytes(photoUrl: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function runFunnelV2PhotoGen(opts: {
+export async function runFunnelV2PhotoGen(opts: {
   chatId: number;
   userId: string;
   platformUserId: string;
@@ -410,23 +410,29 @@ async function runFunnelV2PhotoGen(opts: {
   kind: "ud" | "tpl";
   templateId: string;
   photoUrl: string;
+  /** Skip blur trial even if balance low (after topup unblur). */
+  forcePaid?: boolean;
 }) {
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (!user) return;
 
+  const tplRow =
+    opts.kind === "tpl"
+      ? await prisma.photoTemplate.findUnique({
+          where: { id: opts.templateId },
+        })
+      : null;
   const price =
+    opts.kind === "ud" ? undressPeaches() : tplRow?.pricePeaches || 0;
+  const poseTitle =
     opts.kind === "ud"
-      ? undressPeaches()
-      : (
-          await prisma.photoTemplate.findUnique({
-            where: { id: opts.templateId },
-          })
-        )?.pricePeaches || 0;
+      ? "Раздеть полностью"
+      : tplRow?.tgDisplayTitle || tplRow?.title || "поза";
 
   const bal = await getFunnelBalance(user);
   const blurUsed = user.tgFunnelV2BlurTrialsUsed || 0;
 
-  if (bal < price && blurUsed >= 1) {
+  if (!opts.forcePaid && bal < price && blurUsed >= 1) {
     const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
     await funnelV2ReplaceUi(opts.platformUserId, opts.chatId, () =>
       sendCoverPhoto(
@@ -452,7 +458,7 @@ async function runFunnelV2PhotoGen(opts: {
     return;
   }
 
-  const useBlur = bal < price;
+  const useBlur = !opts.forcePaid && bal < price;
   if (!useBlur) {
     const deb = await debitFunnelBalance(opts.userId, price);
     if (!deb.ok) {
@@ -475,6 +481,18 @@ async function runFunnelV2PhotoGen(opts: {
 
   try {
     const bytes = await loadPhotoBytes(opts.photoUrl);
+    const sess = await getTgSession(opts.platformUserId);
+    const sessPend = parsePending(sess?.pendingJson || "{}") as {
+      funnelV2PhotoKey?: string;
+    };
+    const unblurRecipe = {
+      kind: opts.kind,
+      templateId: opts.templateId,
+      photoUrl: opts.photoUrl,
+      photoKey: sessPend.funnelV2PhotoKey,
+      price,
+      poseTitle,
+    };
     if (opts.kind === "ud") {
       if (useBlur) {
         // Blur trial: temporary free credit so undress pipeline skips peach debit.
@@ -491,6 +509,7 @@ async function runFunnelV2PhotoGen(opts: {
           photoBytes: bytes,
           locale: opts.locale,
           funnelV2Blur: true,
+          unblurRecipe,
         });
       } else {
         const { startTgUndressGeneration } = await import(
@@ -509,9 +528,9 @@ async function runFunnelV2PhotoGen(opts: {
     }
 
     // Template pose — photo-edit lab graph (editPrompt from PhotoTemplate).
-    const tpl = await prisma.photoTemplate.findUnique({
+    const tpl = tplRow || (await prisma.photoTemplate.findUnique({
       where: { id: opts.templateId },
-    });
+    }));
     if (!tpl?.editPrompt) throw new Error("Шаблон без промпта");
 
     const { enqueueGpuJob } = await import("@/lib/gallery-jobs");
@@ -535,6 +554,7 @@ async function runFunnelV2PhotoGen(opts: {
           blurTrial: useBlur,
           ...(useBlur ? { hiddenFromTgGallery: true } : {}),
           templateId: tpl.id,
+          ...(useBlur ? { unblurRecipe } : {}),
           ...(!useBlur && price > 0 ? { chargedPeaches: price } : {}),
         }),
       },
@@ -570,6 +590,7 @@ async function runFunnelV2PhotoGen(opts: {
                 ...(useBlur ? { hiddenFromTgGallery: true } : {}),
                 templateId: tpl.id,
                 localKey: saved.relKey,
+                ...(useBlur ? { unblurRecipe } : {}),
                 ...(chargedPeaches > 0 ? { chargedPeaches } : {}),
               }),
             },
@@ -577,6 +598,11 @@ async function runFunnelV2PhotoGen(opts: {
           const { enqueueFunnelV2Result } = await import(
             "@/lib/tg/funnel-v2/enqueue-result"
           );
+          const blurCaption = useBlur
+            ? `Готово! Я сделал фото с ней в позе: «${poseTitle}»\n\n` +
+              `Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. ` +
+              `За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑`
+            : undefined;
           await enqueueFunnelV2Result({
             userId: opts.userId,
             platformUserId,
@@ -587,9 +613,20 @@ async function runFunnelV2PhotoGen(opts: {
             successKind: useBlur ? "funnel_v2_blur" : "funnel_v2_photo",
             blurTrial: useBlur,
             offerQcDislike: !useBlur && chargedPeaches > 0,
-            extraPayload:
-              chargedPeaches > 0 ? { chargedPeaches } : undefined,
+            caption: blurCaption,
+            extraPayload: {
+              ...(chargedPeaches > 0 ? { chargedPeaches } : {}),
+              ...(useBlur
+                ? { poseTitle, pricePeaches: price }
+                : {}),
+            },
           });
+          if (useBlur) {
+            const { markFunnelV2BlurOffered } = await import(
+              "@/lib/tg/funnel-v2/faststart"
+            );
+            await markFunnelV2BlurOffered(opts.userId);
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           if (useBlur) {
@@ -673,14 +710,31 @@ export async function handleFunnelV2PhotoUpload(opts: {
     funnelV2PendingConfirm?: { kind: "ud" | "tpl"; id: string };
     funnelV2PendingVideoConfirm?: { kind: "qv" | "li2v"; id: string };
     funnelV2ReturnTo?: string;
+    funnelV2FaststartRandom?: boolean;
   };
   await setTgSession(opts.platformUserId, {
     chatState: "idle",
     pending: {
       funnelV2PhotoUrl: saved.publicUrl,
       funnelV2PhotoKey: saved.relKey,
+      funnelV2FaststartRandom: false,
     },
   });
+
+  if (pending.funnelV2FaststartRandom) {
+    const { startFunnelV2FaststartRandomGen } = await import(
+      "@/lib/tg/funnel-v2/faststart"
+    );
+    await startFunnelV2FaststartRandomGen({
+      chatId: opts.chatId,
+      userId: opts.userId,
+      platformUserId: opts.platformUserId,
+      locale: opts.locale,
+      photoUrl: saved.publicUrl,
+    });
+    return;
+  }
+
   await tgSendMessage(opts.chatId, "Фото сохранено ✅");
   const pendingConfirm = pending.funnelV2PendingConfirm;
   if (pendingConfirm) {

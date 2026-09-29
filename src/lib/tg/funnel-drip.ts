@@ -530,6 +530,10 @@ export async function pollTgFunnelDrips(limit = 25): Promise<void> {
   try {
     await pollAutoRules(Math.min(40, limit));
     await pollRulesNudges(Math.min(40, limit));
+    const { pollFunnelV2FaststartNudges } = await import(
+      "@/lib/tg/funnel-v2/faststart"
+    );
+    await pollFunnelV2FaststartNudges(Math.min(40, limit));
     const now = new Date();
     const due5 = new Date(now.getTime() - MS_5M);
     const users = await prisma.user.findMany({

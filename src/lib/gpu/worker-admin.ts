@@ -181,6 +181,7 @@ export async function sweepStaleGpuJobs(): Promise<number> {
   });
   const now = Date.now();
   let n = 0;
+  const notifiedUserIds = new Set<string>();
   for (const job of active) {
     const isRunning = job.status === "running" && job.startedAt;
     const anchor = (isRunning ? job.startedAt! : job.queuedAt).getTime();
@@ -257,6 +258,7 @@ export async function sweepStaleGpuJobs(): Promise<number> {
           reason: `stale timeout after ${mins} min`,
           userMessage: `Таймаут GPU (~${mins} мин)`,
           gpuJobId: job.id,
+          notifiedUserIds,
         });
       } catch {
         /* ignore */
@@ -272,12 +274,48 @@ export async function sweepStaleGpuJobs(): Promise<number> {
           userId = run?.userId ?? null;
         }
         if (userId) {
+          const { shouldOrphanNotify } = await import(
+            "@/lib/gpu/orphan-gallery-heal"
+          );
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { galleryItemId: true, createdAt: true },
+          });
+          let charged = 0;
+          let createdAt = run?.createdAt ?? new Date(0);
+          if (run?.galleryItemId) {
+            const item = await prisma.galleryItem.findUnique({
+              where: { id: run.galleryItemId },
+              select: { metaJson: true, createdAt: true },
+            });
+            if (item) {
+              createdAt = item.createdAt;
+              try {
+                charged =
+                  Number(
+                    (JSON.parse(item.metaJson || "{}") as {
+                      chargedPeaches?: unknown;
+                    }).chargedPeaches || 0,
+                  ) || 0;
+              } catch {
+                charged = 0;
+              }
+            }
+          }
+          const notify = shouldOrphanNotify({
+            userId,
+            charged,
+            createdAt,
+            notifiedUserIds,
+          });
           const { failQuickVideoRun } = await import("@/lib/quick-video");
           await failQuickVideoRun(
             job.refId,
             userId,
             `stale timeout after ${mins} min`,
+            { notify },
           );
+          if (notify) notifiedUserIds.add(userId);
         }
       } catch {
         /* ignore */

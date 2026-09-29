@@ -5,7 +5,6 @@ import { fmtMs, opsFetch } from "@/lib/ops/ops-fetch";
 
 type Currency = "rub" | "peaches" | "both";
 type Grain = "day" | "week" | "period";
-type FunnelVer = "v1" | "v2";
 
 type FunnelStep = {
   key: string;
@@ -58,7 +57,7 @@ type SalesPayload = {
       }[];
     };
   };
-  funnels: { v1: FunnelStep[]; v2: FunnelStep[] };
+  funnels: FunnelStep[];
   series: {
     grain: Grain;
     buckets: {
@@ -143,7 +142,6 @@ export default function OpsSalesPage() {
   const [cashGrain, setCashGrain] = useState<Grain>("day");
   const [grainManual, setGrainManual] = useState(false);
   const [cashGrainManual, setCashGrainManual] = useState(false);
-  const [funnelVer, setFunnelVer] = useState<FunnelVer>("v1");
   const [data, setData] = useState<SalesPayload | null>(null);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -241,11 +239,7 @@ export default function OpsSalesPage() {
     return Math.max(1, ...data.cash.series.buckets.map((b) => b.total));
   }, [data]);
 
-  const funnel = data
-    ? funnelVer === "v2"
-      ? data.funnels.v2
-      : data.funnels.v1
-    : [];
+  const funnel = data?.funnels ?? [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -500,38 +494,11 @@ export default function OpsSalesPage() {
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  className={
-                    funnelVer === "v1"
-                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-                  }
-                  onClick={() => setFunnelVer("v1")}
-                >
-                  Старая
-                </button>
-                <button
-                  type="button"
-                  className={
-                    funnelVer === "v2"
-                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-                  }
-                  onClick={() => setFunnelVer("v2")}
-                >
-                  Новая (v2)
-                </button>
-              </div>
-            </div>
+            <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              {funnelVer === "v1"
-                ? "Шаги классической воронки бота."
-                : "Шаги Funnel v2 (правила / хаб / фото / видео / топап). Старые клики fv2: тоже учитываются."}{" "}
-              «% от всех» — от регистраций. «% от шага выше» — от предыдущей строки.
+              Шаги актуальной воронки (правила / хаб / фото / видео / топап).
+              Старые клики fv2 тоже учитываются. «% от всех» — от регистраций. «%
+              от шага выше» — от предыдущей строки.
             </p>
             <ul className="mt-4 space-y-3">
               {funnel.map((f, i) => {

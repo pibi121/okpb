@@ -164,6 +164,7 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
     take: 40,
   });
   let n = 0;
+  const notifiedUserIds = new Set<string>();
   for (const job of active) {
     const started = (job.startedAt || job.queuedAt).getTime();
     const age = now - started;
@@ -249,6 +250,7 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
           itemId: job.refId,
           reason,
           gpuJobId: job.id,
+          notifiedUserIds,
         });
       } catch {
         /* ignore */
@@ -264,8 +266,42 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
           userId = run?.userId ?? null;
         }
         if (userId) {
+          const { shouldOrphanNotify } = await import(
+            "@/lib/gpu/orphan-gallery-heal"
+          );
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { galleryItemId: true, createdAt: true },
+          });
+          let charged = 0;
+          let createdAt = run?.createdAt ?? new Date(0);
+          if (run?.galleryItemId) {
+            const item = await prisma.galleryItem.findUnique({
+              where: { id: run.galleryItemId },
+              select: { metaJson: true, createdAt: true },
+            });
+            if (item) {
+              createdAt = item.createdAt;
+              try {
+                charged =
+                  Number(
+                    (JSON.parse(item.metaJson || "{}") as { chargedPeaches?: unknown })
+                      .chargedPeaches || 0,
+                  ) || 0;
+              } catch {
+                charged = 0;
+              }
+            }
+          }
+          const notify = shouldOrphanNotify({
+            userId,
+            charged,
+            createdAt,
+            notifiedUserIds,
+          });
           const { failQuickVideoRun } = await import("@/lib/quick-video");
-          await failQuickVideoRun(job.refId, userId, reason);
+          await failQuickVideoRun(job.refId, userId, reason, { notify });
+          if (notify) notifiedUserIds.add(userId);
         }
       } catch {
         /* ignore */

@@ -10,7 +10,6 @@ const MSK_OFFSET_MS = 3 * 3600_000;
 
 export type SalesCurrency = "rub" | "peaches" | "both";
 export type SalesGrain = "day" | "week" | "period";
-export type SalesFunnelVersion = "v1" | "v2";
 
 export type SalesFunnelStepDef = {
   key: string;
@@ -22,44 +21,8 @@ export type SalesFunnelStepDef = {
   kind: "cohort" | "event" | "paid";
 };
 
-/** Classic bot funnel. */
-export const SALES_FUNNEL_V1_STEPS: SalesFunnelStepDef[] = [
-  { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
-  {
-    key: "bot.start",
-    title: "Открыл бота (/start)",
-    eventKeys: ["bot.start"],
-    kind: "event",
-  },
-  {
-    key: "bot.rules.agree",
-    title: "Согласился с правилами (18+)",
-    eventKeys: ["bot.rules.agree"],
-    kind: "event",
-  },
-  {
-    key: "bot.welcome.after_rules",
-    title: "Показал welcome после правил",
-    eventKeys: ["bot.welcome.after_rules"],
-    kind: "event",
-  },
-  {
-    key: "bot.gen.started",
-    title: "Запустил генерацию",
-    eventKeys: ["bot.gen.started"],
-    kind: "event",
-  },
-  {
-    key: "bot.topup.open",
-    title: "Открыл пополнение",
-    eventKeys: ["bot.topup.open"],
-    kind: "event",
-  },
-  { key: "paid", title: "Сделал первую оплату", eventKeys: null, kind: "paid" },
-];
-
 /** Funnel v2 steps (named keys + legacy meta.callback fallback). */
-export const SALES_FUNNEL_V2_STEPS: SalesFunnelStepDef[] = [
+export const SALES_FUNNEL_STEPS: SalesFunnelStepDef[] = [
   { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
   {
     key: "bot.start",
@@ -69,14 +32,14 @@ export const SALES_FUNNEL_V2_STEPS: SalesFunnelStepDef[] = [
   },
   {
     key: "bot.fv2.rules",
-    title: "Согласился с правилами (v2)",
+    title: "Согласился с правилами",
     eventKeys: ["bot.fv2.rules"],
     metaContains: ["fv2:rules"],
     kind: "event",
   },
   {
     key: "bot.fv2.hub",
-    title: "Главное меню v2",
+    title: "Главное меню",
     eventKeys: ["bot.fv2.hub"],
     metaContains: ["fv2:hub"],
     kind: "event",
@@ -97,7 +60,7 @@ export const SALES_FUNNEL_V2_STEPS: SalesFunnelStepDef[] = [
   },
   {
     key: "bot.fv2.topup",
-    title: "Открыл пополнение (v2)",
+    title: "Открыл пополнение",
     eventKeys: ["bot.fv2.topup"],
     metaContains: ["fv2:tu"],
     kind: "event",
@@ -106,7 +69,7 @@ export const SALES_FUNNEL_V2_STEPS: SalesFunnelStepDef[] = [
 ];
 
 /** @deprecated alias */
-export const SALES_FUNNEL_STEPS = SALES_FUNNEL_V1_STEPS;
+export const SALES_FUNNEL_V2_STEPS = SALES_FUNNEL_STEPS;
 
 export type SalesAnalyticsParams = {
   fromYmd: string;
@@ -181,10 +144,7 @@ export type SalesAnalyticsResult = {
       }[];
     };
   };
-  funnels: {
-    v1: FunnelStepRow[];
-    v2: FunnelStepRow[];
-  };
+  funnels: FunnelStepRow[];
   series: {
     grain: SalesGrain;
     buckets: {
@@ -395,10 +355,7 @@ export async function collectSalesAnalytics(
   const createdById = new Map(cohortUsers.map((u) => [u.id, u.createdAt]));
   const N = cohortIds.length;
 
-  const allEventKeys = [
-    ...collectEventKeys(SALES_FUNNEL_V1_STEPS),
-    ...collectEventKeys(SALES_FUNNEL_V2_STEPS),
-  ];
+  const allEventKeys = collectEventKeys(SALES_FUNNEL_STEPS);
 
   const [eventHits, fv2LegacyHits, paidOrdersRaw, cashOrders, cashLedgerRaw] =
     await Promise.all([
@@ -547,19 +504,12 @@ export async function collectSalesAnalytics(
     return byStep;
   }
 
-  const funnelV1 = buildFunnelRows(
-    SALES_FUNNEL_V1_STEPS,
+  const funnel = buildFunnelRows(
+    SALES_FUNNEL_STEPS,
     N,
     payers,
     payersWithin7d,
-    usersForSteps(SALES_FUNNEL_V1_STEPS),
-  );
-  const funnelV2 = buildFunnelRows(
-    SALES_FUNNEL_V2_STEPS,
-    N,
-    payers,
-    payersWithin7d,
-    usersForSteps(SALES_FUNNEL_V2_STEPS),
+    usersForSteps(SALES_FUNNEL_STEPS),
   );
 
   // Cash totals
@@ -681,7 +631,7 @@ export async function collectSalesAnalytics(
         }),
       },
     },
-    funnels: { v1: funnelV1, v2: funnelV2 },
+    funnels: funnel,
     series: {
       grain,
       buckets: buckets.map((b) => ({

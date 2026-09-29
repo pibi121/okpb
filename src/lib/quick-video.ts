@@ -686,19 +686,21 @@ export async function tryRecoverQuickVideoRunById(
   }
 }
 
-/** Fail busy/error quick-video run: gallery error + refund + TG notify. */
+/** Fail busy/error quick-video run: gallery error + refund + optional TG notify. */
 export async function failQuickVideoRun(
   runId: string,
   userId: string,
   rawMsg: string,
+  opts?: { notify?: boolean },
 ) {
-  return markQuickVideoRunError(runId, userId, rawMsg);
+  return markQuickVideoRunError(runId, userId, rawMsg, opts);
 }
 
 async function markQuickVideoRunError(
   runId: string,
   userId: string,
   rawMsg: string,
+  opts?: { notify?: boolean },
 ) {
   const friendly = friendlyQuickVideoError(rawMsg);
   const run = await prisma.quickVideoRun.findFirst({
@@ -711,7 +713,17 @@ async function markQuickVideoRunError(
     data: { status: "error", error: friendly },
   });
 
-  if (!run.galleryItemId) return;
+  if (!run.galleryItemId) {
+    if (opts?.notify !== false) {
+      const { notifyTelegramGenerationError } = await import(
+        "@/lib/tg/tg-notify"
+      );
+      await notifyTelegramGenerationError(userId, friendly).catch(
+        () => undefined,
+      );
+    }
+    return;
+  }
   let meta: Record<string, unknown> = {};
   try {
     const prev = await prisma.galleryItem.findUnique({
@@ -755,8 +767,10 @@ async function markQuickVideoRunError(
     });
   }
 
-  const { notifyTelegramGenerationError } = await import("@/lib/tg/tg-notify");
-  await notifyTelegramGenerationError(userId, friendly).catch(() => undefined);
+  if (opts?.notify !== false) {
+    const { notifyTelegramGenerationError } = await import("@/lib/tg/tg-notify");
+    await notifyTelegramGenerationError(userId, friendly).catch(() => undefined);
+  }
   void import("@/lib/gpu/orchestrator")
     .then(async ({ noteGpuJobError, currentGpuJobId }) => {
       if (currentGpuJobId()) {

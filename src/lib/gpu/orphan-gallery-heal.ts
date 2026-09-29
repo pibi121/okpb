@@ -1,11 +1,19 @@
 /**
  * After Railway redeploy / process restart, in-memory GPU workers die but
  * GalleryItem meta can stay `pending` / `busy` forever. Heal those rows:
- * error status + peach refund + Telegram notify (once).
+ * error status + peach refund + Telegram notify (throttled).
+ *
+ * Notify policy (orphan / bulk heal):
+ * - paid or free: user should know the attempt failed (can retry)
+ * - only if item is fresher than ORPHAN_NOTIFY_MAX_AGE_MS (stale = silent close)
+ * - at most one TG message per userId per sweep (notifiedUserIds)
  */
 import { prisma } from "@/lib/db";
 
 const USER_MSG = "Связь с GPU оборвалась — нажми Повторить";
+
+/** Stale pending older than this: close + refund, no TG spam. */
+export const ORPHAN_NOTIFY_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 function parseMeta(raw: string | null | undefined): Record<string, unknown> {
   try {
@@ -13,6 +21,20 @@ function parseMeta(raw: string | null | undefined): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+export function shouldOrphanNotify(opts: {
+  userId: string;
+  /** Kept for callers; charge no longer gates notify (free gens still alert). */
+  charged?: number;
+  createdAt: Date;
+  notifiedUserIds?: Set<string>;
+  maxAgeMs?: number;
+}): boolean {
+  const maxAge = opts.maxAgeMs ?? ORPHAN_NOTIFY_MAX_AGE_MS;
+  if (Date.now() - opts.createdAt.getTime() > maxAge) return false;
+  if (opts.notifiedUserIds?.has(opts.userId)) return false;
+  return true;
 }
 
 async function refundChargedPeaches(opts: {
@@ -53,12 +75,16 @@ async function refundChargedPeaches(opts: {
   }
 }
 
-/** Mark one pending/busy gallery item as error, refund, notify TG once. */
+/** Mark one pending/busy gallery item as error, refund, optionally notify TG. */
 export async function failAbandonedGalleryItem(opts: {
   itemId: string;
   reason: string;
   userMessage?: string;
   gpuJobId?: string;
+  /** false = never TG. Default: auto (charge + age + sweep budget). */
+  notify?: boolean;
+  notifiedUserIds?: Set<string>;
+  notifyMaxAgeMs?: number;
 }): Promise<boolean> {
   const item = await prisma.galleryItem.findUnique({
     where: { id: opts.itemId },
@@ -102,7 +128,18 @@ export async function failAbandonedGalleryItem(opts: {
     });
   }
 
-  if (!next.userNotifiedErrorAt) {
+  const wantNotify =
+    opts.notify !== false &&
+    !next.userNotifiedErrorAt &&
+    shouldOrphanNotify({
+      userId: item.userId,
+      charged,
+      createdAt: item.createdAt,
+      notifiedUserIds: opts.notifiedUserIds,
+      maxAgeMs: opts.notifyMaxAgeMs,
+    });
+
+  if (wantNotify) {
     try {
       const { notifyTelegramGenerationError } = await import(
         "@/lib/tg/tg-notify"
@@ -112,6 +149,7 @@ export async function failAbandonedGalleryItem(opts: {
         item.userId,
         `GPU orphaned after process restart: ${opts.reason}`,
       );
+      opts.notifiedUserIds?.add(item.userId);
       next = {
         ...next,
         userNotifiedErrorAt: new Date().toISOString(),
@@ -131,6 +169,39 @@ export async function failAbandonedGalleryItem(opts: {
   return true;
 }
 
+async function failQuickVideoWithNotifyPolicy(opts: {
+  runId: string;
+  userId: string;
+  reason: string;
+  notifiedUserIds: Set<string>;
+}): Promise<void> {
+  const run = await prisma.quickVideoRun.findUnique({
+    where: { id: opts.runId },
+    select: { galleryItemId: true, createdAt: true },
+  });
+  let charged = 0;
+  let createdAt = run?.createdAt ?? new Date(0);
+  if (run?.galleryItemId) {
+    const item = await prisma.galleryItem.findUnique({
+      where: { id: run.galleryItemId },
+      select: { metaJson: true, createdAt: true },
+    });
+    if (item) {
+      createdAt = item.createdAt;
+      charged = Number(parseMeta(item.metaJson).chargedPeaches || 0) || 0;
+    }
+  }
+  const notify = shouldOrphanNotify({
+    userId: opts.userId,
+    charged,
+    createdAt,
+    notifiedUserIds: opts.notifiedUserIds,
+  });
+  const { failQuickVideoRun } = await import("@/lib/quick-video");
+  await failQuickVideoRun(opts.runId, opts.userId, opts.reason, { notify });
+  if (notify) opts.notifiedUserIds.add(opts.userId);
+}
+
 export type OrphanRecoverResult = {
   jobsHealed: number;
   galleryHealed: number;
@@ -145,6 +216,7 @@ export async function recoverOrphanedGpuWork(opts?: {
 }): Promise<OrphanRecoverResult> {
   const minAgeMs = opts?.minAgeMs ?? 12 * 60_000;
   const cutoff = new Date(Date.now() - minAgeMs);
+  const notifiedUserIds = new Set<string>();
   let jobsHealed = 0;
   let galleryHealed = 0;
 
@@ -229,6 +301,7 @@ export async function recoverOrphanedGpuWork(opts?: {
         itemId: job.refId,
         reason,
         gpuJobId: job.id,
+        notifiedUserIds,
       });
       if (ok) galleryHealed += 1;
     } else if (job.refType === "quickVideoRun" && job.refId) {
@@ -242,8 +315,12 @@ export async function recoverOrphanedGpuWork(opts?: {
           userId = run?.userId ?? null;
         }
         if (userId) {
-          const { failQuickVideoRun } = await import("@/lib/quick-video");
-          await failQuickVideoRun(job.refId, userId, reason);
+          await failQuickVideoWithNotifyPolicy({
+            runId: job.refId,
+            userId,
+            reason,
+            notifiedUserIds,
+          });
           galleryHealed += 1;
         }
       } catch (e) {
@@ -298,8 +375,9 @@ export async function recoverOrphanedGpuWork(opts?: {
       });
       if (run && (run.status === "busy" || run.status === "queued")) {
         try {
-          const { tryRecoverQuickVideoRunById, failQuickVideoRun } =
-            await import("@/lib/quick-video");
+          const { tryRecoverQuickVideoRunById } = await import(
+            "@/lib/quick-video"
+          );
           const recovered = await tryRecoverQuickVideoRunById(
             run.id,
             run.userId,
@@ -308,11 +386,13 @@ export async function recoverOrphanedGpuWork(opts?: {
             galleryHealed += 1;
             continue;
           }
-          await failQuickVideoRun(
-            run.id,
-            run.userId,
-            "orphaned after process restart — pending gallery, no live GpuJob",
-          );
+          await failQuickVideoWithNotifyPolicy({
+            runId: run.id,
+            userId: run.userId,
+            reason:
+              "orphaned after process restart — pending gallery, no live GpuJob",
+            notifiedUserIds,
+          });
           galleryHealed += 1;
         } catch (e) {
           console.error(
@@ -328,6 +408,7 @@ export async function recoverOrphanedGpuWork(opts?: {
       itemId: item.id,
       reason:
         "orphaned pending gallery — no live GpuJob after process restart",
+      notifiedUserIds,
     });
     if (ok) galleryHealed += 1;
   }

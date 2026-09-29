@@ -178,6 +178,48 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
       ? `tunnel/Comfy down — job stuck ${mins} min`
       : `Comfy idle but job still running ${mins} min (healer)`;
 
+    // Prefer pulling finished Comfy output over failing the user (deploy /
+    // hung Node while GPU already finished). No re-render.
+    if (comfyUp && job.refType === "quickVideoRun" && job.refId) {
+      try {
+        const { tryRecoverQuickVideoRunById } = await import(
+          "@/lib/quick-video"
+        );
+        const recovered = await tryRecoverQuickVideoRunById(
+          job.refId,
+          job.userId,
+        );
+        if (recovered) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              error: null,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          console.log(
+            `[peach] tunnel-healer: recovered stuck quick-video ${job.refId} (job ${job.id})`,
+          );
+          continue;
+        }
+      } catch {
+        /* fall through to fail */
+      }
+    }
+
     await prisma.gpuJob.update({
       where: { id: job.id },
       data: {

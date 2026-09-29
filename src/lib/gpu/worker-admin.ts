@@ -189,6 +189,44 @@ export async function sweepStaleGpuJobs(): Promise<number> {
       : staleQueueLimitMs(job.kind, job.pool);
     if (now - anchor < limit) continue;
     const mins = Math.round((now - anchor) / 60_000);
+
+    if (job.refType === "quickVideoRun" && job.refId) {
+      try {
+        const { tryRecoverQuickVideoRunById } = await import(
+          "@/lib/quick-video"
+        );
+        const recovered = await tryRecoverQuickVideoRunById(
+          job.refId,
+          job.userId,
+        );
+        if (recovered) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              error: null,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          continue;
+        }
+      } catch {
+        /* fall through to fail */
+      }
+    }
+
     await prisma.gpuJob.update({
       where: { id: job.id },
       data: {

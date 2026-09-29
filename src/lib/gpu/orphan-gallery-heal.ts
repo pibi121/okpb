@@ -159,6 +159,50 @@ export async function recoverOrphanedGpuWork(opts?: {
   for (const job of orphans) {
     const reason =
       "orphaned after process restart — check recover / retry";
+
+    // Safe recover first: if Comfy already finished, deliver instead of fail.
+    if (job.refType === "quickVideoRun" && job.refId) {
+      try {
+        const { tryRecoverQuickVideoRunById } = await import(
+          "@/lib/quick-video"
+        );
+        const recovered = await tryRecoverQuickVideoRunById(
+          job.refId,
+          job.userId,
+        );
+        if (recovered) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              error: null,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, Date.now() - job.startedAt.getTime())
+                : null,
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          galleryHealed += 1;
+          jobsHealed += 1;
+          continue;
+        }
+      } catch (e) {
+        console.error(
+          "[peach] orphan quick-video recover:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+
     await prisma.gpuJob.update({
       where: { id: job.id },
       data: {
@@ -254,7 +298,16 @@ export async function recoverOrphanedGpuWork(opts?: {
       });
       if (run && (run.status === "busy" || run.status === "queued")) {
         try {
-          const { failQuickVideoRun } = await import("@/lib/quick-video");
+          const { tryRecoverQuickVideoRunById, failQuickVideoRun } =
+            await import("@/lib/quick-video");
+          const recovered = await tryRecoverQuickVideoRunById(
+            run.id,
+            run.userId,
+          );
+          if (recovered) {
+            galleryHealed += 1;
+            continue;
+          }
           await failQuickVideoRun(
             run.id,
             run.userId,

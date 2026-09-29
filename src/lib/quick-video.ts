@@ -661,6 +661,31 @@ export async function tryRecoverQuickVideoFromComfy(
   return true;
 }
 
+/** Resolve user + try pull finished Comfy output (safe, no re-render). */
+export async function tryRecoverQuickVideoRunById(
+  runId: string,
+  userIdHint?: string | null,
+): Promise<boolean> {
+  let userId = userIdHint ?? null;
+  if (!userId) {
+    const run = await prisma.quickVideoRun.findUnique({
+      where: { id: runId },
+      select: { userId: true },
+    });
+    userId = run?.userId ?? null;
+  }
+  if (!userId) return false;
+  try {
+    return await tryRecoverQuickVideoFromComfy(runId, userId);
+  } catch (e) {
+    console.error(
+      "[peach] quick-video recover-by-id failed:",
+      e instanceof Error ? e.message : e,
+    );
+    return false;
+  }
+}
+
 /** Fail busy/error quick-video run: gallery error + refund + TG notify. */
 export async function failQuickVideoRun(
   runId: string,

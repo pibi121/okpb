@@ -25,7 +25,7 @@ export const TEASE_OVERLAY_DEFAULT_FILE = "tease_cta.png";
 
 export const DEFAULT_TEASE_PRESET: TeaseOverlayPreset = {
   version: 1,
-  blurPx: 36,
+  blurPx: 47,
   overlayScale: 0.55,
   overlayOpacity: 0.95,
   overlayX: 0.5,

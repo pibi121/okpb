@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtMs, opsFetch } from "@/lib/ops/ops-fetch";
 
 type Currency = "rub" | "peaches" | "both";
-type Grain = "day" | "week";
+type Grain = "day" | "week" | "period";
 type FunnelVer = "v1" | "v2";
 
 type FunnelStep = {
@@ -423,8 +423,7 @@ export default function OpsSalesPage() {
             </div>
 
             <p className="mt-4 text-xs text-zinc-500">
-              Число оплат по {cashGrain === "day" ? "дням" : "неделям"}, цвет =
-              метод оплаты
+              Число оплат {grainHint(cashGrain)}. Цвет столбца — метод оплаты.
             </p>
             <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-zinc-500">
               {["sbp", "crypto", "cryptobot", "card", "other"].map((m) => (
@@ -434,33 +433,10 @@ export default function OpsSalesPage() {
                 </span>
               ))}
             </div>
-            <div className="mt-3 space-y-2">
-              {data.cash.series.buckets.map((b) => (
-                <div
-                  key={b.key}
-                  className="grid grid-cols-[4.5rem_1fr_2.5rem] items-center gap-2 text-xs"
-                >
-                  <span className="font-mono text-zinc-500">{b.label}</span>
-                  <div className="flex h-3 overflow-hidden rounded-full bg-white/5">
-                    {b.total === 0 ? null : (
-                      b.byMethod.map((slice) => (
-                        <div
-                          key={slice.method}
-                          className={methodColor(slice.method)}
-                          style={{
-                            width: `${(slice.count / cashChartMax) * 100}%`,
-                          }}
-                          title={`${methodLabel(slice.method)}: ${slice.count}`}
-                        />
-                      ))
-                    )}
-                  </div>
-                  <span className="text-right font-mono text-[10px] text-zinc-500">
-                    {b.total}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <VerticalStackedCashChart
+              buckets={data.cash.series.buckets}
+              maxTotal={cashChartMax}
+            />
 
             {data.cash.methods.length ? (
               <ul className="mt-3 space-y-1 text-sm text-zinc-400">
@@ -502,48 +478,19 @@ export default function OpsSalesPage() {
             </div>
             <ul className="mt-2 space-y-0.5 text-xs text-zinc-500">
               <li>
-                <span className="text-zinc-400">серый</span> — регистрации в
-                этот день/неделю
+                <span className="text-zinc-400">серый</span> — регистрации{" "}
+                {grainHint(grain)}
               </li>
               <li>
                 <span className="text-emerald-400/90">зелёный</span> — из них уже
                 оплатили хотя бы раз
               </li>
               <li>
-                <span className="text-amber-300">жёлтый</span> — повторные оплаты:
-                из них у кого строго больше одной успешной оплаты
+                <span className="text-amber-300">жёлтый</span> — повторные оплаты
+                (&gt;1 успешной оплаты)
               </li>
             </ul>
-            <div className="mt-4 space-y-2">
-              {data.series.buckets.map((b) => (
-                <div
-                  key={b.key}
-                  className="grid grid-cols-[4.5rem_1fr] items-center gap-2 text-xs"
-                >
-                  <span className="font-mono text-zinc-500">{b.label}</span>
-                  <div className="space-y-0.5">
-                    <Bar
-                      color="bg-zinc-400"
-                      value={b.registrations}
-                      max={dynMax}
-                      label={`рег. ${b.registrations}`}
-                    />
-                    <Bar
-                      color="bg-emerald-500/80"
-                      value={b.cohortPaid}
-                      max={dynMax}
-                      label={`оплатили ${b.cohortPaid}`}
-                    />
-                    <Bar
-                      color="bg-amber-400/80"
-                      value={b.repeatPayers}
-                      max={dynMax}
-                      label={`повторные ${b.repeatPayers}`}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <VerticalDynamicsChart buckets={data.series.buckets} max={dynMax} />
           </section>
 
           <section className="rounded-2xl border border-white/10 p-4">
@@ -640,6 +587,12 @@ export default function OpsSalesPage() {
   );
 }
 
+function grainHint(g: Grain) {
+  if (g === "period") return "за весь выбранный период";
+  if (g === "week") return "по неделям (только дни внутри фильтра)";
+  return "по дням";
+}
+
 function GrainToggle({
   value,
   onChange,
@@ -647,30 +600,135 @@ function GrainToggle({
   value: Grain;
   onChange: (g: Grain) => void;
 }) {
+  const btn = (g: Grain, label: string) => (
+    <button
+      type="button"
+      className={
+        value === g
+          ? "rounded-full bg-white/15 px-3 py-1 text-xs"
+          : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
+      }
+      onClick={() => onChange(g)}
+    >
+      {label}
+    </button>
+  );
   return (
-    <div className="flex gap-1">
-      <button
-        type="button"
-        className={
-          value === "day"
-            ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-            : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-        }
-        onClick={() => onChange("day")}
+    <div className="flex flex-wrap gap-1">
+      {btn("period", "За период")}
+      {btn("day", "Дни")}
+      {btn("week", "Недели")}
+    </div>
+  );
+}
+
+const CHART_H = 128;
+
+function colHeight(value: number, max: number) {
+  if (max <= 0 || value <= 0) return 0;
+  return Math.max(4, Math.round((value / max) * CHART_H));
+}
+
+function VerticalStackedCashChart({
+  buckets,
+  maxTotal,
+}: {
+  buckets: SalesPayload["cash"]["series"]["buckets"];
+  maxTotal: number;
+}) {
+  return (
+    <div className="mt-4 overflow-x-auto pb-1">
+      <div
+        className="flex min-w-full items-end justify-center gap-2 sm:gap-3"
+        style={{ minHeight: CHART_H + 44 }}
       >
-        Дни
-      </button>
-      <button
-        type="button"
-        className={
-          value === "week"
-            ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-            : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-        }
-        onClick={() => onChange("week")}
+        {buckets.map((b) => {
+          const h = colHeight(b.total, maxTotal);
+          return (
+            <div
+              key={b.key}
+              className="flex w-10 shrink-0 flex-col items-center gap-1 sm:w-12"
+            >
+              <span className="font-mono text-[10px] text-zinc-500">{b.total || ""}</span>
+              <div
+                className="flex w-full flex-col-reverse overflow-hidden rounded-t-md bg-white/5"
+                style={{ height: h || 2 }}
+                title={b.byMethod
+                  .map((s) => `${methodLabel(s.method)}: ${s.count}`)
+                  .join(", ")}
+              >
+                {b.total > 0
+                  ? b.byMethod.map((slice) => (
+                      <div
+                        key={slice.method}
+                        className={`w-full ${methodColor(slice.method)}`}
+                        style={{
+                          flexGrow: slice.count,
+                          flexBasis: 0,
+                          minHeight: slice.count > 0 ? 2 : 0,
+                        }}
+                      />
+                    ))
+                  : null}
+              </div>
+              <span className="max-w-full truncate text-center font-mono text-[9px] leading-tight text-zinc-500">
+                {b.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function VerticalDynamicsChart({
+  buckets,
+  max,
+}: {
+  buckets: SalesPayload["series"]["buckets"];
+  max: number;
+}) {
+  const series = [
+    { key: "reg", color: "bg-zinc-400", get: (b: (typeof buckets)[0]) => b.registrations },
+    {
+      key: "paid",
+      color: "bg-emerald-500/80",
+      get: (b: (typeof buckets)[0]) => b.cohortPaid,
+    },
+    {
+      key: "rep",
+      color: "bg-amber-400/80",
+      get: (b: (typeof buckets)[0]) => b.repeatPayers,
+    },
+  ] as const;
+  return (
+    <div className="mt-4 overflow-x-auto pb-1">
+      <div
+        className="flex min-w-full items-end justify-center gap-3 sm:gap-4"
+        style={{ minHeight: CHART_H + 44 }}
       >
-        Недели
-      </button>
+        {buckets.map((b) => (
+          <div
+            key={b.key}
+            className="flex shrink-0 flex-col items-center gap-1"
+          >
+            <div className="flex h-32 items-end gap-0.5">
+              {series.map((s) => (
+                <div
+                  key={s.key}
+                  className={`w-2.5 rounded-t-sm ${s.color}`}
+                  style={{ height: colHeight(s.get(b), max) }}
+                  title={`${s.key}: ${s.get(b)}`}
+                />
+              ))}
+            </div>
+            <span className="max-w-[4.5rem] truncate text-center font-mono text-[9px] leading-tight text-zinc-500">
+              {b.label}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -693,30 +751,6 @@ function Kpi({
       {hint ? (
         <p className="mt-1 text-[11px] leading-snug text-zinc-600">{hint}</p>
       ) : null}
-    </div>
-  );
-}
-
-function Bar({
-  color,
-  value,
-  max,
-  label,
-}: {
-  color: string;
-  value: number;
-  max: number;
-  label: string;
-}) {
-  const w = max > 0 ? Math.max(value > 0 ? 2 : 0, (value / max) * 100) : 0;
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/5">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${w}%` }} />
-      </div>
-      <span className="w-36 shrink-0 text-right font-mono text-[10px] text-zinc-500">
-        {label}
-      </span>
     </div>
   );
 }

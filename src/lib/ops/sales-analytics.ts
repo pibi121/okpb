@@ -9,7 +9,7 @@ const MSK = "Europe/Moscow";
 const MSK_OFFSET_MS = 3 * 3600_000;
 
 export type SalesCurrency = "rub" | "peaches" | "both";
-export type SalesGrain = "day" | "week";
+export type SalesGrain = "day" | "week" | "period";
 export type SalesFunnelVersion = "v1" | "v2";
 
 export type SalesFunnelStepDef = {
@@ -232,9 +232,14 @@ function mskWeekMonday(ymd: string): string {
   return addYmdDays(ymd, mondayOffset);
 }
 
-function weekLabel(monYmd: string): string {
-  const sun = addYmdDays(monYmd, 6);
-  return `${monYmd.slice(5)}–${sun.slice(5)}`;
+function bucketRangeLabel(fromYmd: string, toYmd: string): string {
+  if (fromYmd === toYmd) return fromYmd.slice(5);
+  return `${fromYmd.slice(5)}–${toYmd.slice(5)}`;
+}
+
+function parseGrainParam(raw: SalesGrain | undefined, fallback: SalesGrain): SalesGrain {
+  if (raw === "day" || raw === "week" || raw === "period") return raw;
+  return fallback;
 }
 
 function median(nums: number[]): number | null {
@@ -334,12 +339,8 @@ export async function collectSalesAnalytics(
   const from = mskDayStartUtc(fromYmd);
   const toExclusive = mskDayStartUtc(addYmdDays(toYmd, 1));
   const defaultGrain: SalesGrain = daySpan(fromYmd, toYmd) > 14 ? "week" : "day";
-  const grain: SalesGrain =
-    params.grain === "week" || params.grain === "day" ? params.grain : defaultGrain;
-  const cashGrain: SalesGrain =
-    params.cashGrain === "week" || params.cashGrain === "day"
-      ? params.cashGrain
-      : defaultGrain;
+  const grain: SalesGrain = parseGrainParam(params.grain, defaultGrain);
+  const cashGrain: SalesGrain = parseGrainParam(params.cashGrain, defaultGrain);
   const currency: SalesCurrency =
     params.currency === "peaches" || params.currency === "both"
       ? params.currency
@@ -536,7 +537,7 @@ export async function collectSalesAnalytics(
   for (const b of cashBuckets) cashSeriesMap.set(b.key, new Map());
   for (const o of cashOrders) {
     if (!o.paidAt) continue;
-    const key = bucketKeyForInstant(o.paidAt, cashGrain, fromYmd);
+    const key = bucketKeyForInstant(o.paidAt, cashGrain, cashBuckets, fromYmd, toYmd);
     if (!key || !cashSeriesMap.has(key)) continue;
     const method = o.paymentMethod || "other";
     const m = cashSeriesMap.get(key)!;
@@ -554,7 +555,7 @@ export async function collectSalesAnalytics(
     repeatByBucket.set(b.key, 0);
   }
   for (const u of cohortUsers) {
-    const key = bucketKeyForInstant(u.createdAt, grain, fromYmd);
+    const key = bucketKeyForInstant(u.createdAt, grain, buckets, fromYmd, toYmd);
     if (!key || !regByBucket.has(key)) continue;
     regByBucket.set(key, (regByBucket.get(key) || 0) + 1);
     const pays = payCountByUser.get(u.id) || 0;
@@ -655,6 +656,15 @@ function daySpan(fromYmd: string, toYmd: string): number {
 function buildBuckets(fromYmd: string, toYmd: string, grain: SalesGrain) {
   const out: { key: string; label: string; fromYmd: string; toYmd: string }[] =
     [];
+  if (grain === "period") {
+    out.push({
+      key: "period",
+      label: bucketRangeLabel(fromYmd, toYmd),
+      fromYmd,
+      toYmd,
+    });
+    return out;
+  }
   if (grain === "day") {
     let cur = fromYmd;
     while (cur <= toYmd) {
@@ -669,8 +679,8 @@ function buildBuckets(fromYmd: string, toYmd: string, grain: SalesGrain) {
     const bucketFrom = mon < fromYmd ? fromYmd : mon;
     const bucketTo = sun > toYmd ? toYmd : sun;
     out.push({
-      key: mon,
-      label: weekLabel(mon),
+      key: `${bucketFrom}_${bucketTo}`,
+      label: bucketRangeLabel(bucketFrom, bucketTo),
       fromYmd: bucketFrom,
       toYmd: bucketTo,
     });
@@ -679,15 +689,30 @@ function buildBuckets(fromYmd: string, toYmd: string, grain: SalesGrain) {
   return out;
 }
 
+function bucketKeyForYmd(
+  ymd: string,
+  grain: SalesGrain,
+  buckets: { key: string; fromYmd: string; toYmd: string }[],
+  rangeFromYmd: string,
+  rangeToYmd: string,
+): string | null {
+  if (ymd < rangeFromYmd || ymd > rangeToYmd) return null;
+  if (grain === "period") return buckets[0]?.key ?? null;
+  if (grain === "day") {
+    return buckets.some((b) => b.key === ymd) ? ymd : null;
+  }
+  for (const b of buckets) {
+    if (ymd >= b.fromYmd && ymd <= b.toYmd) return b.key;
+  }
+  return null;
+}
+
 function bucketKeyForInstant(
   at: Date,
   grain: SalesGrain,
+  buckets: { key: string; fromYmd: string; toYmd: string }[],
   rangeFromYmd: string,
+  rangeToYmd: string,
 ): string | null {
-  const ymd = mskYmd(at);
-  if (grain === "day") return ymd;
-  const mon = mskWeekMonday(ymd);
-  const rangeMon = mskWeekMonday(rangeFromYmd);
-  if (mon < rangeMon && ymd < rangeFromYmd) return null;
-  return mon;
+  return bucketKeyForYmd(mskYmd(at), grain, buckets, rangeFromYmd, rangeToYmd);
 }

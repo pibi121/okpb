@@ -15,7 +15,7 @@ function parseCurrency(raw: string | null): SalesCurrency {
 }
 
 function parseGrain(raw: string | null, fromYmd: string, toYmd: string): SalesGrain {
-  if (raw === "day" || raw === "week") return raw;
+  if (raw === "day" || raw === "week" || raw === "period") return raw;
   const from = new Date(fromYmd).getTime();
   const to = new Date(toYmd).getTime();
   const days = Math.floor((to - from) / 86_400_000) + 1;

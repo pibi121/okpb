@@ -336,6 +336,7 @@ model PaymentOrder {
   @@index([status, createdAt])
   @@index([casheraUuid])
   @@index([status, remindCount, createdAt])
+  @@index([paidAt])
 }
 
 model GpuVault {

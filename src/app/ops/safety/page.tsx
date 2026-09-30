@@ -140,18 +140,24 @@ export default function OpsSafetyPage() {
       <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">
         <div className="text-sm font-medium">Модель проверки</div>
         <p className="mt-1 text-xs text-zinc-500">
-          Бакеты применяются к старой модели; новая считает возраст в годах
-          (&lt;13 блок, 13–18 сомнение, soft-adult до ~19.5 зависит от minAdultScore).
+          Выбор применяется только после «Сохранить настройки». Бакеты — для
+          старой модели; новая считает возраст в годах (&lt;13 блок, 13–18
+          сомнение).
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div
+          className="mt-3 inline-flex rounded-xl border border-white/15 bg-black/40 p-1"
+          role="group"
+          aria-label="Модель age-gate"
+        >
           <button
             type="button"
             disabled={busy}
-            onClick={() => void save({ engine: "opencv" })}
-            className={`rounded-full px-4 py-2 text-sm ${
+            onClick={() => setD({ ...d, engine: "opencv" })}
+            aria-pressed={engine === "opencv"}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
               engine === "opencv"
-                ? "bg-sky-500/20 text-sky-200"
-                : "bg-zinc-700 text-zinc-300"
+                ? "bg-white text-zinc-900 shadow"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
             Старая (OpenCV)
@@ -159,16 +165,25 @@ export default function OpsSafetyPage() {
           <button
             type="button"
             disabled={busy}
-            onClick={() => void save({ engine: "insightface" })}
-            className={`rounded-full px-4 py-2 text-sm ${
+            onClick={() => setD({ ...d, engine: "insightface" })}
+            aria-pressed={engine === "insightface"}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
               engine === "insightface"
-                ? "bg-violet-500/20 text-violet-200"
-                : "bg-zinc-700 text-zinc-300"
+                ? "bg-white text-zinc-900 shadow"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
             Новая (InsightFace)
           </button>
         </div>
+        <p className="mt-2 text-xs text-zinc-400">
+          Сейчас выбрано:{" "}
+          <span className="font-medium text-zinc-100">
+            {engine === "insightface"
+              ? "Новая (InsightFace)"
+              : "Старая (OpenCV)"}
+          </span>
+        </p>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">

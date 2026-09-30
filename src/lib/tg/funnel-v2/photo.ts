@@ -791,7 +791,6 @@ export async function handleFunnelV2PhotoUpload(opts: {
     funnelV2PendingConfirm?: { kind: "ud" | "tpl"; id: string };
     funnelV2PendingVideoConfirm?: { kind: "qv" | "li2v"; id: string };
     funnelV2ReturnTo?: string;
-    funnelV2FaststartRandom?: boolean;
   };
   await setTgSession(opts.platformUserId, {
     chatState: "idle",
@@ -801,20 +800,6 @@ export async function handleFunnelV2PhotoUpload(opts: {
       funnelV2FaststartRandom: false,
     },
   });
-
-  if (pending.funnelV2FaststartRandom) {
-    const { startFunnelV2FaststartRandomGen } = await import(
-      "@/lib/tg/funnel-v2/faststart"
-    );
-    await startFunnelV2FaststartRandomGen({
-      chatId: opts.chatId,
-      userId: opts.userId,
-      platformUserId: opts.platformUserId,
-      locale: opts.locale,
-      photoUrl: saved.publicUrl,
-    });
-    return;
-  }
 
   await tgSendMessage(opts.chatId, "Фото сохранено ✅");
   const pendingConfirm = pending.funnelV2PendingConfirm;

@@ -10,9 +10,8 @@ export const FV2 = {
   earn: "fv2:earn",
   help: "fv2:help",
   hub: "fv2:hub",
-  /** Faststart: pick pose templates */
+  /** Legacy faststart buttons still in old chats → photo hub / hub */
   fsPose: "fv2:fs:pose",
-  /** Faststart: later → hub */
   fsLater: "fv2:fs:later",
   /** After blur: unlock full photo (sets unblur intent → topup) */
   unblur: (itemId: string) => `fv2:ub:${itemId}`,

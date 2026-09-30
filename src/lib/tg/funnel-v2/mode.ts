@@ -35,14 +35,6 @@ export async function userOnFunnelV2(user: FunnelV2User): Promise<boolean> {
   return isFunnelV2Live();
 }
 
-/**
- * Temporary post-rules CTA instead of hub.
- * ON by default; set TG_FUNNEL_V2_FASTSTART=0 to roll back to hub after rules.
- */
-export function isFunnelV2FaststartEnabled(): boolean {
-  return process.env.TG_FUNNEL_V2_FASTSTART !== "0";
-}
-
 export async function getFunnelBalance(user: FunnelV2User): Promise<number> {
   if (user.tgFunnelV2Preview) {
     return Math.max(0, Number(user.tgFunnelV2PreviewBalance || 0));

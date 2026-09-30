@@ -15,6 +15,11 @@ export type TrackFunnelInput = {
   stepTitle?: string;
   stepDetail?: string;
   at?: Date;
+  /**
+   * Critical path (e.g. bot.start): await + retries instead of silent drop.
+   * Default false keeps fire-and-forget callers cheap.
+   */
+  critical?: boolean;
 };
 
 type SourceCache = {
@@ -71,30 +76,48 @@ function dayIndexFrom(createdAt: Date, at: Date) {
   return Math.floor(ms / 86_400_000);
 }
 
-/** Fire-and-forget safe: never throws to callers. */
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+async function writeFunnelEvent(input: TrackFunnelInput): Promise<void> {
+  const step = getFunnelStep(input.eventKey);
+  const at = input.at || new Date();
+  const source = await resolveSource(input.userId);
+  await prisma.funnelEvent.create({
+    data: {
+      userId: input.userId,
+      platformUserId: input.platformUserId || "",
+      at,
+      dayIndex: dayIndexFrom(source.createdAt, at),
+      surface: input.surface || step.surface,
+      eventKey: input.eventKey,
+      stepTitle: input.stepTitle || step.title,
+      stepDetail: input.stepDetail || step.detail,
+      sourceKind: source.kind,
+      sourceCode: source.code,
+      metaJson: JSON.stringify(input.meta || {}),
+    },
+  });
+}
+
+/**
+ * Persist funnel event. With `critical: true` retries up to 3 attempts.
+ * Never throws to callers (logs on final failure).
+ */
 export async function trackFunnelEvent(input: TrackFunnelInput): Promise<void> {
-  try {
-    const step = getFunnelStep(input.eventKey);
-    const at = input.at || new Date();
-    const source = await resolveSource(input.userId);
-    await prisma.funnelEvent.create({
-      data: {
-        userId: input.userId,
-        platformUserId: input.platformUserId || "",
-        at,
-        dayIndex: dayIndexFrom(source.createdAt, at),
-        surface: input.surface || step.surface,
-        eventKey: input.eventKey,
-        stepTitle: input.stepTitle || step.title,
-        stepDetail: input.stepDetail || step.detail,
-        sourceKind: source.kind,
-        sourceCode: source.code,
-        metaJson: JSON.stringify(input.meta || {}),
-      },
-    });
-  } catch (e) {
-    console.error("[funnel-track]", input.eventKey, e);
+  const attempts = input.critical ? 3 : 1;
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await writeFunnelEvent(input);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (i + 1 < attempts) await sleep(40 * (i + 1));
+    }
   }
+  console.error("[funnel-track]", input.eventKey, lastErr);
 }
 
 export function trackFunnelEventBg(input: TrackFunnelInput): void {

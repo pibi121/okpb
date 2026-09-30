@@ -165,7 +165,7 @@ export default function OpsSalesPage() {
   const [grainManual, setGrainManual] = useState(false);
   const [cashGrainManual, setCashGrainManual] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
-  const [funnelTab, setFunnelTab] = useState<"main" | "test" | "pay">("main");
+  const [funnelTab, setFunnelTab] = useState<"main" | "pay">("main");
   const [payMode, setPayMode] = useState<"cohort" | "fact">("cohort");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [partnersOpen, setPartnersOpen] = useState(false);
@@ -367,13 +367,11 @@ export default function OpsSalesPage() {
   }, [data]);
 
   const funnel =
-    funnelTab === "test"
-      ? (data?.funnelsTest ?? [])
-      : funnelTab === "pay"
-        ? payMode === "fact"
-          ? (data?.funnelsPayFact ?? [])
-          : (data?.funnelsPay ?? [])
-        : (data?.funnels ?? []);
+    funnelTab === "pay"
+      ? payMode === "fact"
+        ? (data?.funnelsPayFact ?? [])
+        : (data?.funnelsPay ?? [])
+      : (data?.funnels ?? []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -728,17 +726,6 @@ export default function OpsSalesPage() {
                 <button
                   type="button"
                   className={
-                    funnelTab === "test"
-                      ? "rounded-full bg-white/15 px-3 py-1 text-xs"
-                      : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
-                  }
-                  onClick={() => setFunnelTab("test")}
-                >
-                  Тестовая
-                </button>
-                <button
-                  type="button"
-                  className={
                     funnelTab === "pay"
                       ? "rounded-full bg-white/15 px-3 py-1 text-xs"
                       : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
@@ -752,11 +739,9 @@ export default function OpsSalesPage() {
             <p className="mt-1 text-xs text-zinc-500">
               {funnelTab === "main"
                 ? "Основная: вход (/start) → правила → хаб → фото → видео → топап → оплаты. «% от всех» — от входа."
-                : funnelTab === "test"
-                  ? "Тестовая (faststart): регистрация → правила → запустил генерацию → топап → пополнил → повторно. «% от всех» — от регистраций."
-                  : payMode === "fact"
-                    ? "Оплаты по факту: шаги и оплаты, случившиеся в выбранные даты (дата регистрации не важна). «% от всех» — от «открыл пополнение» за эти даты."
-                    : "Оплаты по регистрации: среди зарегистрированных в выбранные даты. Открыл → сумма → способ → ссылка → оплатил (оплата могла быть позже)."}
+                : payMode === "fact"
+                  ? "Оплаты по факту: шаги и оплаты, случившиеся в выбранные даты (дата регистрации не важна). «% от всех» — от «открыл пополнение» за эти даты."
+                  : "Оплаты по регистрации: среди зарегистрированных в выбранные даты. Открыл → сумма → способ → ссылка → оплатил (оплата могла быть позже)."}
             </p>
             {funnelTab === "pay" ? (
               <div className="mt-3 flex flex-wrap gap-1">

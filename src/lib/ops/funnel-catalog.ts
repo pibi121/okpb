@@ -502,7 +502,7 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "bot",
     "generation",
     "Funnel v2: запустил генерацию",
-    "Старт фото-генерации в воронке (в т.ч. blur-trial / faststart).",
+    "Старт фото-генерации в воронке (в т.ч. blur-trial).",
   ),
   S(
     "bot.fv2.hub",

@@ -90,7 +90,7 @@ export type TgPending = {
   funnelV2EditItemId?: string;
   funnelV2TopupPeaches?: number;
   funnelV2TopupBonus?: number;
-  /** Faststart: next photo upload starts random blur trial */
+  /** @deprecated Legacy faststart flag; cleared on photo upload, unused. */
   funnelV2FaststartRandom?: boolean;
   /** After blur: topup should charge + regenerate clear photo */
   funnelV2Unblur?: {

@@ -31,8 +31,16 @@ export async function resolveTgApiUserId(req: Request): Promise<string | null> {
   const tgUser = parseTelegramUser(fields);
   if (!tgUser) return null;
 
-  const user = await findOrCreateTelegramUser(tgUser);
-  return user.id;
+  try {
+    const user = await findOrCreateTelegramUser(tgUser);
+    return user.id;
+  } catch (e) {
+    const { TelegramSignupRateLimitedError } = await import(
+      "@/lib/tg/signup-rate-limit"
+    );
+    if (e instanceof TelegramSignupRateLimitedError) return null;
+    throw e;
+  }
 }
 
 /** @deprecated use resolveTgApiUserId */

@@ -55,7 +55,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No user in initData" }, { status: 400 });
   }
 
-  let user = await findOrCreateTelegramUser(tgUser, body.startPayload);
+  let user;
+  try {
+    user = await findOrCreateTelegramUser(tgUser, body.startPayload);
+  } catch (e) {
+    const { TelegramSignupRateLimitedError } = await import(
+      "@/lib/tg/signup-rate-limit"
+    );
+    if (e instanceof TelegramSignupRateLimitedError) {
+      return NextResponse.json(
+        { error: "Too many new signups, try again in a minute" },
+        { status: 429 },
+      );
+    }
+    throw e;
+  }
 
   if (body.locale && (body.locale === "en" || body.locale === "ru")) {
     user = await prisma.user.update({

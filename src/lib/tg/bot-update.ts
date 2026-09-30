@@ -177,9 +177,22 @@ async function touchLastBotForAccount(platformUserId: string) {
 }
 
 async function handleStart(chatId: number, from: TelegramBotUser, payload?: string) {
-  const user = await findOrCreateTelegramUserFromBot(from, payload);
+  let user;
+  try {
+    user = await findOrCreateTelegramUserFromBot(from, payload);
+  } catch (e) {
+    const { TelegramSignupRateLimitedError, signupRateLimitedMessage } =
+      await import("@/lib/tg/signup-rate-limit");
+    if (e instanceof TelegramSignupRateLimitedError) {
+      const loc =
+        from.language_code?.toLowerCase().startsWith("en") ? "en" : "ru";
+      await tgSendMessage(chatId, signupRateLimitedMessage(loc));
+      return;
+    }
+    throw e;
+  }
   const locale = localeFromUser(user.locale);
-  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  const { trackFunnelEvent } = await import("@/lib/ops/funnel-track");
 
   const { assertUserCanUseBot } = await import("@/lib/ops/gate");
   const gate = await assertUserCanUseBot(user.id, locale);
@@ -190,7 +203,7 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
 
   // Mini App → bot album upload for a specific LoRA draft character.
   if (payload?.startsWith("photos_") && user.ageConfirmed) {
-    trackFunnelEventBg({
+    void trackFunnelEvent({
       userId: user.id,
       platformUserId: String(chatId),
       eventKey: "bot.start.photos_upload",
@@ -231,13 +244,14 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
       "@/lib/tg/funnel-v2/mode"
     );
     if (await userOnFunnelV2(user)) {
-      trackFunnelEventBg({
+      await trackFunnelEvent({
         userId: user.id,
         platformUserId: String(chatId),
         eventKey: user.ageConfirmed
           ? "bot.start.returning"
           : "bot.start",
         meta: { payload: payload || "", funnelV2: true },
+        critical: true,
       });
       if (!funnelV2RulesAccepted(user)) {
         const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
@@ -251,21 +265,23 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
   }
 
   if (user.ageConfirmed) {
-    trackFunnelEventBg({
+    await trackFunnelEvent({
       userId: user.id,
       platformUserId: String(chatId),
       eventKey: "bot.start.returning",
       meta: { payload: payload || "" },
+      critical: true,
     });
     await sendMainMenuHub(chatId, user.id, locale);
     return;
   }
 
-  trackFunnelEventBg({
+  await trackFunnelEvent({
     userId: user.id,
     platformUserId: String(chatId),
     eventKey: "bot.start",
     meta: { payload: payload || "" },
+    critical: true,
   });
   await beginOnboardingWithoutLang(chatId, user.id);
 }
@@ -1657,7 +1673,23 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   }
 
   const platformUserId = String(chatId);
-  let user = await findOrCreateTelegramUserFromBot(cq.from);
+  let user;
+  try {
+    user = await findOrCreateTelegramUserFromBot(cq.from);
+  } catch (e) {
+    const { TelegramSignupRateLimitedError, signupRateLimitedMessage } =
+      await import("@/lib/tg/signup-rate-limit");
+    if (e instanceof TelegramSignupRateLimitedError) {
+      const loc =
+        cq.from?.language_code?.toLowerCase().startsWith("en") ? "en" : "ru";
+      await tgAnswerCallbackQuery(
+        cq.id,
+        signupRateLimitedMessage(loc).slice(0, 180),
+      );
+      return;
+    }
+    throw e;
+  }
   let locale = localeFromUser(user.locale);
   void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
     touchTgActivity(user.id),
@@ -2027,7 +2059,20 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     ? text.split(/\s+/)[1]
     : undefined;
 
-  let user = await findOrCreateTelegramUserFromBot(from, startPayload);
+  let user;
+  try {
+    user = await findOrCreateTelegramUserFromBot(from, startPayload);
+  } catch (e) {
+    const { TelegramSignupRateLimitedError, signupRateLimitedMessage } =
+      await import("@/lib/tg/signup-rate-limit");
+    if (e instanceof TelegramSignupRateLimitedError) {
+      const loc =
+        from.language_code?.toLowerCase().startsWith("en") ? "en" : "ru";
+      await tgSendMessage(chatId, signupRateLimitedMessage(loc));
+      return;
+    }
+    throw e;
+  }
   let locale = localeFromUser(user.locale);
   void import("@/lib/tg/activity").then(({ touchTgActivity }) =>
     touchTgActivity(user.id),

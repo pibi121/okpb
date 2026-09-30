@@ -28,11 +28,6 @@ const COVERS = {
     "/tg/media/funnel-undress-preview.mp4",
     "/tg/media/undress-example.png",
   ],
-  /** After rules — faststart CTA (gitignored local mp4; fallback onboard). */
-  faststart: [
-    "/tg/media/funnel-faststart.mp4",
-    "/tg/media/onboard-2.mp4",
-  ],
 } as const;
 
 export type FunnelCoverSlot = keyof typeof COVERS;

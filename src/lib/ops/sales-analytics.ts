@@ -74,8 +74,7 @@ export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
 ];
 
 /**
- * Тестовая воронка под faststart:
- * рег → правила → генерация → топап → оплата → повтор.
+ * Тестовая воронка (legacy faststart-срез). UI-вкладка убрана; API ещё отдаёт funnelsTest.
  */
 export const SALES_FUNNEL_TEST_STEPS: SalesFunnelStepDef[] = [
   { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },

@@ -117,6 +117,11 @@ export async function findOrCreateTelegramUser(
     return prisma.user.findUniqueOrThrow({ where: { id: existing.user.id } });
   }
 
+  const {
+    assertTelegramSignupAllowed,
+  } = await import("@/lib/tg/signup-rate-limit");
+  await assertTelegramSignupAllowed();
+
   const email = telegramSyntheticEmail(platformUserId);
   const randomSecret = cryptoRandom();
   const passwordHash = await hashPassword(randomSecret);

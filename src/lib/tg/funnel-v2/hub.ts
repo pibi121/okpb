@@ -199,6 +199,7 @@ export async function sendFunnelV2Hub(
     clearPending: true,
   });
 
+  // Opening hub cancels soft 30m blur follow-up (user already saw menu).
   void import("@/lib/tg/funnel-v2/faststart").then(({ cancelFunnelV2FaststartIdle }) =>
     cancelFunnelV2FaststartIdle(userId),
   );
@@ -243,8 +244,6 @@ export async function acceptFunnelV2Rules(
       /* ignore */
     }
   }
-  const { afterFunnelV2RulesAccepted } = await import(
-    "@/lib/tg/funnel-v2/faststart"
-  );
-  await afterFunnelV2RulesAccepted(chatId, userId, locale);
+  // Single path: hub (faststart CTA after rules removed).
+  await sendFunnelV2Hub(chatId, userId, locale);
 }

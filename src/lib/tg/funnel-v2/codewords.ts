@@ -22,6 +22,37 @@ const TOPUP_MAP: Record<string, number> = {
   TOPUP_10000: 10000,
 };
 
+async function resetFunnelFresh(
+  chatId: number,
+  platformUserId: string,
+  userId: string,
+  locale: TgLocale,
+  label: string,
+) {
+  await enterFunnelV2Preview(userId);
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      tgFunnelV2FaststartAt: null,
+      tgFunnelV2FaststartNudgeSent: false,
+      tgFunnelV2BlurOfferAt: null,
+      tgFunnelV2BlurNudgeSent: false,
+      tgFunnelV2BlurTrialsUsed: 0,
+      tgFunnelV2RulesOk: false,
+    },
+  });
+  await setTgSession(platformUserId, {
+    chatState: "funnel_v2_awaiting_rules",
+    clearPending: true,
+  });
+  await tgSendMessage(
+    chatId,
+    `🧪 <b>${label}</b>\nКак первый запуск: правила → <b>хаб</b> → фото/ген → blur.\n` +
+      `Для старых аккаунтов: сброс rules/blur + preview-баланс 0. После blur — <code>TOPUP_*</code>.`,
+  );
+  await sendFunnelV2Rules(chatId, userId, locale);
+}
+
 export async function tryFunnelV2Codeword(opts: {
   chatId: number;
   platformUserId: string;
@@ -46,28 +77,15 @@ export async function tryFunnelV2Codeword(opts: {
     return true;
   }
 
-  if (key === "FUNNEL_FRESH") {
-    await enterFunnelV2Preview(opts.userId);
-    await prisma.user.update({
-      where: { id: opts.userId },
-      data: {
-        tgFunnelV2FaststartAt: null,
-        tgFunnelV2FaststartNudgeSent: false,
-        tgFunnelV2BlurOfferAt: null,
-        tgFunnelV2BlurNudgeSent: false,
-        tgFunnelV2BlurTrialsUsed: 0,
-        tgFunnelV2RulesOk: false,
-      },
-    });
-    await setTgSession(opts.platformUserId, {
-      chatState: "funnel_v2_awaiting_rules",
-      clearPending: true,
-    });
-    await tgSendMessage(
+  // FUNNEL_FRESH / FUNNEL_HUB_TEST — same: re-onboard via preview → rules → hub.
+  if (key === "FUNNEL_FRESH" || key === "FUNNEL_HUB_TEST") {
+    await resetFunnelFresh(
       opts.chatId,
-      "🧪 <b>FUNNEL_FRESH</b>\nКак первый запуск: правила → faststart (если включён).",
+      opts.platformUserId,
+      opts.userId,
+      opts.locale,
+      key,
     );
-    await sendFunnelV2Rules(opts.chatId, opts.userId, opts.locale);
     return true;
   }
 
@@ -76,7 +94,7 @@ export async function tryFunnelV2Codeword(opts: {
     if (!user?.tgFunnelV2Preview) {
       await tgSendMessage(
         opts.chatId,
-        "Сначала отправь <code>FUNNEL_PREVIEW</code> или <code>FUNNEL_FRESH</code>, чтобы войти в тестовую воронку.",
+        "Сначала отправь <code>FUNNEL_FRESH</code> или <code>FUNNEL_HUB_TEST</code> (или <code>FUNNEL_PREVIEW</code>), чтобы войти в тестовую воронку.",
       );
       return true;
     }

@@ -187,34 +187,14 @@ export default function OpsSafetyPage() {
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium">
-              Ручная модерация при сомнениях
-            </div>
-            <p className="mt-1 text-xs text-zinc-500">
-              Вкл: сомнительные фото → очередь «На проверке» (без генерации).
-              Выкл: сомнения = сразу блок (как несовершеннолетний). Явные детские
-              бакеты всегда блокируются.
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              void save({
-                manualUncertainModeration: !d.manualUncertainModeration,
-              })
-            }
-            className={`rounded-full px-4 py-2 text-sm ${
-              d.manualUncertainModeration
-                ? "bg-amber-500/20 text-amber-200"
-                : "bg-zinc-700 text-zinc-300"
-            }`}
-          >
-            {d.manualUncertainModeration ? "Вкл" : "Выкл"}
-          </button>
-        </div>
+        <div className="text-sm font-medium">Сомнения и «Ей есть 18!»</div>
+        <p className="mt-1 text-xs text-zinc-500">
+          Сомнительные и детские фото блокируются сразу. Под сообщением о блоке
+          у человека кнопка «Ей есть 18!» — фото попадает в очередь ниже, а в
+          ops-чат (тема «Контроль качества») уходит уведомление. Одобрили —
+          человеку придёт «Прости, наша ошибка…», и это же фото больше не
+          блокируется (по хэшу файла). Отклонили — остаётся блок.
+        </p>
       </div>
 
       <label className="flex flex-col gap-1 text-sm">

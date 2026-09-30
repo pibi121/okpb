@@ -112,6 +112,14 @@ export async function POST(req: Request) {
       );
     }
     if (e instanceof AgeGateBlockedError) {
+      const { recordAgeGateBlock } = await import("@/lib/age-gate-review");
+      await recordAgeGateBlock({
+        userId,
+        platformUserId,
+        locale,
+        result: e.result,
+        surface: "miniapp",
+      });
       return NextResponse.json(
         { error: e.message, code: e.code, ageGate: e.result },
         { status: 400 },

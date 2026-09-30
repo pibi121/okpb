@@ -74,6 +74,8 @@ type SalesPayload = {
     revenuePerRegRub: number;
     revenuePerRegPeaches: number;
     paymentsPerReg: number;
+    ageBlockedAttempts: number;
+    ageBlockedUsers: number;
   };
   cash: {
     note: string;
@@ -100,6 +102,7 @@ type SalesPayload = {
   funnelsTest: FunnelStep[];
   funnelsPay: FunnelStep[];
   funnelsPayFact: FunnelStep[];
+  funnelsMainFact: FunnelStep[];
   series: {
     grain: Grain;
     buckets: {
@@ -330,7 +333,7 @@ export default function OpsSalesPage() {
           step,
           view,
           funnel: funnelTab,
-          basis: funnelTab === "pay" ? payMode : "cohort",
+          basis: payMode,
           from,
           to,
         });
@@ -436,15 +439,6 @@ export default function OpsSalesPage() {
   const showRub = currency === "rub" || currency === "both";
   const showPeaches = currency === "peaches" || currency === "both";
 
-  const dynMax = useMemo(() => {
-    if (!data?.series.buckets.length) return 1;
-    let m = 1;
-    for (const b of data.series.buckets) {
-      m = Math.max(m, b.registrations, b.cohortPaid, b.repeatPayers);
-    }
-    return m;
-  }, [data]);
-
   const cashChartMax = useMemo(() => {
     if (!data?.cash.series.buckets.length) return 1;
     return Math.max(1, ...data.cash.series.buckets.map((b) => b.total));
@@ -455,7 +449,9 @@ export default function OpsSalesPage() {
       ? payMode === "fact"
         ? (data?.funnelsPayFact ?? [])
         : (data?.funnelsPay ?? [])
-      : (data?.funnels ?? []);
+      : payMode === "fact"
+        ? (data?.funnelsMainFact ?? [])
+        : (data?.funnels ?? []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -688,6 +684,11 @@ export default function OpsSalesPage() {
                 hint="Число оплат ÷ число регистраций"
                 value={fmtMoney(data.kpi.paymentsPerReg)}
               />
+              <Kpi
+                label="Заблокировано фото (Age Gate)"
+                hint="За выбранные даты, любые пользователи: попыток / уникальных людей"
+                value={`${data.kpi.ageBlockedAttempts} / ${data.kpi.ageBlockedUsers}`}
+              />
             </div>
           </section>
 
@@ -770,35 +771,6 @@ export default function OpsSalesPage() {
 
           <section className="rounded-2xl border border-white/10 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-xl">Динамика первичных регистраций</h2>
-              <GrainToggle
-                value={grain}
-                onChange={(g) => {
-                  setGrain(g);
-                  setGrainManual(true);
-                  void load({ grain: g, grainManual: true });
-                }}
-              />
-            </div>
-            <ul className="mt-2 space-y-0.5 text-xs text-zinc-500">
-              <li>
-                <span className="text-zinc-400">серый</span> — регистрации{" "}
-                {grainHint(grain)}
-              </li>
-              <li>
-                <span className="text-emerald-400/90">зелёный</span> — из них уже
-                оплатили хотя бы раз
-              </li>
-              <li>
-                <span className="text-amber-300">жёлтый</span> — повторные оплаты
-                (&gt;1 успешной оплаты)
-              </li>
-            </ul>
-            <VerticalDynamicsChart buckets={data.series.buckets} max={dynMax} />
-          </section>
-
-          <section className="rounded-2xl border border-white/10 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-display text-xl">Воронка первичных регистраций</h2>
               <div className="flex flex-wrap gap-1">
                 <button
@@ -833,12 +805,14 @@ export default function OpsSalesPage() {
             </div>
             <p className="mt-1 text-xs text-zinc-500">
               {funnelTab === "main"
-                ? "Основная: регистрация (первый /start) → правила → меню → раздел → генерация → топап → оплаты. Первый шаг = те же регистрации, что в KPI и динамике; «% от всех» — от регистраций. Клик по шагу — кто дошёл; «не дошли» — кто был на шаге выше, но не дошёл сюда."
+                ? payMode === "fact"
+                  ? "Основная по факту: все действия, случившиеся в выбранные даты (дата регистрации не важна). Первый шаг — кто нажал /start за эти даты, включая вернувшихся; «% от всех» — от него. Оплаты — в эти даты; повторная — оплатил в даты и оплат всего больше одной. Клик по шагу — кто дошёл; «не дошли» — кто был на шаге выше, но не дошёл сюда."
+                  : "Основная по регистрации: только те, кто впервые нажал /start в выбранные даты (как KPI выше), и что они сделали позже. «% от всех» — от регистраций. Клик по шагу — кто дошёл; «не дошли» — кто был на шаге выше, но не дошёл сюда."
                 : payMode === "fact"
                   ? "Оплаты по факту: шаги и оплаты, случившиеся в выбранные даты (дата регистрации не важна). «% от всех» — от «открыл пополнение» за эти даты."
                   : "Оплаты по регистрации: среди зарегистрированных в выбранные даты. Открыл → сумма → способ → ссылка → оплатил (оплата могла быть позже)."}
             </p>
-            {funnelTab === "pay" ? (
+            {
               <div className="mt-3 flex flex-wrap gap-1">
                 <button
                   type="button"
@@ -869,7 +843,7 @@ export default function OpsSalesPage() {
                   По факту
                 </button>
               </div>
-            ) : null}
+            }
             <ul className="mt-4 space-y-3">
               {funnel.map((f, i) => {
                 const dropHard = i > 0 && f.pctOfPrev < 50 && f.uniqueUsers > 0;
@@ -1215,70 +1189,6 @@ function VerticalStackedCashChart({
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-function VerticalDynamicsChart({
-  buckets,
-  max,
-}: {
-  buckets: SalesPayload["series"]["buckets"];
-  max: number;
-}) {
-  const series = [
-    { key: "reg", color: "bg-zinc-400", get: (b: (typeof buckets)[0]) => b.registrations },
-    {
-      key: "paid",
-      color: "bg-emerald-500/80",
-      get: (b: (typeof buckets)[0]) => b.cohortPaid,
-    },
-    {
-      key: "rep",
-      color: "bg-amber-400/80",
-      get: (b: (typeof buckets)[0]) => b.repeatPayers,
-    },
-  ] as const;
-  return (
-    <div className="mt-4 overflow-x-auto pb-1">
-      <div
-        className="flex min-w-full items-end justify-center gap-3 sm:gap-4"
-        style={{ minHeight: CHART_H + 64 }}
-      >
-        {buckets.map((b) => (
-          <div
-            key={b.key}
-            className="flex min-w-[3.5rem] shrink-0 flex-col items-center gap-1"
-          >
-            <div className="flex items-end gap-1">
-              {series.map((s) => {
-                const v = s.get(b);
-                return (
-                  <div
-                    key={s.key}
-                    className="flex w-6 flex-col items-center gap-0.5"
-                  >
-                    <span className="font-mono text-[9px] leading-none text-zinc-400">
-                      {v}
-                    </span>
-                    <div
-                      className={`w-2.5 rounded-t-sm ${s.color}`}
-                      style={{ height: colHeight(v, max) }}
-                      title={`${s.key}: ${v}`}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <ChartAxisLabel
-              label={b.label}
-              fromYmd={b.fromYmd}
-              toYmd={b.toYmd}
-              title={b.title}
-            />
-          </div>
-        ))}
       </div>
     </div>
   );

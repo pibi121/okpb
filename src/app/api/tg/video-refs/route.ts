@@ -99,6 +99,18 @@ export async function PUT(req: Request) {
       );
     }
     if (e instanceof AgeGateBlockedError) {
+      const { recordAgeGateBlock } = await import("@/lib/age-gate-review");
+      const blockAcc = await prisma.platformAccount.findFirst({
+        where: { userId, platform: "telegram" },
+        select: { platformUserId: true },
+      });
+      await recordAgeGateBlock({
+        userId,
+        platformUserId: blockAcc?.platformUserId || "",
+        locale: "ru",
+        result: e.result,
+        surface: "miniapp",
+      });
       return NextResponse.json(
         { error: e.message, code: e.code, ageGate: e.result },
         { status: 400 },

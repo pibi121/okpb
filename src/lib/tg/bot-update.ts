@@ -379,7 +379,15 @@ async function handlePhoto(
       return;
     }
     if (e instanceof AgeGateBlockedError) {
-      await tgSendMessage(chatId, e.message);
+      const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+      await replyAgeGateBlocked({
+        chatId,
+        userId,
+        platformUserId,
+        locale,
+        error: e,
+        photoBytes: buf,
+      });
       return;
     }
     throw e;
@@ -1130,7 +1138,15 @@ async function beginGeneration(
       return;
     }
     if (e instanceof AgeGateBlockedError) {
-      await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
+      const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+      await replyAgeGateBlocked({
+        chatId,
+        userId,
+        platformUserId,
+        locale,
+        error: e,
+        fallbackExtra: mainMenuExtra(locale) as Record<string, unknown>,
+      });
       await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
       return;
     }
@@ -1707,6 +1723,19 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 
   const { trackBotCallback, trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackBotCallback(user.id, platformUserId, data);
+
+  // Age-gate appeal: «Ей есть 18!» → OPS manual review queue.
+  if (data.startsWith("ag18:")) {
+    await tgAnswerCallbackQuery(cq.id);
+    const { submitAgeGateAppeal } = await import("@/lib/age-gate-review");
+    const out = await submitAgeGateAppeal({
+      reviewId: data.slice("ag18:".length),
+      userId: user.id,
+      locale,
+    });
+    await tgSendMessage(chatId, out.text);
+    return;
+  }
 
   // Funnel v2 callbacks (preview / live)
   {
@@ -2451,7 +2480,15 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           return;
         }
         if (e instanceof AgeGateBlockedError) {
-          await tgSendMessage(chatId, e.message);
+          const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+          await replyAgeGateBlocked({
+            chatId,
+            userId: user.id,
+            platformUserId,
+            locale,
+            error: e,
+            photoBytes: buf,
+          });
           return;
         }
         throw e;
@@ -2492,7 +2529,15 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           return;
         }
         if (e instanceof AgeGateBlockedError) {
-          await tgSendMessage(chatId, e.message);
+          const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+          await replyAgeGateBlocked({
+            chatId,
+            userId: user.id,
+            platformUserId,
+            locale,
+            error: e,
+            photoBytes: buf,
+          });
           return;
         }
         const msgText = e instanceof Error ? e.message : String(e);
@@ -2561,7 +2606,15 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         return;
       }
       if (e instanceof AgeGateBlockedError) {
-        await tgSendMessage(chatId, e.message);
+        const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+        await replyAgeGateBlocked({
+          chatId,
+          userId: user.id,
+          platformUserId,
+          locale,
+          error: e,
+          photoBytes: buf,
+        });
         return;
       }
       throw e;
@@ -2602,7 +2655,15 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         return;
       }
       if (e instanceof AgeGateBlockedError) {
-        await tgSendMessage(chatId, e.message);
+        const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+        await replyAgeGateBlocked({
+          chatId,
+          userId: user.id,
+          platformUserId,
+          locale,
+          error: e,
+          photoBytes: buf,
+        });
         return;
       }
       const msgText = e instanceof Error ? e.message : String(e);

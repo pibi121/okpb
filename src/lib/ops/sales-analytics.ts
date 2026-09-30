@@ -90,6 +90,20 @@ export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
 ];
 
 /**
+ * Основная воронка «по факту»: события в выбранных датах, дата регистрации не важна.
+ * Первый шаг — все, кто нажал /start в эти даты (включая вернувшихся).
+ */
+export const SALES_FUNNEL_MAIN_FACT_STEPS: SalesFunnelStepDef[] = [
+  {
+    key: "registered",
+    title: "Нажали /start за даты",
+    eventKeys: ["bot.start", "bot.start.returning", "bot.start.photos_upload"],
+    kind: "event",
+  },
+  ...SALES_FUNNEL_MAIN_STEPS.slice(1),
+];
+
+/**
  * Legacy faststart-срез (API only; UI не показывает).
  */
 export const SALES_FUNNEL_TEST_STEPS: SalesFunnelStepDef[] = [
@@ -233,6 +247,9 @@ export type SalesAnalyticsResult = {
     paymentsPerReg: number;
     payers: number;
     payersWithin7d: number;
+    /** Age-gate: заблокированные фото в выбранных датах (все юзеры, не только когорта). */
+    ageBlockedAttempts: number;
+    ageBlockedUsers: number;
   };
   cash: {
     note: string;
@@ -266,6 +283,8 @@ export type SalesAnalyticsResult = {
    * (не когорта регистраций).
    */
   funnelsPayFact: FunnelStepRow[];
+  /** Основная воронка «по факту»: события в датах, не когорта регистраций. */
+  funnelsMainFact: FunnelStepRow[];
   series: {
     grain: SalesGrain;
     buckets: {
@@ -964,6 +983,19 @@ export async function collectSalesAnalytics(
       }
     }
   }
+  const ageBlockWhere: Prisma.FunnelEventWhereInput = {
+    eventKey: "bot.agegate.block",
+    at: { gte: from, lt: toExclusive },
+    ...factEventUserFilter,
+  };
+  const [ageBlockedAttempts, ageBlockedUserRows] = await Promise.all([
+    prisma.funnelEvent.count({ where: ageBlockWhere }),
+    prisma.funnelEvent.findMany({
+      where: ageBlockWhere,
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
+  ]);
   const factPayers = new Set(cashOrders.map((o) => o.userId)).size;
   const funnelPayFact = buildFunnelRows(
     SALES_FUNNEL_PAY_STEPS,
@@ -972,6 +1004,13 @@ export async function collectSalesAnalytics(
     0,
     0,
     factUsersByStep,
+  ).map((r) => {
+    const { uniqueWithin7d: _a, pctWithin7dOfStart: _b, ...rest } = r;
+    return rest;
+  });
+  const funnelMainFact = await buildFactFunnelRows(
+    SALES_FUNNEL_MAIN_FACT_STEPS,
+    { from, toExclusive, partnersNone, partnerFilterActive, partnerIds },
   );
 
   // Cash totals
@@ -1064,6 +1103,8 @@ export async function collectSalesAnalytics(
       paymentsPerReg: round2(paymentsPerReg),
       payers,
       payersWithin7d,
+      ageBlockedAttempts,
+      ageBlockedUsers: ageBlockedUserRows.length,
     },
     cash: {
       note:
@@ -1100,6 +1141,7 @@ export async function collectSalesAnalytics(
     funnelsTest: funnelTest,
     funnelsPay: funnelPay,
     funnelsPayFact: funnelPayFact,
+    funnelsMainFact: funnelMainFact,
     series: {
       grain,
       buckets: buckets.map((b) => ({
@@ -1323,19 +1365,22 @@ async function cohortReachedSet(
   return reached;
 }
 
-/** «По факту»: события/оплаты в окне дат, любая дата регистрации. */
-async function factReachedSet(
+/**
+ * «По факту»: события/оплаты в окне дат, любая дата регистрации.
+ * firstTouch-шаги — first-touch среди событий внутри окна.
+ */
+async function factReachedDetailed(
   stepDef: SalesFunnelStepDef,
-  win: SalesCohortWindow,
-): Promise<Set<string>> {
+  win: CohortWindowArgs,
+): Promise<{ users: Set<string>; breakdown?: FunnelTouchBreakdown }> {
   const reached = new Set<string>();
-  if (win.partnersNone) return reached;
+  if (win.partnersNone) return { users: reached };
   const partnerRel = win.partnerFilterActive
     ? { partnerAttribution: { partnerId: { in: win.partnerIds } } }
     : null;
   const at = { gte: win.from, lt: win.toExclusive };
 
-  if (stepDef.kind === "paid") {
+  if (stepDef.kind === "paid" || stepDef.kind === "repeat_paid") {
     const orders = await prisma.paymentOrder.findMany({
       where: {
         status: "paid",
@@ -1345,11 +1390,68 @@ async function factReachedSet(
       select: { userId: true },
       distinct: ["userId"],
     });
-    for (const o of orders) reached.add(o.userId);
-    return reached;
+    const payerIds = orders.map((o) => o.userId);
+    if (stepDef.kind === "paid") {
+      for (const id of payerIds) reached.add(id);
+      return { users: reached };
+    }
+    // Повторная: оплатил в окне и всего оплат (по конец окна) больше одной.
+    const counts = await mapChunks(payerIds, (chunk) =>
+      prisma.paymentOrder.groupBy({
+        by: ["userId"],
+        where: {
+          userId: { in: chunk },
+          status: "paid",
+          paidAt: { lt: win.toExclusive },
+        },
+        _count: { _all: true },
+      }),
+    );
+    for (const c of counts) if (c._count._all > 1) reached.add(c.userId);
+    return { users: reached };
   }
 
-  if (stepDef.kind !== "event") return reached;
+  if (stepDef.kind !== "event") return { users: reached };
+
+  if (stepDef.firstTouch) {
+    const keys = stepDef.eventKeys || [];
+    const [eventHits, legacyHits] = await Promise.all([
+      keys.length
+        ? prisma.funnelEvent.findMany({
+            where: {
+              at,
+              eventKey: { in: keys },
+              ...(partnerRel ? { user: partnerRel } : {}),
+            },
+            select: { userId: true, eventKey: true, metaJson: true, at: true },
+            orderBy: { at: "asc" },
+          })
+        : Promise.resolve(
+            [] as {
+              userId: string;
+              eventKey: string;
+              metaJson: string;
+              at: Date;
+            }[],
+          ),
+      stepDef.firstTouch === "section"
+        ? prisma.funnelEvent.findMany({
+            where: {
+              at,
+              eventKey: "bot.callback.other",
+              metaJson: { contains: "fv2:" },
+              ...(partnerRel ? { user: partnerRel } : {}),
+            },
+            select: { userId: true, metaJson: true, at: true },
+            orderBy: { at: "asc" },
+          })
+        : Promise.resolve(
+            [] as { userId: string; metaJson: string; at: Date }[],
+          ),
+    ]);
+    const ft = computeFirstTouch(stepDef.firstTouch, eventHits, legacyHits);
+    return { users: ft.users, breakdown: ft.breakdown };
+  }
 
   const [eventHits, legacyHits] = await Promise.all([
     stepDef.eventKeys?.length
@@ -1380,7 +1482,42 @@ async function factReachedSet(
   ]);
   for (const h of eventHits) reached.add(h.userId);
   for (const h of legacyHits) reached.add(h.userId);
-  return reached;
+  return { users: reached };
+}
+
+async function factReachedSet(
+  stepDef: SalesFunnelStepDef,
+  win: CohortWindowArgs,
+): Promise<Set<string>> {
+  return (await factReachedDetailed(stepDef, win)).users;
+}
+
+/** Строки воронки «по факту» (main | pay) по шагам. */
+async function buildFactFunnelRows(
+  steps: SalesFunnelStepDef[],
+  win: CohortWindowArgs,
+): Promise<FunnelStepRow[]> {
+  const details = await Promise.all(
+    steps.map((s) => factReachedDetailed(s, win)),
+  );
+  const base = details[0]?.users.size || 0;
+  const rows: FunnelStepRow[] = [];
+  let prev = base;
+  steps.forEach((s, i) => {
+    const n = details[i]!.users.size;
+    const row: FunnelStepRow = {
+      key: s.key,
+      title: s.title,
+      uniqueUsers: n,
+      pctOfStart: pct(n, base),
+      pctOfPrev: i === 0 ? 100 : pct(n, prev),
+    };
+    const bd = details[i]!.breakdown;
+    if (bd) row.breakdown = bd;
+    rows.push(row);
+    prev = n;
+  });
+  return rows;
 }
 
 /**
@@ -1397,11 +1534,14 @@ export async function collectFunnelStepUsers(params: {
   view?: FunnelUsersView;
 }): Promise<FunnelStepUsersResult> {
   const funnel: FunnelKind = params.funnel === "pay" ? "pay" : "main";
-  const basis: FunnelBasis =
-    funnel === "pay" && params.basis === "fact" ? "fact" : "cohort";
+  const basis: FunnelBasis = params.basis === "fact" ? "fact" : "cohort";
   const view: FunnelUsersView = params.view === "dropped" ? "dropped" : "reached";
   const steps =
-    funnel === "pay" ? SALES_FUNNEL_PAY_STEPS : SALES_FUNNEL_MAIN_STEPS;
+    funnel === "pay"
+      ? SALES_FUNNEL_PAY_STEPS
+      : basis === "fact"
+        ? SALES_FUNNEL_MAIN_FACT_STEPS
+        : SALES_FUNNEL_MAIN_STEPS;
 
   const idx = steps.findIndex((s) => s.key === params.step);
   if (idx < 0) {

@@ -490,7 +490,14 @@ export async function runFunnelV2PhotoGen(opts: {
       return;
     }
     if (e instanceof AgeGateBlockedError) {
-      await tgSendMessage(opts.chatId, e.message);
+      const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+      await replyAgeGateBlocked({
+        chatId: Number(opts.chatId),
+        userId: opts.userId,
+        platformUserId: opts.platformUserId,
+        locale: opts.locale,
+        error: e,
+      });
       return;
     }
     const msg = e instanceof Error ? e.message : String(e);
@@ -774,7 +781,15 @@ export async function handleFunnelV2PhotoUpload(opts: {
       return;
     }
     if (e instanceof AgeGateBlockedError) {
-      await tgSendMessage(opts.chatId, e.message);
+      const { replyAgeGateBlocked } = await import("@/lib/age-gate-review");
+      await replyAgeGateBlocked({
+        chatId: Number(opts.chatId),
+        userId: opts.userId,
+        platformUserId: opts.platformUserId,
+        locale: opts.locale,
+        error: e,
+        photoBytes: opts.photoBytes,
+      });
       return;
     }
     throw e;

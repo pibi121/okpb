@@ -97,7 +97,8 @@ export function parseAgeGateConfig(
     failClosed: parsed.failClosed !== false,
     minScore: Number(parsed.minScore) > 0 ? Number(parsed.minScore) : 0.55,
     minAdultScore: Math.min(0.99, Math.max(0.1, minAdult)),
-    manualUncertainModeration: parsed.manualUncertainModeration === true,
+    // Тумблер снят: сомнения = блок; человек может оспорить кнопкой «Ей есть 18!».
+    manualUncertainModeration: false,
   };
 }
 
@@ -635,17 +636,34 @@ export function ageGateUncertainMessage(locale: "ru" | "en" = "ru"): string {
 
 export function ageGateApprovedMessage(locale: "ru" | "en" = "ru"): string {
   if (locale === "en") {
-    return "Your photo was approved — you can continue.";
+    return "Sorry, our mistake. You can generate photos and videos with her now.";
   }
-  return "Фото проверено и одобрено — можно продолжать.";
+  return "Прости, наша ошибка. Можешь генерировать с ней фото и видео.";
+}
+
+export function ageGateAppealButtonText(locale: "ru" | "en" = "ru"): string {
+  return locale === "en" ? "She's 18+!" : "Ей есть 18!";
+}
+
+/** Reasons where a human can overrule the checker (not no_face / checker outages). */
+export function ageGateAppealAllowed(result: AgeGateResult): boolean {
+  if (!result.blocked) return false;
+  const r = result.reason || "";
+  if (r === "no_face" || r === "empty_image") return false;
+  if (r === "checker_unavailable" || r === "checker_error") return false;
+  if (r === "opencv_unavailable" || r === "disabled") return false;
+  return true;
 }
 
 export class AgeGateBlockedError extends Error {
   code = "age_gate_blocked" as const;
   result: AgeGateResult;
-  constructor(result: AgeGateResult, locale: "ru" | "en" = "ru") {
+  /** Original bytes — needed to save the photo for «Ей есть 18!» appeal. */
+  buf?: Buffer;
+  constructor(result: AgeGateResult, locale: "ru" | "en" = "ru", buf?: Buffer) {
     super(ageGateBlockMessage(locale, result.reason));
     this.result = result;
+    this.buf = buf;
   }
 }
 
@@ -668,7 +686,7 @@ export async function assertImageAllowedForGeneration(
   locale: "ru" | "en" = "ru",
 ): Promise<AgeGateResult> {
   const result = await checkImageBufferAgeGate(buf);
-  if (result.blocked) throw new AgeGateBlockedError(result, locale);
+  if (result.blocked) throw new AgeGateBlockedError(result, locale, buf);
   if (result.uncertain) throw new AgeGateUncertainError(result, locale, buf);
   return result;
 }
@@ -690,7 +708,7 @@ export async function assertCharacterPhotosAllowed(
     if (!fs.existsSync(abs)) continue;
     const buf = fs.readFileSync(abs);
     last = await checkImageBufferAgeGate(buf, cfg);
-    if (last.blocked) throw new AgeGateBlockedError(last, locale);
+    if (last.blocked) throw new AgeGateBlockedError(last, locale, buf);
     if (last.uncertain) throw new AgeGateUncertainError(last, locale, buf);
   }
   return last;

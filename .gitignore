@@ -70,6 +70,8 @@ metalnode_id_ed25519
 # cursor / temp
 .cursor/
 tmp_*
+tmp-*
+**/__pycache__/
 /scripts/_tmp-*
 .tmp_*
 klein_fix_latest.png

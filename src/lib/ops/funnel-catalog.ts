@@ -229,6 +229,13 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "Прислал фото в чат (обучение/реф)",
     "Пользователь отправил фото в состоянии загрузки персонажа или video-ref.",
   ),
+  S(
+    "bot.agegate.block",
+    "bot",
+    "activation",
+    "Age Gate: фото заблокировано",
+    "Проверка возраста не пропустила фото (несовершеннолетний/сомнение/нет лица). meta: reason, hash, appeal.",
+  ),
 
   // —— generation ——
   S(

@@ -43,6 +43,16 @@ export default function OpsSafetyPage() {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [zoom, setZoom] = useState<PendingItem | null>(null);
+
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
 
   const load = useCallback(async () => {
     const [settings, queue] = await Promise.all([
@@ -107,11 +117,139 @@ export default function OpsSafetyPage() {
   const engine = d.engine === "insightface" ? "insightface" : "opencv";
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
+    <div className="flex max-w-3xl flex-col gap-5">
       <div>
         <h1 className="font-display text-3xl">Безопасность</h1>
         <p className="mt-1 text-sm text-zinc-500">{d.note}</p>
       </div>
+
+      {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}
+
+      {zoom ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/90 p-4"
+          onClick={() => setZoom(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoom.photoUrl}
+            alt=""
+            className="max-h-[80vh] max-w-full rounded-xl object-contain"
+          />
+          <div
+            className="flex items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const id = zoom.id;
+                setZoom(null);
+                void decide(id, "approve");
+              }}
+              className="rounded-full bg-emerald-500/30 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const id = zoom.id;
+                setZoom(null);
+                void decide(id, "reject");
+              }}
+              className="rounded-full bg-rose-500/30 px-4 py-2 text-sm text-rose-200 disabled:opacity-50"
+            >
+              Reject
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom(null)}
+              className="rounded-full border border-white/20 px-4 py-2 text-sm text-zinc-300"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <section>
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h2 className="font-display text-xl">На проверке</h2>
+          <span className="text-xs text-zinc-500">
+            {pending.length || d.pendingCount || 0}
+          </span>
+        </div>
+        {pending.length === 0 ? (
+          <p className="text-sm text-zinc-500">Очередь пуста</p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {pending.map((item) => (
+              <li
+                key={item.id}
+                className="flex gap-3 rounded-2xl border border-white/10 bg-[#121214] p-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => setZoom(item)}
+                  title="Открыть крупно"
+                  className="h-40 w-40 shrink-0 cursor-zoom-in overflow-hidden rounded-xl bg-zinc-800"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.photoUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-mono text-xs text-zinc-400">
+                    user {item.userId}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    tg {item.platformUserId} · {item.locale} ·{" "}
+                    {new Date(item.createdAt).toLocaleString("ru-RU")}
+                  </div>
+                  <div className="mt-1 font-mono text-xs text-amber-200/90">
+                    {item.gateSummary.engine
+                      ? `${item.gateSummary.engine} · `
+                      : ""}
+                    {item.gateSummary.reason || "?"} ·{" "}
+                    {item.gateSummary.ageLabel || "—"}
+                    {item.gateSummary.ageYears != null
+                      ? ` (${item.gateSummary.ageYears}y)`
+                      : ""}{" "}
+                    @ {item.gateSummary.score ?? "—"}
+                    {item.gateSummary.secondLabel
+                      ? ` · 2nd ${item.gateSummary.secondLabel}@${item.gateSummary.secondScore ?? "—"}`
+                      : ""}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void decide(item.id, "approve")}
+                      className="rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs text-emerald-300 disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void decide(item.id, "reject")}
+                      className="rounded-full bg-rose-500/20 px-3 py-1.5 text-xs text-rose-300 disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">
         <div className="flex items-center justify-between gap-3">
@@ -273,77 +411,6 @@ export default function OpsSafetyPage() {
       >
         Сохранить настройки
       </button>
-
-      <section className="mt-2">
-        <div className="mb-3 flex items-baseline justify-between gap-2">
-          <h2 className="font-display text-xl">На проверке</h2>
-          <span className="text-xs text-zinc-500">
-            {pending.length || d.pendingCount || 0}
-          </span>
-        </div>
-        {pending.length === 0 ? (
-          <p className="text-sm text-zinc-500">Очередь пуста</p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {pending.map((item) => (
-              <li
-                key={item.id}
-                className="flex gap-3 rounded-2xl border border-white/10 bg-[#121214] p-3"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.photoUrl}
-                  alt=""
-                  className="h-24 w-24 shrink-0 rounded-xl object-cover bg-zinc-800"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-mono text-xs text-zinc-400">
-                    user {item.userId}
-                  </div>
-                  <div className="mt-1 text-xs text-zinc-500">
-                    tg {item.platformUserId} · {item.locale} ·{" "}
-                    {new Date(item.createdAt).toLocaleString("ru-RU")}
-                  </div>
-                  <div className="mt-1 font-mono text-xs text-amber-200/90">
-                    {item.gateSummary.engine
-                      ? `${item.gateSummary.engine} · `
-                      : ""}
-                    {item.gateSummary.reason || "?"} ·{" "}
-                    {item.gateSummary.ageLabel || "—"}
-                    {item.gateSummary.ageYears != null
-                      ? ` (${item.gateSummary.ageYears}y)`
-                      : ""}{" "}
-                    @ {item.gateSummary.score ?? "—"}
-                    {item.gateSummary.secondLabel
-                      ? ` · 2nd ${item.gateSummary.secondLabel}@${item.gateSummary.secondScore ?? "—"}`
-                      : ""}
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void decide(item.id, "approve")}
-                      className="rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs text-emerald-300 disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void decide(item.id, "reject")}
-                      className="rounded-full bg-rose-500/20 px-3 py-1.5 text-xs text-rose-300 disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}
     </div>
   );
 }

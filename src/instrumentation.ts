@@ -113,6 +113,13 @@ export async function register() {
     .then(({ startOpsTelegramScheduler }) => startOpsTelegramScheduler())
     .catch((e) => console.error("[peach] ops-tg scheduler:", e));
 
+  // Staff ops bot: inline-button callbacks (Age Gate approve/reject in ops chat).
+  setTimeout(() => {
+    void import("@/lib/ops/ops-tg-callback-poller")
+      .then(({ startOpsCallbackPoller }) => startOpsCallbackPoller())
+      .catch((e) => console.error("[peach] ops-tg callback poller:", e));
+  }, 15_000);
+
   // Notify ops «Деплои» once per new prod boot / git sha.
   setTimeout(() => {
     void import("@/lib/ops/ops-telegram")

@@ -2,7 +2,8 @@
  * OPS Safety photo review queue for age-gate uncertain results.
  */
 import { prisma } from "@/lib/db";
-import { saveGalleryBinary } from "@/lib/local-store";
+import fs from "fs";
+import { resolveGalleryFile, saveGalleryBinary } from "@/lib/local-store";
 import {
   ageGateApprovedMessage,
   ageGateBlockMessage,
@@ -11,7 +12,7 @@ import {
   type AgeGateResult,
 } from "@/lib/age-gate";
 import { tgNotifyUser } from "@/lib/tg/notify-user";
-import { tgSendMessage } from "@/lib/tg/telegram-api";
+import { tgAnswerCallbackQuery, tgSendMessage } from "@/lib/tg/telegram-api";
 import {
   ageGateAppealAllowed,
   ageGateAppealButtonText,
@@ -22,10 +23,6 @@ export const AGE_GATE_APPEAL_CB = "ag18:";
 
 const APPEAL_SENT_RU = "Отправили фото на проверку — сообщим, когда проверим.";
 const APPEAL_SENT_EN = "Sent for review — we'll let you know once we've checked it.";
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 /**
  * Account for a hard age-gate block: funnel event (analytics) and, when a human
@@ -196,41 +193,222 @@ export async function submitAgeGateAppeal(opts: {
   return { text: sent, queued: true };
 }
 
-async function notifyOpsAgeGateAppeal(reviewId: string): Promise<void> {
-  const { opsTelegramConfigured, sendOpsTelegram } = await import(
-    "@/lib/ops/ops-telegram"
-  );
-  if (!opsTelegramConfigured()) return;
+const OPS_CB_APPROVE = "agr:a:";
+const OPS_CB_REJECT = "agr:r:";
+
+type OpsMsgRef = { chatId: string; messageId: number };
+
+function parseGateJson(json: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(json || "{}");
+    return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function readOpsRef(gateJson: string): OpsMsgRef | null {
+  const ops = parseGateJson(gateJson)._ops as Partial<OpsMsgRef> | undefined;
+  if (ops?.chatId && typeof ops.messageId === "number") {
+    return { chatId: String(ops.chatId), messageId: ops.messageId };
+  }
+  return null;
+}
+
+async function saveOpsRef(reviewId: string, ref: OpsMsgRef): Promise<void> {
+  const row = await prisma.ageGateReview.findUnique({
+    where: { id: reviewId },
+    select: { gateJson: true },
+  });
+  if (!row) return;
+  const gate = parseGateJson(row.gateJson);
+  gate._ops = ref;
+  await prisma.ageGateReview.update({
+    where: { id: reviewId },
+    data: { gateJson: JSON.stringify(gate) },
+  });
+}
+
+function opsKeyboard(reviewId: string): Record<string, unknown> {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "✅ Одобрить (18+)",
+          callback_data: `${OPS_CB_APPROVE}${reviewId}`,
+        },
+        {
+          text: "⛔ Заблокировать",
+          callback_data: `${OPS_CB_REJECT}${reviewId}`,
+        },
+      ],
+    ],
+  };
+}
+
+function opsStatusLabel(status: string): string {
+  if (status === "approved") return "✅ Одобрено";
+  if (status === "rejected") return "⛔ Заблокировано";
+  return "⏳ Не рассмотрено";
+}
+
+async function buildOpsCaption(
+  reviewId: string,
+  resolvedBy?: string,
+): Promise<string | null> {
+  const { escHtml, formatMsk } = await import("@/lib/ops/ops-telegram");
   const row = await prisma.ageGateReview.findUnique({
     where: { id: reviewId },
   });
-  if (!row) return;
-  let gate: { reason?: string; ageLabel?: string; ageYears?: number; score?: number } = {};
-  try {
-    gate = JSON.parse(row.gateJson || "{}");
-  } catch {
-    gate = {};
-  }
+  if (!row) return null;
+  const gate = parseGateJson(row.gateJson) as {
+    reason?: string;
+    ageLabel?: string;
+    ageYears?: number;
+    score?: number;
+  };
   const acc = await prisma.platformAccount.findFirst({
     where: { userId: row.userId, platform: "telegram" },
     orderBy: { lastSeenAt: "desc" },
     select: { username: true, platformUserId: true },
   });
   const who = acc?.username
-    ? `@${esc(acc.username)} (${esc(acc.platformUserId)})`
-    : `<code>${esc(row.userId)}</code>`;
+    ? `@${escHtml(acc.username)} (${escHtml(acc.platformUserId)})`
+    : `<code>${escHtml(row.userId)}</code>`;
   const age =
     gate.ageYears != null
       ? `~${Math.round(gate.ageYears)} лет`
       : gate.ageLabel || "—";
-  const text = [
-    `🔞 <b>Фото на ручную проверку</b> («Ей есть 18!»)`,
+  const lines = [
+    `🔞 <b>Age Gate · ручная проверка</b> («Ей есть 18!»)`,
+    `Статус: <b>${opsStatusLabel(row.status)}</b>`,
     `Кто: ${who}`,
-    `Оценка: ${esc(String(age))}${gate.score != null ? ` · score ${gate.score}` : ""}`,
-    `Причина: ${esc(gate.reason || "—")}`,
-    `Очередь: OPS → Безопасность`,
-  ].join("\n");
-  await sendOpsTelegram("quality", text);
+    `Оценка: ${escHtml(String(age))}${gate.score != null ? ` · score ${gate.score}` : ""}`,
+    `Причина: ${escHtml(gate.reason || "—")}`,
+    `Заявка: <code>${escHtml(row.id)}</code>`,
+    `Подана: ${formatMsk(row.createdAt)} МСК`,
+  ];
+  if (row.status !== "pending" && row.status !== "blocked") {
+    lines.push(
+      `Решено: ${escHtml(resolvedBy || "OPS")} · ${formatMsk(row.reviewedAt || new Date())} МСК`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** New appeal → photo + buttons in the ops chat (status «Не рассмотрено»). */
+async function notifyOpsAgeGateAppeal(reviewId: string): Promise<void> {
+  const ops = await import("@/lib/ops/ops-telegram");
+  if (!ops.opsTelegramConfigured()) return;
+  const row = await prisma.ageGateReview.findUnique({
+    where: { id: reviewId },
+  });
+  if (!row) return;
+  const caption = await buildOpsCaption(reviewId);
+  if (!caption) return;
+
+  const abs = resolveGalleryFile(row.photoRelKey);
+  let bytes: Buffer | null = null;
+  try {
+    bytes = abs ? fs.readFileSync(abs) : null;
+  } catch {
+    bytes = null;
+  }
+
+  if (bytes?.length) {
+    const sent = await ops.sendOpsTelegramPhoto(
+      "quality",
+      bytes,
+      caption,
+      opsKeyboard(reviewId),
+    );
+    if (sent) await saveOpsRef(reviewId, sent);
+    return;
+  }
+  // Photo file missing → text only; decide in OPS → Безопасность.
+  await ops.sendOpsTelegram(
+    "quality",
+    `${caption}\n⚠️ Файл фото недоступен — решение в OPS → Безопасность.`,
+  );
+}
+
+/** Reflect the current status in the ops chat message and remove its buttons. */
+async function syncOpsAgeGateMessage(
+  reviewId: string,
+  resolvedBy?: string,
+): Promise<void> {
+  const row = await prisma.ageGateReview.findUnique({
+    where: { id: reviewId },
+    select: { gateJson: true },
+  });
+  if (!row) return;
+  const ref = readOpsRef(row.gateJson);
+  if (!ref) return;
+  const caption = await buildOpsCaption(reviewId, resolvedBy);
+  if (!caption) return;
+  const { editOpsTelegramCaption } = await import("@/lib/ops/ops-telegram");
+  await editOpsTelegramCaption(ref.chatId, ref.messageId, caption);
+}
+
+type OpsCallbackQuery = {
+  id: string;
+  data?: string;
+  from?: { id: number; username?: string; first_name?: string };
+  message?: { chat: { id: number } };
+};
+
+/**
+ * Buttons under the ops-chat message: `agr:a:<id>` approve / `agr:r:<id>` reject.
+ * Returns true if the callback belonged to this feature (handled).
+ * `token` = bot that received the callback (ops bot or product bot).
+ */
+export async function handleOpsModerationCallback(
+  cq: OpsCallbackQuery,
+  token?: string,
+): Promise<boolean> {
+  const data = cq.data || "";
+  const approve = data.startsWith(OPS_CB_APPROVE);
+  const reject = data.startsWith(OPS_CB_REJECT);
+  if (!approve && !reject) return false;
+
+  const { opsTelegramChatId } = await import("@/lib/ops/ops-telegram");
+  const opsChat = opsTelegramChatId();
+  if (!opsChat || String(cq.message?.chat.id) !== opsChat) {
+    await tgAnswerCallbackQuery(cq.id, "Нет доступа", token);
+    return true;
+  }
+
+  const id = data.slice(approve ? OPS_CB_APPROVE.length : OPS_CB_REJECT.length);
+  const actor = cq.from?.username
+    ? `@${cq.from.username}`
+    : cq.from?.first_name || String(cq.from?.id || "tg");
+  try {
+    const out = await resolveAgeGateReview({
+      id,
+      decision: approve ? "approved" : "rejected",
+      opsUserId: `tg:${cq.from?.id ?? "?"}`,
+      actorLabel: actor,
+    });
+    const changedNow =
+      (approve && out.status === "approved") ||
+      (reject && out.status === "rejected");
+    await tgAnswerCallbackQuery(
+      cq.id,
+      changedNow
+        ? approve
+          ? "Одобрено"
+          : "Заблокировано"
+        : `Уже рассмотрено: ${opsStatusLabel(out.status)}`,
+      token,
+    );
+  } catch (e) {
+    await tgAnswerCallbackQuery(
+      cq.id,
+      e instanceof Error ? e.message.slice(0, 180) : "Ошибка",
+      token,
+    );
+  }
+  return true;
 }
 
 export async function submitAgeGateUncertainReview(opts: {
@@ -305,21 +483,40 @@ export async function resolveAgeGateReview(opts: {
   id: string;
   decision: "approved" | "rejected";
   opsUserId: string;
+  /** Who decided, for the ops-chat message («@user», «OPS-панель»). */
+  actorLabel?: string;
 }): Promise<{ ok: true; status: string; userId: string }> {
   const row = await prisma.ageGateReview.findUnique({ where: { id: opts.id } });
   if (!row) throw new Error("review not found");
   if (row.status !== "pending") {
+    // Already decided (or not appealed yet): just refresh/clear the ops-chat buttons.
+    if (row.status !== "blocked") {
+      void syncOpsAgeGateMessage(row.id).catch(() => undefined);
+    }
     return { ok: true, status: row.status, userId: row.userId };
   }
 
-  await prisma.ageGateReview.update({
-    where: { id: row.id },
+  // Atomic claim: two staff pressing at once → only one applies.
+  const claimed = await prisma.ageGateReview.updateMany({
+    where: { id: row.id, status: "pending" },
     data: {
       status: opts.decision,
       reviewedAt: new Date(),
       reviewedByOpsUserId: opts.opsUserId,
     },
   });
+  if (claimed.count === 0) {
+    const cur = await prisma.ageGateReview.findUnique({
+      where: { id: row.id },
+      select: { status: true },
+    });
+    return { ok: true, status: cur?.status || row.status, userId: row.userId };
+  }
+
+  await syncOpsAgeGateMessage(
+    row.id,
+    opts.actorLabel || "OPS-панель",
+  ).catch((e) => console.error("[age-gate] ops sync:", e));
 
   const locale = row.locale === "en" ? "en" : "ru";
   const text =

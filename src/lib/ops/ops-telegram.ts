@@ -9,7 +9,11 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "@/lib/db";
 import { dataRoot, ensureDataDirs } from "@/lib/paths";
-import { tgApiWithToken, tgSendMessage } from "@/lib/tg/telegram-api";
+import {
+  tgApiWithToken,
+  tgSendMessage,
+  tgSendPhotoFile,
+} from "@/lib/tg/telegram-api";
 
 export const OPS_TG_TOPICS = [
   "payments",
@@ -415,6 +419,75 @@ export async function editOpsTelegramMessage(
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
+  });
+}
+
+export function opsTelegramToken(): string {
+  return envToken();
+}
+
+export function opsTelegramChatId(): string {
+  return envChatId();
+}
+
+/** Photo + caption (+ inline buttons) into an ops topic. Returns ids for later edits. */
+export async function sendOpsTelegramPhoto(
+  topic: OpsTgTopic,
+  bytes: Buffer,
+  caption: string,
+  replyMarkup?: Record<string, unknown>,
+): Promise<{ chatId: string; messageId: number } | null> {
+  if (!opsTelegramConfigured()) return null;
+  const chatId = envChatId();
+  let result: { chatId: string; messageId: number } | null = null;
+  let lastErr: unknown;
+  await enqueueSend(async () => {
+    try {
+      let state = readState();
+      if (!state?.topics[topic]) {
+        try {
+          state = await resolveTopics(false);
+        } catch {
+          /* topics optional */
+        }
+      }
+      const threadId = envTopicId(topic) || state?.topics[topic];
+      const sent = (await tgSendPhotoFile(
+        chatId,
+        bytes,
+        "photo.jpg",
+        caption,
+        {
+          ...(threadId ? { message_thread_id: threadId } : {}),
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+        },
+        envToken(),
+      )) as { message_id?: number };
+      if (typeof sent?.message_id === "number") {
+        result = { chatId, messageId: sent.message_id };
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  });
+  if (lastErr) throw lastErr;
+  return result;
+}
+
+/** Edit caption of an ops photo message and drop its inline buttons. */
+export async function editOpsTelegramCaption(
+  chatId: string,
+  messageId: number,
+  caption: string,
+): Promise<void> {
+  const token = envToken();
+  if (!token || !chatId || !messageId) return;
+  await tgApiWithToken(token, "editMessageCaption", {
+    chat_id: chatId,
+    message_id: messageId,
+    caption,
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: [] },
   });
 }
 

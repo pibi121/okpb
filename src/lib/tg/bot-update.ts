@@ -1695,6 +1695,15 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     return;
   }
 
+  // Staff ops chat buttons (Age Gate approve/reject) — must not create a user.
+  if (data.startsWith("agr:")) {
+    const { handleOpsModerationCallback } = await import(
+      "@/lib/age-gate-review"
+    );
+    await handleOpsModerationCallback(cq);
+    return;
+  }
+
   const platformUserId = String(chatId);
   let user;
   try {

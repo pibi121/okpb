@@ -99,7 +99,7 @@ export async function maybeSendAutoRules(
 export async function sendRulesStep(
   chatId: number,
   locale: TgLocale,
-  opts?: { userId?: string; nudge?: boolean },
+  opts?: { userId?: string; nudge?: boolean; token?: string },
 ) {
   const prefix = opts?.nudge ? t("rules_nudge_prefix", locale) : "";
   const body =
@@ -107,14 +107,19 @@ export async function sendRulesStep(
     tFormat("rules_step", locale, {
       rulesUrl: tgRulesArticleUrl(locale),
     });
-  await tgSendMessage(chatId, body, {
-    link_preview_options: { is_disabled: true },
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: t("rules_agree_btn", locale), callback_data: "rules:agree" }],
-      ],
+  await tgSendMessage(
+    chatId,
+    body,
+    {
+      link_preview_options: { is_disabled: true },
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: t("rules_agree_btn", locale), callback_data: "rules:agree" }],
+        ],
+      },
     },
-  });
+    opts?.token,
+  );
   if (opts?.userId) {
     await prisma.user.updateMany({
       where: { id: opts.userId, tgRulesShownAt: null },
@@ -410,8 +415,16 @@ export async function maybeSendRulesNudges(
       eventKey: string,
     ) => {
       try {
+        const { resolveUserTelegramDelivery } = await import(
+          "@/lib/tg/notify-user"
+        );
+        const dest = await resolveUserTelegramDelivery(userId);
+        if (!dest?.token) {
+          await silenceRulesNudges(userId);
+          return;
+        }
         const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
-        await sendFunnelV2Rules(chatId, userId, locale);
+        await sendFunnelV2Rules(chatId, userId, locale, { token: dest.token });
         await prisma.user.update({
           where: { id: userId },
           data: { [flag]: true },
@@ -468,8 +481,20 @@ export async function maybeSendRulesNudges(
     eventKey: string,
   ) => {
     try {
+      const { resolveUserTelegramDelivery } = await import(
+        "@/lib/tg/notify-user"
+      );
+      const dest = await resolveUserTelegramDelivery(userId);
+      if (!dest?.token) {
+        await silenceRulesNudges(userId);
+        return;
+      }
       await setTgSession(String(chatId), { chatState: "awaiting_rules" });
-      await sendRulesStep(chatId, locale, { userId, nudge: true });
+      await sendRulesStep(chatId, locale, {
+        userId,
+        nudge: true,
+        token: dest.token,
+      });
       await prisma.user.update({
         where: { id: userId },
         data: { [flag]: true },

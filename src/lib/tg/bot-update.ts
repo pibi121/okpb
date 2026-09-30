@@ -165,7 +165,14 @@ async function applyLocale(userId: string, locale: TgLocale) {
 async function touchLastBotForAccount(platformUserId: string) {
   try {
     const { currentTgBot } = await import("@/lib/tg/bot-context");
-    const botId = currentTgBot()?.botInstanceId;
+    const ctx = currentTgBot();
+    let botId = ctx?.botInstanceId || "";
+    // Env-only primary stub → resolve real OPS primary id so lastBot is set.
+    if (!botId || botId === "env-primary") {
+      const { resolvePrimaryLiveBot } = await import("@/lib/tg/bot-registry");
+      const primary = await resolvePrimaryLiveBot();
+      botId = primary?.id || "";
+    }
     if (!botId || botId === "env-primary") return;
     await prisma.platformAccount.updateMany({
       where: { platform: "telegram", platformUserId },

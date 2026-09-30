@@ -69,12 +69,6 @@ export async function tickTopupReminders(): Promise<number> {
     });
     if (locked.count === 0) continue;
 
-    const acc = await prisma.platformAccount.findFirst({
-      where: { userId: order.userId, platform: "telegram" },
-      orderBy: { lastSeenAt: "desc" },
-    });
-    if (!acc?.platformUserId) continue;
-
     const user = await prisma.user.findUnique({
       where: { id: order.userId },
       select: { locale: true },
@@ -83,15 +77,16 @@ export async function tickTopupReminders(): Promise<number> {
     const price = formatTopupPriceLine(order.peaches, locale);
     const method = methodLabel(order.paymentMethod, locale);
 
-    const { resolveBotTokenByInstanceId } = await import(
-      "@/lib/tg/bot-registry"
+    const { resolveUserTelegramDelivery } = await import(
+      "@/lib/tg/notify-user"
     );
-    const token =
-      (await resolveBotTokenByInstanceId(acc.lastBotInstanceId)) || undefined;
+    const dest = await resolveUserTelegramDelivery(order.userId);
+    const token = dest?.token;
+    if (!token || !dest) continue;
 
     try {
       await tgSendMessage(
-        Number(acc.platformUserId),
+        dest.chatId,
         tFormat("topup_remind", locale, { price, method }),
         {
           reply_markup: {
@@ -127,7 +122,7 @@ export async function tickTopupReminders(): Promise<number> {
       const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
       trackFunnelEventBg({
         userId: order.userId,
-        platformUserId: acc.platformUserId,
+        platformUserId: dest.platformUserId,
         eventKey: "bot.topup.remind",
         surface: "system",
         meta: {

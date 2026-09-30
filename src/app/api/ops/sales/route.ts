@@ -1,5 +1,6 @@
 import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import {
+  collectFunnelStepUsers,
   collectSalesAnalytics,
   getSalesDateBounds,
   mskYmd,
@@ -42,9 +43,31 @@ export async function GET(req: Request) {
     }
 
     const today = mskYmd();
-    const bounds = await getSalesDateBounds();
     const fromYmd = url.searchParams.get("from") || today;
     const toYmd = url.searchParams.get("to") || today;
+    const partnerIds = parsePartnerIds(url.searchParams.get("partners"));
+
+    if (fromYmd > toYmd) {
+      return jsonErr("Дата «от» позже «до»");
+    }
+
+    if (url.searchParams.get("mode") === "funnel_users") {
+      const step = (url.searchParams.get("step") || "").trim();
+      if (!step) return jsonErr("Нужен step");
+      try {
+        const data = await collectFunnelStepUsers({
+          fromYmd,
+          toYmd,
+          step,
+          partnerIds,
+        });
+        return jsonOk(data);
+      } catch (e) {
+        return jsonErr(e instanceof Error ? e.message : "ошибка");
+      }
+    }
+
+    const bounds = await getSalesDateBounds();
     const currency = parseCurrency(url.searchParams.get("currency"));
     const grain = parseGrain(url.searchParams.get("grain"), fromYmd, toYmd);
     const cashGrain = parseGrain(
@@ -52,11 +75,6 @@ export async function GET(req: Request) {
       fromYmd,
       toYmd,
     );
-    const partnerIds = parsePartnerIds(url.searchParams.get("partners"));
-
-    if (fromYmd > toYmd) {
-      return jsonErr("Дата «от» позже «до»");
-    }
 
     const data = await collectSalesAnalytics({
       fromYmd,

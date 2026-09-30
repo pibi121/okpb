@@ -147,7 +147,10 @@ export async function buildMarketingDigest(
         },
       }),
       prisma.user.count({
-        where: { createdAt: { gte: from, lt: to } },
+        where: {
+          source: "telegram",
+          createdAt: { gte: from, lt: to },
+        },
       }),
       prisma.paymentOrder
         .findMany({

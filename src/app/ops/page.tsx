@@ -113,7 +113,11 @@ export default function OpsHomePage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Card label="Новые люди" value={s.today.users} />
+        <Card
+          label="Новые люди"
+          value={s.today.users}
+          hint="TG-регистрации за сегодня (MSK), как на /ops/sales"
+        />
         <Card
           label="Персики «оплат»"
           value={s.today.peachesIn}

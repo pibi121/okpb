@@ -19,19 +19,37 @@ export type SalesFunnelStepDef = {
   /** Legacy match in metaJson (fv2 callbacks before catalog keys) */
   metaContains?: string[];
   kind: "cohort" | "event" | "paid" | "repeat_paid";
+  /**
+   * First-touch photo/video/pro among users who hit this step.
+   * - section: earliest photo|video|pro section event
+   * - generation: earliest bot.fv2.gen_start, kind from meta
+   */
+  firstTouch?: "section" | "generation";
 };
 
-/** Основная воронка (как сейчас на вкладке). */
+export type FunnelTouchBreakdown = {
+  photo: number;
+  video: number;
+  pro: number;
+};
+
+type TouchKind = keyof FunnelTouchBreakdown;
+
+/** Основная воронка. */
 export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
   {
     key: "bot.start",
-    title: "Вход в воронку",
-    eventKeys: ["bot.start", "bot.start.returning"],
+    title: "Вход (/start)",
+    eventKeys: [
+      "bot.start",
+      "bot.start.returning",
+      "bot.start.photos_upload",
+    ],
     kind: "event",
   },
   {
     key: "bot.fv2.rules",
-    title: "Согласился с правилами",
+    title: "Правила",
     eventKeys: ["bot.fv2.rules"],
     metaContains: ["fv2:rules"],
     kind: "event",
@@ -44,18 +62,19 @@ export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
     kind: "event",
   },
   {
-    key: "bot.fv2.photo",
-    title: "Раздел фото",
-    eventKeys: ["bot.fv2.photo"],
-    metaContains: ["fv2:ph"],
+    key: "section",
+    title: "Перешёл в раздел",
+    eventKeys: ["bot.fv2.photo", "bot.fv2.video", "bot.fv2.pro"],
+    metaContains: ["fv2:ph", "fv2:vid", "fv2:pro"],
     kind: "event",
+    firstTouch: "section",
   },
   {
-    key: "bot.fv2.video",
-    title: "Раздел видео",
-    eventKeys: ["bot.fv2.video"],
-    metaContains: ["fv2:vid"],
+    key: "bot.fv2.gen_start",
+    title: "Запустил генерацию",
+    eventKeys: ["bot.fv2.gen_start"],
     kind: "event",
+    firstTouch: "generation",
   },
   {
     key: "bot.fv2.topup",
@@ -74,7 +93,7 @@ export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
 ];
 
 /**
- * Тестовая воронка (legacy faststart-срез). UI-вкладка убрана; API ещё отдаёт funnelsTest.
+ * Legacy faststart-срез (API only; UI не показывает).
  */
 export const SALES_FUNNEL_TEST_STEPS: SalesFunnelStepDef[] = [
   { key: "registered", title: "Регистрация", eventKeys: null, kind: "cohort" },
@@ -177,6 +196,8 @@ export type FunnelStepRow = {
   pctOfPrev: number;
   uniqueWithin7d?: number;
   pctWithin7dOfStart?: number;
+  /** First-touch photo/video/pro; photo+video+pro === uniqueUsers */
+  breakdown?: FunnelTouchBreakdown;
 };
 
 export type CashMethodSlice = {
@@ -237,7 +258,7 @@ export type SalesAnalyticsResult = {
     };
   };
   funnels: FunnelStepRow[];
-  /** Тестовая воронка (faststart-срез). */
+  /** Legacy API field (UI не показывает). */
   funnelsTest: FunnelStepRow[];
   /** Воронка оплат: open → amount → method → order → paid. */
   funnelsPay: FunnelStepRow[];
@@ -390,6 +411,90 @@ function collectEventKeys(steps: SalesFunnelStepDef[]): string[] {
   return [...keys];
 }
 
+function classifySectionTouch(
+  eventKey: string,
+  metaJson: string,
+): TouchKind | null {
+  if (eventKey === "bot.fv2.photo") return "photo";
+  if (eventKey === "bot.fv2.video") return "video";
+  if (eventKey === "bot.fv2.pro") return "pro";
+  if (eventKey === "bot.callback.other") {
+    const meta = metaJson || "";
+    // More specific needles first (fv2:ph is a prefix of many photo callbacks).
+    if (meta.includes("fv2:pro")) return "pro";
+    if (meta.includes("fv2:vid")) return "video";
+    if (meta.includes("fv2:ph")) return "photo";
+  }
+  return null;
+}
+
+/**
+ * gen_start meta.kind today: photo path uses "ud" | "tpl".
+ * Video does not yet emit gen_start; reserve qv/li2v/video → video.
+ */
+function classifyGenTouch(metaJson: string): TouchKind {
+  try {
+    const meta = JSON.parse(metaJson || "{}") as {
+      kind?: unknown;
+      section?: unknown;
+    };
+    const k = String(meta.kind ?? meta.section ?? "").toLowerCase();
+    if (k === "video" || k === "qv" || k === "li2v" || k === "vid") {
+      return "video";
+    }
+    if (k === "pro" || k === "lora") return "pro";
+    return "photo";
+  } catch {
+    return "photo";
+  }
+}
+
+function emptyBreakdown(): FunnelTouchBreakdown {
+  return { photo: 0, video: 0, pro: 0 };
+}
+
+function computeFirstTouch(
+  mode: "section" | "generation",
+  eventHits: {
+    userId: string;
+    eventKey: string;
+    metaJson: string;
+    at: Date;
+  }[],
+  legacyHits: { userId: string; metaJson: string; at: Date }[],
+): { users: Set<string>; breakdown: FunnelTouchBreakdown } {
+  const earliest = new Map<string, { at: number; touch: TouchKind }>();
+
+  const consider = (userId: string, at: Date, touch: TouchKind | null) => {
+    if (!touch) return;
+    const t = at.getTime();
+    const prev = earliest.get(userId);
+    if (!prev || t < prev.at) earliest.set(userId, { at: t, touch });
+  };
+
+  if (mode === "section") {
+    for (const h of eventHits) {
+      consider(h.userId, h.at, classifySectionTouch(h.eventKey, h.metaJson));
+    }
+    for (const h of legacyHits) {
+      consider(
+        h.userId,
+        h.at,
+        classifySectionTouch("bot.callback.other", h.metaJson),
+      );
+    }
+  } else {
+    for (const h of eventHits) {
+      if (h.eventKey !== "bot.fv2.gen_start") continue;
+      consider(h.userId, h.at, classifyGenTouch(h.metaJson));
+    }
+  }
+
+  const breakdown = emptyBreakdown();
+  for (const { touch } of earliest.values()) breakdown[touch] += 1;
+  return { users: new Set(earliest.keys()), breakdown };
+}
+
 function buildFunnelRows(
   steps: SalesFunnelStepDef[],
   N: number,
@@ -397,6 +502,7 @@ function buildFunnelRows(
   repeatPayers: number,
   payersWithin7d: number,
   usersByStepKey: Map<string, Set<string>>,
+  breakdownByStepKey?: Map<string, FunnelTouchBreakdown>,
 ): FunnelStepRow[] {
   const counts: number[] = [];
   for (const step of steps) {
@@ -422,6 +528,8 @@ function buildFunnelRows(
       row.uniqueWithin7d = payersWithin7d;
       row.pctWithin7dOfStart = pct(payersWithin7d, base);
     }
+    const bd = breakdownByStepKey?.get(step.key);
+    if (bd) row.breakdown = bd;
     funnel.push(row);
     prevUniques = uniqueUsers;
   }
@@ -540,12 +648,22 @@ export async function collectSalesAnalytics(
                 userId: { in: chunk },
                 eventKey: { in: allEventKeys },
               },
-              select: { userId: true, eventKey: true, metaJson: true },
-              distinct: ["userId", "eventKey"],
+              select: {
+                userId: true,
+                eventKey: true,
+                metaJson: true,
+                at: true,
+              },
+              orderBy: { at: "asc" },
             }),
           )
         : Promise.resolve(
-            [] as { userId: string; eventKey: string; metaJson: string }[],
+            [] as {
+              userId: string;
+              eventKey: string;
+              metaJson: string;
+              at: Date;
+            }[],
           ),
       N
         ? mapChunks(cohortIds, (chunk) =>
@@ -555,10 +673,13 @@ export async function collectSalesAnalytics(
                 eventKey: "bot.callback.other",
                 metaJson: { contains: "fv2:" },
               },
-              select: { userId: true, metaJson: true },
+              select: { userId: true, metaJson: true, at: true },
+              orderBy: { at: "asc" },
             }),
           )
-        : Promise.resolve([] as { userId: string; metaJson: string }[]),
+        : Promise.resolve(
+            [] as { userId: string; metaJson: string; at: Date }[],
+          ),
       N
         ? mapChunks(cohortIds, (chunk) =>
             prisma.paymentOrder.findMany({
@@ -689,6 +810,16 @@ export async function collectSalesAnalytics(
     ...SALES_FUNNEL_TEST_STEPS,
     ...SALES_FUNNEL_PAY_STEPS,
   ]);
+
+  // First-touch breakdowns for section / generation (override unique sets).
+  const breakdownByStep = new Map<string, FunnelTouchBreakdown>();
+  for (const step of SALES_FUNNEL_MAIN_STEPS) {
+    if (!step.firstTouch) continue;
+    const ft = computeFirstTouch(step.firstTouch, eventHits, fv2LegacyHits);
+    usersByEvent.set(step.key, ft.users);
+    breakdownByStep.set(step.key, ft.breakdown);
+  }
+
   const funnel = buildFunnelRows(
     SALES_FUNNEL_MAIN_STEPS,
     N,
@@ -696,6 +827,7 @@ export async function collectSalesAnalytics(
     repeatPayers,
     payersWithin7d,
     usersByEvent,
+    breakdownByStep,
   );
   const funnelTest = buildFunnelRows(
     SALES_FUNNEL_TEST_STEPS,
@@ -918,6 +1050,276 @@ export async function collectSalesAnalytics(
         repeatPayers: repeatByBucket.get(b.key) || 0,
       })),
     },
+  };
+}
+
+const FUNNEL_USERS_LIMIT = 500;
+
+export type FunnelStepUserRow = {
+  userId: string;
+  tgId: string;
+  tgUsername: string | null;
+  name: string | null;
+  partnerCode: string | null;
+  /** organic | partner:CODE | traffic:CODE */
+  source: string;
+  registeredAt: string;
+};
+
+export type FunnelStepUsersResult = {
+  step: string;
+  title: string;
+  fromYmd: string;
+  toYmd: string;
+  totalReached: number;
+  limit: number;
+  users: FunnelStepUserRow[];
+};
+
+async function resolveSalesCohortWindow(params: {
+  fromYmd: string;
+  toYmd: string;
+  partnerIds?: string[] | null;
+}): Promise<{
+  fromYmd: string;
+  toYmd: string;
+  from: Date;
+  toExclusive: Date;
+  partnersNone: boolean;
+  partnerFilterActive: boolean;
+  partnerIds: string[];
+  cohortWhere: Prisma.UserWhereInput;
+}> {
+  const bounds = await getSalesDateBounds();
+  const maxYmd = bounds.maxYmd;
+  const minYmd = bounds.minSignupYmd || maxYmd;
+  const partners = await listSalesPartners();
+  const knownPartnerIds = new Set(partners.map((p) => p.id));
+
+  let fromYmd = isValidYmd(params.fromYmd) ? params.fromYmd : maxYmd;
+  let toYmd = isValidYmd(params.toYmd) ? params.toYmd : maxYmd;
+  if (fromYmd < minYmd) fromYmd = minYmd;
+  if (toYmd > maxYmd) toYmd = maxYmd;
+  if (toYmd < fromYmd) toYmd = fromYmd;
+
+  const from = mskDayStartUtc(fromYmd);
+  const toExclusive = mskDayStartUtc(addYmdDays(toYmd, 1));
+
+  const partnersNone =
+    params.partnerIds != null && params.partnerIds.length === 0;
+  const rawPartnerIds = (params.partnerIds || []).filter((id) =>
+    knownPartnerIds.has(id),
+  );
+  const partnerFilterActive =
+    !partnersNone &&
+    rawPartnerIds.length > 0 &&
+    rawPartnerIds.length < knownPartnerIds.size;
+  const partnerIds = partnerFilterActive ? rawPartnerIds : [];
+
+  const cohortWhere: Prisma.UserWhereInput = partnersNone
+    ? { id: { in: [] } }
+    : {
+        source: "telegram",
+        createdAt: { gte: from, lt: toExclusive },
+        ...(partnerFilterActive
+          ? { partnerAttribution: { partnerId: { in: partnerIds } } }
+          : {}),
+      };
+
+  return {
+    fromYmd,
+    toYmd,
+    from,
+    toExclusive,
+    partnersNone,
+    partnerFilterActive,
+    partnerIds,
+    cohortWhere,
+  };
+}
+
+function formatSalesSource(user: {
+  trafficLink?: { code: string } | null;
+  partnerAttribution?: { partner: { code: string } } | null;
+}): string {
+  if (user.trafficLink?.code) return `traffic:${user.trafficLink.code}`;
+  if (user.partnerAttribution?.partner?.code) {
+    return `partner:${user.partnerAttribution.partner.code}`;
+  }
+  return "organic";
+}
+
+/**
+ * Cohort users who reached a main-funnel step (same filters as sales).
+ */
+export async function collectFunnelStepUsers(params: {
+  fromYmd: string;
+  toYmd: string;
+  step: string;
+  partnerIds?: string[] | null;
+}): Promise<FunnelStepUsersResult> {
+  const stepDef = SALES_FUNNEL_MAIN_STEPS.find((s) => s.key === params.step);
+  if (!stepDef) {
+    throw new Error(`Неизвестный шаг воронки: ${params.step}`);
+  }
+
+  const win = await resolveSalesCohortWindow(params);
+  const cohortUsers = await prisma.user.findMany({
+    where: win.cohortWhere,
+    select: { id: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const cohortIds = cohortUsers.map((u) => u.id);
+  const createdById = new Map(cohortUsers.map((u) => [u.id, u.createdAt]));
+
+  let reached = new Set<string>();
+
+  if (stepDef.kind === "paid" || stepDef.kind === "repeat_paid") {
+    if (cohortIds.length) {
+      const orders = await mapChunks(cohortIds, (chunk) =>
+        prisma.paymentOrder.findMany({
+          where: { userId: { in: chunk }, status: "paid" },
+          select: { userId: true },
+        }),
+      );
+      const payCount = new Map<string, number>();
+      for (const o of orders) {
+        payCount.set(o.userId, (payCount.get(o.userId) || 0) + 1);
+      }
+      for (const [uid, n] of payCount) {
+        if (stepDef.kind === "paid" && n >= 1) reached.add(uid);
+        if (stepDef.kind === "repeat_paid" && n > 1) reached.add(uid);
+      }
+    }
+  } else if (stepDef.firstTouch) {
+    const keys = stepDef.eventKeys || [];
+    const [eventHits, legacyHits] = await Promise.all([
+      cohortIds.length && keys.length
+        ? mapChunks(cohortIds, (chunk) =>
+            prisma.funnelEvent.findMany({
+              where: {
+                userId: { in: chunk },
+                eventKey: { in: keys },
+              },
+              select: {
+                userId: true,
+                eventKey: true,
+                metaJson: true,
+                at: true,
+              },
+              orderBy: { at: "asc" },
+            }),
+          )
+        : Promise.resolve(
+            [] as {
+              userId: string;
+              eventKey: string;
+              metaJson: string;
+              at: Date;
+            }[],
+          ),
+      cohortIds.length && stepDef.firstTouch === "section"
+        ? mapChunks(cohortIds, (chunk) =>
+            prisma.funnelEvent.findMany({
+              where: {
+                userId: { in: chunk },
+                eventKey: "bot.callback.other",
+                metaJson: { contains: "fv2:" },
+              },
+              select: { userId: true, metaJson: true, at: true },
+              orderBy: { at: "asc" },
+            }),
+          )
+        : Promise.resolve(
+            [] as { userId: string; metaJson: string; at: Date }[],
+          ),
+    ]);
+    reached = computeFirstTouch(stepDef.firstTouch, eventHits, legacyHits)
+      .users;
+  } else if (stepDef.eventKeys?.length) {
+    const keys = stepDef.eventKeys;
+    const [eventHits, legacyHits] = await Promise.all([
+      mapChunks(cohortIds, (chunk) =>
+        prisma.funnelEvent.findMany({
+          where: { userId: { in: chunk }, eventKey: { in: keys } },
+          select: { userId: true },
+          distinct: ["userId"],
+        }),
+      ),
+      stepDef.metaContains?.length
+        ? mapChunks(cohortIds, (chunk) =>
+            prisma.funnelEvent.findMany({
+              where: {
+                userId: { in: chunk },
+                eventKey: "bot.callback.other",
+                OR: stepDef.metaContains!.map((needle) => ({
+                  metaJson: { contains: needle },
+                })),
+              },
+              select: { userId: true },
+              distinct: ["userId"],
+            }),
+          )
+        : Promise.resolve([] as { userId: string }[]),
+    ]);
+    for (const h of eventHits) reached.add(h.userId);
+    for (const h of legacyHits) reached.add(h.userId);
+  }
+
+  const sortedIds = [...reached].sort((a, b) => {
+    const ca = createdById.get(a)?.getTime() || 0;
+    const cb = createdById.get(b)?.getTime() || 0;
+    return cb - ca;
+  });
+  const totalReached = sortedIds.length;
+  const pageIds = sortedIds.slice(0, FUNNEL_USERS_LIMIT);
+
+  const usersRaw = pageIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: pageIds } },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          trafficLink: { select: { code: true } },
+          partnerAttribution: {
+            select: { partner: { select: { code: true } } },
+          },
+          platformAccounts: {
+            where: { platform: "telegram" },
+            select: { platformUserId: true, username: true },
+            take: 1,
+            orderBy: { lastSeenAt: "desc" },
+          },
+        },
+      })
+    : [];
+
+  const byId = new Map(usersRaw.map((u) => [u.id, u]));
+  const users: FunnelStepUserRow[] = [];
+  for (const id of pageIds) {
+    const u = byId.get(id);
+    if (!u) continue;
+    const pa = u.platformAccounts[0];
+    users.push({
+      userId: u.id,
+      tgId: pa?.platformUserId || "",
+      tgUsername: pa?.username ?? null,
+      name: u.name,
+      partnerCode: u.partnerAttribution?.partner?.code ?? null,
+      source: formatSalesSource(u),
+      registeredAt: u.createdAt.toISOString(),
+    });
+  }
+
+  return {
+    step: stepDef.key,
+    title: stepDef.title,
+    fromYmd: win.fromYmd,
+    toYmd: win.toYmd,
+    totalReached,
+    limit: FUNNEL_USERS_LIMIT,
+    users,
   };
 }
 

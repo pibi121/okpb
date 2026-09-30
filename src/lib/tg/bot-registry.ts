@@ -167,11 +167,22 @@ export async function listActiveBotTokens(): Promise<string[]> {
   return [...new Set(bots.map((b) => b.token))];
 }
 
+/** Current OPS primary among active bots (no hardcoded username). */
+export async function resolvePrimaryLiveBot(): Promise<LiveBot | null> {
+  const live = await listLiveBots();
+  return live.find((b) => b.isPrimary) || live[0] || null;
+}
+
+export async function resolvePrimaryBotToken(): Promise<string | null> {
+  const primary = await resolvePrimaryLiveBot();
+  return primary?.token || null;
+}
+
 export async function resolveBotTokenByInstanceId(
   id: string | null | undefined,
 ): Promise<string | null> {
   if (!id) return null;
-  if (id === "env-primary") return envToken() || null;
+  if (id === "env-primary") return resolvePrimaryBotToken();
   const row = await prisma.botInstance.findUnique({ where: { id } });
   // Standby must not receive outbox / generation pushes.
   if (!row || row.status !== "active") return null;

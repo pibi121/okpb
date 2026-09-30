@@ -2,12 +2,7 @@ import { prisma } from "@/lib/db";
 import { gpuRuntimeSnapshot } from "@/lib/ops/queue";
 import { getOpsSettings } from "@/lib/ops/settings";
 import { galleryStatus, parseGalleryMeta } from "@/lib/gallery-meta";
-
-function startOfDay(d = new Date()) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+import { mskDayStartUtc, mskYmd } from "@/lib/ops/sales-analytics";
 
 function avgMs(items: { createdAt: Date; updatedAt: Date }[]) {
   if (!items.length) return 0;
@@ -19,7 +14,8 @@ function avgMs(items: { createdAt: Date; updatedAt: Date }[]) {
 }
 
 export async function collectOpsStats() {
-  const today = startOfDay();
+  /** Same MSK calendar day as sales kpi.newUsers (telegram User.createdAt). */
+  const today = mskDayStartUtc(mskYmd());
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
   const stuckAfter = new Date(Date.now() - 15 * 60 * 1000);
 

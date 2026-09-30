@@ -111,6 +111,7 @@ export async function sendFunnelV2Rules(
   chatId: number,
   userId: string,
   locale: TgLocale,
+  opts?: { token?: string },
 ) {
   await prisma.user.update({
     where: { id: userId },
@@ -132,9 +133,14 @@ export async function sendFunnelV2Rules(
     "а также подтвердил, что тебе исполнилось 18 лет. Просто нажми на кнопку ниже";
   const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
   await funnelV2ReplaceUi(String(chatId), chatId, async () =>
-    tgSendMessage(chatId, text, {
-      reply_markup: funnelV2RulesKeyboard(),
-    }),
+    tgSendMessage(
+      chatId,
+      text,
+      {
+        reply_markup: funnelV2RulesKeyboard(),
+      },
+      opts?.token,
+    ),
   );
 }
 

@@ -246,17 +246,12 @@ export async function maybeSendIdleWinbacks(
     return;
   }
 
-  const acc = await prisma.platformAccount.findFirst({
-    where: { userId, platform: "telegram" },
-    select: { lastBotInstanceId: true },
-    orderBy: { lastSeenAt: "desc" },
-  });
-  const { resolveBotTokenByInstanceId } = await import(
-    "@/lib/tg/bot-registry"
+  const { resolveUserTelegramDelivery } = await import(
+    "@/lib/tg/notify-user"
   );
-  const token = await resolveBotTokenByInstanceId(acc?.lastBotInstanceId);
+  const dest = await resolveUserTelegramDelivery(userId);
+  const token = dest?.token;
   if (!token) {
-    // Standby / retired / unknown bot — never fall back to env primary.
     await silenceIdleWinbacks(userId);
     return;
   }

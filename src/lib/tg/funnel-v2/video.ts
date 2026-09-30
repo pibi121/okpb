@@ -393,6 +393,18 @@ async function runFunnelV2VideoGen(opts: {
   );
 
   try {
+    const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+    trackFunnelEventBg({
+      userId: opts.userId,
+      platformUserId: opts.platformUserId,
+      eventKey: "bot.fv2.gen_start",
+      surface: "bot",
+      meta: {
+        kind: opts.kind,
+        templateId: opts.templateId,
+        section: "video",
+      },
+    });
     const bytes = await loadPhotoBytes(opts.photoUrl);
 
     if (opts.kind === "li2v") {

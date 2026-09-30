@@ -1,9 +1,14 @@
 /**
- * Send TG messages to a user via the bot they last used (dual-bot safe).
+ * Deliver proactive TG messages to the bot the user last talked to.
+ * Fallback: current OPS primary (BotInstance isPrimary) — never bare env alone
+ * when a live primary token exists (env can lag behind dual-bot rotation).
  */
 import { prisma } from "@/lib/db";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
-import { resolveBotTokenByInstanceId } from "@/lib/tg/bot-registry";
+import {
+  resolveBotTokenByInstanceId,
+  resolvePrimaryLiveBot,
+} from "@/lib/tg/bot-registry";
 
 export async function resolveUserTelegramDelivery(userId: string): Promise<{
   chatId: number;
@@ -18,38 +23,59 @@ export async function resolveUserTelegramDelivery(userId: string): Promise<{
   if (!acc?.platformUserId) return null;
   const chatId = Number(acc.platformUserId);
   if (!Number.isFinite(chatId)) return null;
-  const token =
-    (await resolveBotTokenByInstanceId(acc.lastBotInstanceId)) || undefined;
+
+  // 1) Bot they last used (if still active)
+  if (acc.lastBotInstanceId) {
+    const lastToken = await resolveBotTokenByInstanceId(acc.lastBotInstanceId);
+    if (lastToken) {
+      return {
+        chatId,
+        token: lastToken,
+        platformUserId: acc.platformUserId,
+        botInstanceId: acc.lastBotInstanceId,
+      };
+    }
+  }
+
+  // 2) Current OPS primary (dynamic — not hardcoded username / not stale env-only)
+  const primary = await resolvePrimaryLiveBot();
+  if (primary?.token) {
+    return {
+      chatId,
+      token: primary.token,
+      platformUserId: acc.platformUserId,
+      botInstanceId: primary.id,
+    };
+  }
+
   return {
     chatId,
-    token,
+    token: undefined,
     platformUserId: acc.platformUserId,
-    botInstanceId: acc.lastBotInstanceId || null,
+    botInstanceId: null,
   };
 }
 
-/** Notify user; prefers last active bot instance token. */
+/** Notify via last-used bot, else current primary. */
 export async function tgNotifyUser(opts: {
   userId: string;
   text: string;
   extra?: Record<string, unknown>;
 }): Promise<boolean> {
   const dest = await resolveUserTelegramDelivery(opts.userId);
-  if (!dest) return false;
+  if (!dest?.token) return false;
   await tgSendMessage(dest.chatId, opts.text, opts.extra || {}, dest.token);
   return true;
 }
 
 /**
- * Fan-out to every active bot the user might still have open
- * (last bot first, then other live bots). Stops after first success
- * unless `allLive` is true.
+ * Fan-out: last bot first, then other live bots.
+ * Default stops after first success; `allLive` sends on every live bot.
  */
 export async function tgNotifyUserOnLiveBots(opts: {
   userId: string;
   text: string;
   extra?: Record<string, unknown>;
-  /** Send via every live bot (ops-critical notices). Default: last bot only. */
   allLive?: boolean;
 }): Promise<number> {
   const dest = await resolveUserTelegramDelivery(opts.userId);
@@ -62,11 +88,7 @@ export async function tgNotifyUserOnLiveBots(opts: {
   for (const b of live) {
     if (b.token && !tokens.includes(b.token)) tokens.push(b.token);
   }
-  if (!tokens.length) {
-    // Fall back to env primary via tgSendMessage default
-    await tgSendMessage(dest.chatId, opts.text, opts.extra || {});
-    return 1;
-  }
+  if (!tokens.length) return 0;
 
   let ok = 0;
   for (const token of tokens) {
@@ -75,7 +97,7 @@ export async function tgNotifyUserOnLiveBots(opts: {
       ok += 1;
       if (!opts.allLive) return ok;
     } catch {
-      /* try next bot */
+      /* try next */
     }
   }
   return ok;

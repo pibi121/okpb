@@ -285,17 +285,16 @@ export async function pollFunnelV2FaststartNudges(limit = 40): Promise<void> {
       await cancelFunnelV2BlurNudge(u.id);
       continue;
     }
-    const acc = await prisma.platformAccount.findFirst({
-      where: { userId: u.id, platform: "telegram" },
-      orderBy: { lastSeenAt: "desc" },
-      select: { platformUserId: true },
-    });
-    if (!acc) {
+    const dest = await import("@/lib/tg/notify-user").then((m) =>
+      m.resolveUserTelegramDelivery(u.id),
+    );
+    if (!dest?.token) {
+      // Dual-bot: no last bot / standby — don't send via env primary.
       await cancelFunnelV2BlurNudge(u.id);
       continue;
     }
-    const chatId = Number(acc.platformUserId);
-    if (!Number.isFinite(chatId)) continue;
+    const chatId = dest.chatId;
+    const token = dest.token;
 
     const offerAt = u.tgFunnelV2BlurOfferAt?.getTime() ?? 0;
     const needHard = !u.tgFunnelV2BlurNudgeSent && offerAt <= now - MS_10M;
@@ -349,9 +348,10 @@ export async function pollFunnelV2FaststartNudges(limit = 40): Promise<void> {
             url: blurItem.resultUrl,
             caption: text,
             extra: { reply_markup: kb },
+            token,
           });
         } else {
-          await tgSendMessage(chatId, text, { reply_markup: kb });
+          await tgSendMessage(chatId, text, { reply_markup: kb }, token);
         }
         await prisma.user.update({
           where: { id: u.id },
@@ -364,19 +364,24 @@ export async function pollFunnelV2FaststartNudges(limit = 40): Promise<void> {
           `Я могу сгенерировать по её фотографии любые фото, видео, фильмы, ` +
           `и заставить её сделать всё, что ты захочешь. ` +
           `Перейди в главное меню, чтобы узнать больше`;
-        await tgSendMessage(chatId, softText, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "⬅️ Открыть главное меню",
-                  callback_data: FV2.hub,
-                  style: "primary",
-                },
+        await tgSendMessage(
+          chatId,
+          softText,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "⬅️ Открыть главное меню",
+                    callback_data: FV2.hub,
+                    style: "primary",
+                  },
+                ],
               ],
-            ],
+            },
           },
-        });
+          token,
+        );
         await prisma.user.update({
           where: { id: u.id },
           data: { tgFunnelV2FaststartNudgeSent: true },

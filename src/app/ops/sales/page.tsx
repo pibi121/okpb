@@ -15,6 +15,25 @@ type FunnelStep = {
   pctOfPrev: number;
   uniqueWithin7d?: number;
   pctWithin7dOfStart?: number;
+  breakdown?: { photo: number; video: number; pro?: number };
+};
+
+type FunnelUserRow = {
+  userId: string;
+  tgId: string;
+  tgUsername: string | null;
+  name: string | null;
+  partnerCode: string | null;
+  source: string;
+  registeredAt: string;
+};
+
+type FunnelUsersPayload = {
+  step: string;
+  title: string;
+  totalReached: number;
+  limit: number;
+  users: FunnelUserRow[];
 };
 
 type PartnerOption = {
@@ -167,6 +186,14 @@ export default function OpsSalesPage() {
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
   const [funnelTab, setFunnelTab] = useState<"main" | "pay">("main");
   const [payMode, setPayMode] = useState<"cohort" | "fact">("cohort");
+  const [selectedFunnelStep, setSelectedFunnelStep] = useState<string | null>(
+    null,
+  );
+  const [funnelUsers, setFunnelUsers] = useState<FunnelUsersPayload | null>(
+    null,
+  );
+  const [funnelUsersLoading, setFunnelUsersLoading] = useState(false);
+  const [funnelUsersMsg, setFunnelUsersMsg] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [partnersOpen, setPartnersOpen] = useState(false);
   /** null = все; [] = никто; ids = фильтр */
@@ -257,6 +284,10 @@ export default function OpsSalesPage() {
         if (d.partners?.length) setPartnerCatalog(d.partners);
         if (d.bounds.minSignupYmd) setMinYmd(d.bounds.minSignupYmd);
         setMaxYmd(d.bounds.maxYmd);
+        // Clear step drill-down when filters refresh
+        setSelectedFunnelStep(null);
+        setFunnelUsers(null);
+        setFunnelUsersMsg("");
       } catch (e) {
         setMsg(e instanceof Error ? e.message : "ошибка");
       } finally {
@@ -273,6 +304,36 @@ export default function OpsSalesPage() {
       cashGrainManual,
       selectedPartnerIds,
     ],
+  );
+
+  const loadFunnelUsers = useCallback(
+    async (step: string) => {
+      setSelectedFunnelStep(step);
+      setFunnelUsersLoading(true);
+      setFunnelUsersMsg("");
+      try {
+        const q = new URLSearchParams({
+          mode: "funnel_users",
+          step,
+          from,
+          to,
+        });
+        if (selectedPartnerIds != null) {
+          q.set(
+            "partners",
+            selectedPartnerIds.length ? selectedPartnerIds.join(",") : "none",
+          );
+        }
+        const d = await opsFetch<FunnelUsersPayload>(`/api/ops/sales?${q}`);
+        setFunnelUsers(d);
+      } catch (e) {
+        setFunnelUsers(null);
+        setFunnelUsersMsg(e instanceof Error ? e.message : "ошибка");
+      } finally {
+        setFunnelUsersLoading(false);
+      }
+    },
+    [from, to, selectedPartnerIds],
   );
 
   useEffect(() => {
@@ -552,8 +613,8 @@ export default function OpsSalesPage() {
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Kpi
-                label="Регистраций"
-                hint="Сколько новых TG-аккаунтов за период"
+                label="Регистраций (kpi.newUsers)"
+                hint="Telegram User.createdAt, календарный день MSK"
                 value={String(data.kpi.newUsers)}
               />
               <Kpi
@@ -719,7 +780,9 @@ export default function OpsSalesPage() {
                       ? "rounded-full bg-white/15 px-3 py-1 text-xs"
                       : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
                   }
-                  onClick={() => setFunnelTab("main")}
+                  onClick={() => {
+                    setFunnelTab("main");
+                  }}
                 >
                   Основная
                 </button>
@@ -730,7 +793,12 @@ export default function OpsSalesPage() {
                       ? "rounded-full bg-white/15 px-3 py-1 text-xs"
                       : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
                   }
-                  onClick={() => setFunnelTab("pay")}
+                  onClick={() => {
+                    setFunnelTab("pay");
+                    setSelectedFunnelStep(null);
+                    setFunnelUsers(null);
+                    setFunnelUsersMsg("");
+                  }}
                 >
                   Оплаты
                 </button>
@@ -738,7 +806,7 @@ export default function OpsSalesPage() {
             </div>
             <p className="mt-1 text-xs text-zinc-500">
               {funnelTab === "main"
-                ? "Основная: вход (/start) → правила → хаб → фото → видео → топап → оплаты. «% от всех» — от входа."
+                ? "Основная: вход (/start) → правила → меню → раздел → генерация → топап → оплаты. Клик по шагу — список людей. «% от всех» — от входа."
                 : payMode === "fact"
                   ? "Оплаты по факту: шаги и оплаты, случившиеся в выбранные даты (дата регистрации не важна). «% от всех» — от «открыл пополнение» за эти даты."
                   : "Оплаты по регистрации: среди зарегистрированных в выбранные даты. Открыл → сумма → способ → ссылка → оплатил (оплата могла быть позже)."}
@@ -773,56 +841,166 @@ export default function OpsSalesPage() {
               {funnel.map((f, i) => {
                 const dropHard = i > 0 && f.pctOfPrev < 50 && f.uniqueUsers > 0;
                 const jumpUp = i > 0 && f.uniqueUsers > 0 && f.pctOfPrev > 100;
+                const selected =
+                  funnelTab === "main" && selectedFunnelStep === f.key;
+                const clickable = funnelTab === "main";
+                const bd = f.breakdown;
                 return (
                   <li key={f.key}>
-                    <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-sm text-zinc-200">
-                        {i + 1}. {f.title}
-                      </span>
-                      <span className="font-mono text-sm">
-                        <b className="text-peach">{f.uniqueUsers}</b>
-                        <span className="text-zinc-500">
-                          {" "}
-                          · {f.pctOfStart}% от всех
-                          {i > 0 ? (
-                            <span
-                              className={
-                                dropHard
-                                  ? " text-rose-300"
-                                  : jumpUp
-                                    ? " text-amber-300"
-                                    : ""
-                              }
-                            >
-                              {" "}
-                              · {f.pctOfPrev}% от шага выше
-                            </span>
-                          ) : null}
-                          {f.uniqueWithin7d != null ? (
-                            <span className="text-zinc-600">
-                              {" "}
-                              · за ≤7 дней: {f.uniqueWithin7d} (
-                              {f.pctWithin7dOfStart}%)
+                    <button
+                      type="button"
+                      disabled={!clickable}
+                      onClick={() => {
+                        if (!clickable) return;
+                        void loadFunnelUsers(f.key);
+                      }}
+                      className={
+                        clickable
+                          ? `mb-1 w-full rounded-xl px-2 py-1.5 text-left transition ${
+                              selected
+                                ? "bg-peach/15 ring-1 ring-peach/40"
+                                : "hover:bg-white/5"
+                            }`
+                          : "mb-1 w-full px-2 py-1.5 text-left"
+                      }
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="text-sm text-zinc-200">
+                          {i + 1}. {f.title}
+                          {clickable ? (
+                            <span className="ml-2 text-[10px] text-zinc-600">
+                              люди →
                             </span>
                           ) : null}
                         </span>
-                      </span>
-                    </div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-white/5">
-                      <div
-                        className={
-                          dropHard
-                            ? "h-full rounded-full bg-rose-400/80 transition-all"
-                            : "h-full rounded-full bg-peach/80 transition-all"
-                        }
-                        style={{ width: `${Math.min(100, f.pctOfStart)}%` }}
-                      />
-                    </div>
+                        <span className="font-mono text-sm">
+                          <b className="text-peach">{f.uniqueUsers}</b>
+                          <span className="text-zinc-500">
+                            {" "}
+                            · {f.pctOfStart}% от всех
+                            {i > 0 ? (
+                              <span
+                                className={
+                                  dropHard
+                                    ? " text-rose-300"
+                                    : jumpUp
+                                      ? " text-amber-300"
+                                      : ""
+                                }
+                              >
+                                {" "}
+                                · {f.pctOfPrev}% от шага выше
+                              </span>
+                            ) : null}
+                            {f.uniqueWithin7d != null ? (
+                              <span className="text-zinc-600">
+                                {" "}
+                                · за ≤7 дней: {f.uniqueWithin7d} (
+                                {f.pctWithin7dOfStart}%)
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </div>
+                      {bd ? (
+                        <p className="mt-0.5 text-[11px] text-zinc-500">
+                          first-touch: фото {bd.photo} · видео {bd.video}
+                          {bd.pro != null ? ` · pro ${bd.pro}` : ""}
+                        </p>
+                      ) : null}
+                      <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white/5">
+                        <div
+                          className={
+                            dropHard
+                              ? "h-full rounded-full bg-rose-400/80 transition-all"
+                              : "h-full rounded-full bg-peach/80 transition-all"
+                          }
+                          style={{ width: `${Math.min(100, f.pctOfStart)}%` }}
+                        />
+                      </div>
+                    </button>
                   </li>
                 );
               })}
             </ul>
           </section>
+
+          {funnelTab === "main" && selectedFunnelStep ? (
+            <section className="rounded-2xl border border-white/10 p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-display text-xl">
+                  Люди на шаге
+                  {funnelUsers ? `: ${funnelUsers.title}` : ""}
+                </h2>
+                <button
+                  type="button"
+                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                  onClick={() => {
+                    setSelectedFunnelStep(null);
+                    setFunnelUsers(null);
+                    setFunnelUsersMsg("");
+                  }}
+                >
+                  Закрыть
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                {funnelUsers
+                  ? `Показано ${funnelUsers.users.length} из ${funnelUsers.totalReached} (лимит ${funnelUsers.limit}).`
+                  : "Загрузка списка…"}
+              </p>
+              {funnelUsersMsg ? (
+                <p className="mt-2 text-sm text-rose-300">{funnelUsersMsg}</p>
+              ) : null}
+              {funnelUsersLoading ? (
+                <p className="mt-3 text-sm text-zinc-500">Считаю…</p>
+              ) : funnelUsers?.users.length ? (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[48rem] text-left text-xs">
+                    <thead className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      <tr className="border-b border-white/10">
+                        <th className="py-2 pr-3 font-medium">@username</th>
+                        <th className="py-2 pr-3 font-medium">Имя</th>
+                        <th className="py-2 pr-3 font-medium">Партнёр</th>
+                        <th className="py-2 pr-3 font-medium">Источник</th>
+                        <th className="py-2 pr-3 font-medium">Регистрация</th>
+                        <th className="py-2 pr-3 font-medium">tgId</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funnelUsers.users.map((u) => (
+                        <tr
+                          key={u.userId}
+                          className="border-b border-white/5 text-zinc-300"
+                        >
+                          <td className="py-1.5 pr-3 font-mono">
+                            {u.tgUsername ? `@${u.tgUsername}` : "—"}
+                          </td>
+                          <td className="py-1.5 pr-3">{u.name || "—"}</td>
+                          <td className="py-1.5 pr-3 font-mono">
+                            {u.partnerCode || "—"}
+                          </td>
+                          <td className="py-1.5 pr-3 font-mono text-zinc-400">
+                            {u.source}
+                          </td>
+                          <td className="py-1.5 pr-3 font-mono text-zinc-400">
+                            {u.registeredAt.slice(0, 19).replace("T", " ")}
+                          </td>
+                          <td className="py-1.5 pr-3 font-mono text-zinc-500">
+                            {u.tgId || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : funnelUsers && !funnelUsersLoading ? (
+                <p className="mt-3 text-sm text-zinc-600">
+                  На этом шаге никого в выборке
+                </p>
+              ) : null}
+            </section>
+          ) : null}
         </>
       )}
     </div>

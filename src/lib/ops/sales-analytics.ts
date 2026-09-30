@@ -250,6 +250,9 @@ export type SalesAnalyticsResult = {
     /** Age-gate: заблокированные фото в выбранных датах (все юзеры, не только когорта). */
     ageBlockedAttempts: number;
     ageBlockedUsers: number;
+    /** Отправлено на ручную проверку («Ей есть 18!») в выбранных датах. */
+    ageAppeals: number;
+    ageAppealUsers: number;
   };
   cash: {
     note: string;
@@ -996,6 +999,18 @@ export async function collectSalesAnalytics(
       select: { userId: true },
     }),
   ]);
+  const ageAppealWhere: Prisma.FunnelEventWhereInput = {
+    ...ageBlockWhere,
+    eventKey: "bot.agegate.appeal",
+  };
+  const [ageAppeals, ageAppealUserRows] = await Promise.all([
+    prisma.funnelEvent.count({ where: ageAppealWhere }),
+    prisma.funnelEvent.findMany({
+      where: ageAppealWhere,
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
+  ]);
   const factPayers = new Set(cashOrders.map((o) => o.userId)).size;
   const funnelPayFact = buildFunnelRows(
     SALES_FUNNEL_PAY_STEPS,
@@ -1105,6 +1120,8 @@ export async function collectSalesAnalytics(
       payersWithin7d,
       ageBlockedAttempts,
       ageBlockedUsers: ageBlockedUserRows.length,
+      ageAppeals,
+      ageAppealUsers: ageAppealUserRows.length,
     },
     cash: {
       note:

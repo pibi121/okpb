@@ -230,6 +230,13 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "Пользователь отправил фото в состоянии загрузки персонажа или video-ref.",
   ),
   S(
+    "bot.agegate.appeal",
+    "bot",
+    "activation",
+    "Age Gate: «Ей есть 18!» — на ручную проверку",
+    "Пользователь оспорил блок фото кнопкой; фото ушло в очередь OPS → Безопасность.",
+  ),
+  S(
     "bot.agegate.block",
     "bot",
     "activation",

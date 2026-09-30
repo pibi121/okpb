@@ -181,6 +181,15 @@ export async function submitAgeGateAppeal(opts: {
   });
   if (upd.count === 0) return { text: sent, queued: false };
 
+  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
+  trackFunnelEventBg({
+    userId: row.userId,
+    platformUserId: row.platformUserId,
+    eventKey: "bot.agegate.appeal",
+    surface: "bot",
+    meta: { reviewId: row.id, hash: row.photoHash },
+  });
+
   void notifyOpsAgeGateAppeal(row.id).catch((e) =>
     console.error("[age-gate] ops notify:", e),
   );

@@ -76,6 +76,8 @@ type SalesPayload = {
     paymentsPerReg: number;
     ageBlockedAttempts: number;
     ageBlockedUsers: number;
+    ageAppeals: number;
+    ageAppealUsers: number;
   };
   cash: {
     note: string;
@@ -688,6 +690,11 @@ export default function OpsSalesPage() {
                 label="Заблокировано фото (Age Gate)"
                 hint="За выбранные даты, любые пользователи: попыток / уникальных людей"
                 value={`${data.kpi.ageBlockedAttempts} / ${data.kpi.ageBlockedUsers}`}
+              />
+              <Kpi
+                label="На ручную проверку («Ей есть 18!»)"
+                hint="За выбранные даты: отправлено фото / уникальных людей"
+                value={`${data.kpi.ageAppeals} / ${data.kpi.ageAppealUsers}`}
               />
             </div>
           </section>

@@ -37,15 +37,12 @@ type TouchKind = keyof FunnelTouchBreakdown;
 
 /** Основная воронка. */
 export const SALES_FUNNEL_MAIN_STEPS: SalesFunnelStepDef[] = [
+  // Регистрация = первый /start. База воронки = когорта KPI и «Динамики».
   {
-    key: "bot.start",
-    title: "Вход (/start)",
-    eventKeys: [
-      "bot.start",
-      "bot.start.returning",
-      "bot.start.photos_upload",
-    ],
-    kind: "event",
+    key: "registered",
+    title: "Регистрация (/start)",
+    eventKeys: null,
+    kind: "cohort",
   },
   {
     key: "bot.fv2.rules",
@@ -220,6 +217,8 @@ export type SalesAnalyticsResult = {
     maxYmd: string;
     partnerIds: string[] | "all" | "none";
     note: string;
+    /** Telegram-аккаунты, созданные в окне, но без единого /start (не в когорте). */
+    ghostUsers: number;
   };
   partners: SalesPartnerOption[];
   kpi: {
@@ -366,6 +365,65 @@ const LIVE_TOPUP_BASE: Prisma.LedgerEntryWhereInput = {
 function isLiveTopupReason(reason: string) {
   const r = reason.toLowerCase();
   return r.includes("topup") && !r.includes("stub") && !r.includes("preview");
+}
+
+const START_EVENT_KEYS = [
+  "bot.start",
+  "bot.start.returning",
+  "bot.start.photos_upload",
+];
+
+type CohortWindowArgs = {
+  from: Date;
+  toExclusive: Date;
+  partnersNone: boolean;
+  partnerFilterActive: boolean;
+  partnerIds: string[];
+};
+
+/**
+ * Когорта регистраций = telegram-юзеры, чей ПЕРВЫЙ /start попал в окно.
+ * regAt = время первого /start. Аккаунты без /start (спам-флуд) не входят.
+ */
+async function loadStartCohort(
+  a: CohortWindowArgs,
+): Promise<{ id: string; regAt: Date }[]> {
+  if (a.partnersNone) return [];
+  const groups = await prisma.funnelEvent.groupBy({
+    by: ["userId"],
+    where: {
+      eventKey: { in: START_EVENT_KEYS },
+      user: {
+        source: "telegram",
+        ...(a.partnerFilterActive
+          ? { partnerAttribution: { partnerId: { in: a.partnerIds } } }
+          : {}),
+      },
+    },
+    _min: { at: true },
+    having: { at: { _min: { gte: a.from, lt: a.toExclusive } } },
+  });
+  const out: { id: string; regAt: Date }[] = [];
+  for (const g of groups) {
+    const at = g._min.at;
+    if (at) out.push({ id: g.userId, regAt: at });
+  }
+  return out;
+}
+
+/** Аккаунты, созданные в окне, но без ни одного /start. */
+async function countGhostUsers(a: CohortWindowArgs): Promise<number> {
+  if (a.partnersNone) return 0;
+  return prisma.user.count({
+    where: {
+      source: "telegram",
+      createdAt: { gte: a.from, lt: a.toExclusive },
+      funnelEvents: { none: { eventKey: { in: START_EVENT_KEYS } } },
+      ...(a.partnerFilterActive
+        ? { partnerAttribution: { partnerId: { in: a.partnerIds } } }
+        : {}),
+    },
+  });
 }
 
 /** SQLite + Prisma: large `in` + NOT/`not` can't auto-split — chunk ourselves. */
@@ -604,15 +662,23 @@ export async function collectSalesAnalytics(
       ? partnerIds
       : "all";
 
-  const cohortWhere: Prisma.UserWhereInput = partnersNone
-    ? { id: { in: [] } }
-    : {
-        source: "telegram",
-        createdAt: { gte: from, lt: toExclusive },
-        ...(partnerFilterActive
-          ? { partnerAttribution: { partnerId: { in: partnerIds } } }
-          : {}),
-      };
+  // Регистрация = первое нажатие /start (FunnelEvent), не User.createdAt.
+  const cohortUsers = (
+    await loadStartCohort({
+      from,
+      toExclusive,
+      partnersNone,
+      partnerFilterActive,
+      partnerIds,
+    })
+  ).map((m) => ({ id: m.id, createdAt: m.regAt }));
+  const ghostUsers = await countGhostUsers({
+    from,
+    toExclusive,
+    partnersNone,
+    partnerFilterActive,
+    partnerIds,
+  });
 
   const cashUserFilter: Prisma.PaymentOrderWhereInput = partnersNone
     ? { id: { in: [] } }
@@ -625,10 +691,6 @@ export async function collectSalesAnalytics(
       ? { user: { partnerAttribution: { partnerId: { in: partnerIds } } } }
       : {};
 
-  const cohortUsers = await prisma.user.findMany({
-    where: cohortWhere,
-    select: { id: true, createdAt: true },
-  });
   const cohortIds = cohortUsers.map((u) => u.id);
   const createdById = new Map(cohortUsers.map((u) => [u.id, u.createdAt]));
   const N = cohortIds.length;
@@ -986,7 +1048,8 @@ export async function collectSalesAnalytics(
       maxYmd,
       partnerIds: partnerMeta,
       note:
-        "Первичные регистрации = аккаунты, созданные в выбранные даты. Их шаги и оплаты — на момент отчёта (могли оплатить позже). Касса ниже — все оплаты, прошедшие в эти даты, в т.ч. от более ранних регистраций.",
+        "Регистрация = первое нажатие /start в выбранные даты. Аккаунты, созданные без /start (например, при спам-заходах), не считаются. Шаги и оплаты — на момент отчёта (могли оплатить позже). Касса ниже — все оплаты, прошедшие в эти даты, в т.ч. от более ранних регистраций.",
+      ghostUsers,
     },
     partners,
     kpi: {
@@ -1061,17 +1124,32 @@ export type FunnelStepUserRow = {
   tgUsername: string | null;
   name: string | null;
   partnerCode: string | null;
+  /** Имя пользователя-партнёра (User.name). */
+  partnerName: string | null;
+  /** TG @username партнёра. */
+  partnerTgUsername: string | null;
   /** organic | partner:CODE | traffic:CODE */
   source: string;
   registeredAt: string;
 };
 
+export type FunnelKind = "main" | "pay";
+/** cohort = по дате регистрации; fact = по факту событий в датах (только pay). */
+export type FunnelBasis = "cohort" | "fact";
+/** reached = дошли до шага; dropped = были на предыдущем шаге, но не дошли сюда. */
+export type FunnelUsersView = "reached" | "dropped";
+
 export type FunnelStepUsersResult = {
+  funnel: FunnelKind;
+  basis: FunnelBasis;
+  view: FunnelUsersView;
   step: string;
   title: string;
+  prevStep: string | null;
+  prevTitle: string | null;
   fromYmd: string;
   toYmd: string;
-  totalReached: number;
+  total: number;
   limit: number;
   users: FunnelStepUserRow[];
 };
@@ -1088,7 +1166,6 @@ async function resolveSalesCohortWindow(params: {
   partnersNone: boolean;
   partnerFilterActive: boolean;
   partnerIds: string[];
-  cohortWhere: Prisma.UserWhereInput;
 }> {
   const bounds = await getSalesDateBounds();
   const maxYmd = bounds.maxYmd;
@@ -1116,16 +1193,6 @@ async function resolveSalesCohortWindow(params: {
     rawPartnerIds.length < knownPartnerIds.size;
   const partnerIds = partnerFilterActive ? rawPartnerIds : [];
 
-  const cohortWhere: Prisma.UserWhereInput = partnersNone
-    ? { id: { in: [] } }
-    : {
-        source: "telegram",
-        createdAt: { gte: from, lt: toExclusive },
-        ...(partnerFilterActive
-          ? { partnerAttribution: { partnerId: { in: partnerIds } } }
-          : {}),
-      };
-
   return {
     fromYmd,
     toYmd,
@@ -1134,7 +1201,6 @@ async function resolveSalesCohortWindow(params: {
     partnersNone,
     partnerFilterActive,
     partnerIds,
-    cohortWhere,
   };
 }
 
@@ -1149,58 +1215,46 @@ function formatSalesSource(user: {
   return "organic";
 }
 
-/**
- * Cohort users who reached a main-funnel step (same filters as sales).
- */
-export async function collectFunnelStepUsers(params: {
-  fromYmd: string;
-  toYmd: string;
-  step: string;
-  partnerIds?: string[] | null;
-}): Promise<FunnelStepUsersResult> {
-  const stepDef = SALES_FUNNEL_MAIN_STEPS.find((s) => s.key === params.step);
-  if (!stepDef) {
-    throw new Error(`Неизвестный шаг воронки: ${params.step}`);
+type SalesCohortWindow = Awaited<ReturnType<typeof resolveSalesCohortWindow>>;
+
+/** Кто дошёл до шага среди когорты регистраций (та же логика, что в воронке). */
+async function cohortReachedSet(
+  stepDef: SalesFunnelStepDef,
+  cohortIds: string[],
+): Promise<Set<string>> {
+  const reached = new Set<string>();
+  if (!cohortIds.length) return reached;
+
+  if (stepDef.kind === "cohort") {
+    for (const id of cohortIds) reached.add(id);
+    return reached;
   }
 
-  const win = await resolveSalesCohortWindow(params);
-  const cohortUsers = await prisma.user.findMany({
-    where: win.cohortWhere,
-    select: { id: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
-  });
-  const cohortIds = cohortUsers.map((u) => u.id);
-  const createdById = new Map(cohortUsers.map((u) => [u.id, u.createdAt]));
-
-  let reached = new Set<string>();
-
   if (stepDef.kind === "paid" || stepDef.kind === "repeat_paid") {
-    if (cohortIds.length) {
-      const orders = await mapChunks(cohortIds, (chunk) =>
-        prisma.paymentOrder.findMany({
-          where: { userId: { in: chunk }, status: "paid" },
-          select: { userId: true },
-        }),
-      );
-      const payCount = new Map<string, number>();
-      for (const o of orders) {
-        payCount.set(o.userId, (payCount.get(o.userId) || 0) + 1);
-      }
-      for (const [uid, n] of payCount) {
-        if (stepDef.kind === "paid" && n >= 1) reached.add(uid);
-        if (stepDef.kind === "repeat_paid" && n > 1) reached.add(uid);
-      }
+    const orders = await mapChunks(cohortIds, (chunk) =>
+      prisma.paymentOrder.findMany({
+        where: { userId: { in: chunk }, status: "paid" },
+        select: { userId: true },
+      }),
+    );
+    const payCount = new Map<string, number>();
+    for (const o of orders) {
+      payCount.set(o.userId, (payCount.get(o.userId) || 0) + 1);
     }
-  } else if (stepDef.firstTouch) {
+    for (const [uid, n] of payCount) {
+      if (stepDef.kind === "paid" && n >= 1) reached.add(uid);
+      if (stepDef.kind === "repeat_paid" && n > 1) reached.add(uid);
+    }
+    return reached;
+  }
+
+  if (stepDef.firstTouch) {
     const keys = stepDef.eventKeys || [];
     const [eventHits, legacyHits] = await Promise.all([
-      cohortIds.length && keys.length
+      keys.length
         ? mapChunks(cohortIds, (chunk) =>
             prisma.funnelEvent.findMany({
-              where: {
-                userId: { in: chunk },
-                eventKey: { in: keys },
-              },
+              where: { userId: { in: chunk }, eventKey: { in: keys } },
               select: {
                 userId: true,
                 eventKey: true,
@@ -1218,7 +1272,7 @@ export async function collectFunnelStepUsers(params: {
               at: Date;
             }[],
           ),
-      cohortIds.length && stepDef.firstTouch === "section"
+      stepDef.firstTouch === "section"
         ? mapChunks(cohortIds, (chunk) =>
             prisma.funnelEvent.findMany({
               where: {
@@ -1234,9 +1288,10 @@ export async function collectFunnelStepUsers(params: {
             [] as { userId: string; metaJson: string; at: Date }[],
           ),
     ]);
-    reached = computeFirstTouch(stepDef.firstTouch, eventHits, legacyHits)
-      .users;
-  } else if (stepDef.eventKeys?.length) {
+    return computeFirstTouch(stepDef.firstTouch, eventHits, legacyHits).users;
+  }
+
+  if (stepDef.eventKeys?.length) {
     const keys = stepDef.eventKeys;
     const [eventHits, legacyHits] = await Promise.all([
       mapChunks(cohortIds, (chunk) =>
@@ -1265,13 +1320,138 @@ export async function collectFunnelStepUsers(params: {
     for (const h of eventHits) reached.add(h.userId);
     for (const h of legacyHits) reached.add(h.userId);
   }
+  return reached;
+}
 
-  const sortedIds = [...reached].sort((a, b) => {
+/** «По факту»: события/оплаты в окне дат, любая дата регистрации. */
+async function factReachedSet(
+  stepDef: SalesFunnelStepDef,
+  win: SalesCohortWindow,
+): Promise<Set<string>> {
+  const reached = new Set<string>();
+  if (win.partnersNone) return reached;
+  const partnerRel = win.partnerFilterActive
+    ? { partnerAttribution: { partnerId: { in: win.partnerIds } } }
+    : null;
+  const at = { gte: win.from, lt: win.toExclusive };
+
+  if (stepDef.kind === "paid") {
+    const orders = await prisma.paymentOrder.findMany({
+      where: {
+        status: "paid",
+        paidAt: at,
+        ...(partnerRel ? { user: partnerRel } : {}),
+      },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    for (const o of orders) reached.add(o.userId);
+    return reached;
+  }
+
+  if (stepDef.kind !== "event") return reached;
+
+  const [eventHits, legacyHits] = await Promise.all([
+    stepDef.eventKeys?.length
+      ? prisma.funnelEvent.findMany({
+          where: {
+            at,
+            eventKey: { in: stepDef.eventKeys },
+            ...(partnerRel ? { user: partnerRel } : {}),
+          },
+          select: { userId: true },
+          distinct: ["userId"],
+        })
+      : Promise.resolve([] as { userId: string }[]),
+    stepDef.metaContains?.length
+      ? prisma.funnelEvent.findMany({
+          where: {
+            at,
+            eventKey: "bot.callback.other",
+            OR: stepDef.metaContains.map((needle) => ({
+              metaJson: { contains: needle },
+            })),
+            ...(partnerRel ? { user: partnerRel } : {}),
+          },
+          select: { userId: true },
+          distinct: ["userId"],
+        })
+      : Promise.resolve([] as { userId: string }[]),
+  ]);
+  for (const h of eventHits) reached.add(h.userId);
+  for (const h of legacyHits) reached.add(h.userId);
+  return reached;
+}
+
+/**
+ * Люди шага воронки (main | pay).
+ * view=reached — дошли до шага; view=dropped — были на предыдущем шаге, но не дошли до этого.
+ */
+export async function collectFunnelStepUsers(params: {
+  fromYmd: string;
+  toYmd: string;
+  step: string;
+  partnerIds?: string[] | null;
+  funnel?: FunnelKind;
+  basis?: FunnelBasis;
+  view?: FunnelUsersView;
+}): Promise<FunnelStepUsersResult> {
+  const funnel: FunnelKind = params.funnel === "pay" ? "pay" : "main";
+  const basis: FunnelBasis =
+    funnel === "pay" && params.basis === "fact" ? "fact" : "cohort";
+  const view: FunnelUsersView = params.view === "dropped" ? "dropped" : "reached";
+  const steps =
+    funnel === "pay" ? SALES_FUNNEL_PAY_STEPS : SALES_FUNNEL_MAIN_STEPS;
+
+  const idx = steps.findIndex((s) => s.key === params.step);
+  if (idx < 0) {
+    throw new Error(`Неизвестный шаг воронки: ${params.step}`);
+  }
+  const stepDef = steps[idx]!;
+  const prevDef = idx > 0 ? steps[idx - 1]! : null;
+  if (view === "dropped" && !prevDef) {
+    throw new Error("У первого шага нет предыдущего");
+  }
+
+  const win = await resolveSalesCohortWindow(params);
+
+  let cohortIds: string[] = [];
+  const createdById = new Map<string, Date>();
+  if (basis === "cohort") {
+    const cohort = await loadStartCohort(win);
+    cohortIds = cohort.map((u) => u.id);
+    for (const u of cohort) createdById.set(u.id, u.regAt);
+  }
+
+  const reach = (def: SalesFunnelStepDef) =>
+    basis === "fact" ? factReachedSet(def, win) : cohortReachedSet(def, cohortIds);
+
+  let ids: Set<string>;
+  if (view === "reached") {
+    ids = await reach(stepDef);
+  } else {
+    const [prevSet, curSet] = await Promise.all([reach(prevDef!), reach(stepDef)]);
+    ids = new Set([...prevSet].filter((id) => !curSet.has(id)));
+  }
+
+  // createdAt для сортировки (в fact-режиме когорты нет)
+  const missing = [...ids].filter((id) => !createdById.has(id));
+  if (missing.length) {
+    const rows = await mapChunks(missing, (chunk) =>
+      prisma.user.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, createdAt: true },
+      }),
+    );
+    for (const r of rows) createdById.set(r.id, r.createdAt);
+  }
+
+  const sortedIds = [...ids].sort((a, b) => {
     const ca = createdById.get(a)?.getTime() || 0;
     const cb = createdById.get(b)?.getTime() || 0;
     return cb - ca;
   });
-  const totalReached = sortedIds.length;
+  const total = sortedIds.length;
   const pageIds = sortedIds.slice(0, FUNNEL_USERS_LIMIT);
 
   const usersRaw = pageIds.length
@@ -1283,7 +1463,24 @@ export async function collectFunnelStepUsers(params: {
           createdAt: true,
           trafficLink: { select: { code: true } },
           partnerAttribution: {
-            select: { partner: { select: { code: true } } },
+            select: {
+              partner: {
+                select: {
+                  code: true,
+                  user: {
+                    select: {
+                      name: true,
+                      platformAccounts: {
+                        where: { platform: "telegram" },
+                        select: { username: true },
+                        take: 1,
+                        orderBy: { lastSeenAt: "desc" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
           platformAccounts: {
             where: { platform: "telegram" },
@@ -1301,23 +1498,31 @@ export async function collectFunnelStepUsers(params: {
     const u = byId.get(id);
     if (!u) continue;
     const pa = u.platformAccounts[0];
+    const partner = u.partnerAttribution?.partner;
     users.push({
       userId: u.id,
       tgId: pa?.platformUserId || "",
       tgUsername: pa?.username ?? null,
       name: u.name,
-      partnerCode: u.partnerAttribution?.partner?.code ?? null,
+      partnerCode: partner?.code ?? null,
+      partnerName: partner?.user?.name ?? null,
+      partnerTgUsername: partner?.user?.platformAccounts?.[0]?.username ?? null,
       source: formatSalesSource(u),
-      registeredAt: u.createdAt.toISOString(),
+      registeredAt: (createdById.get(id) ?? u.createdAt).toISOString(),
     });
   }
 
   return {
+    funnel,
+    basis,
+    view,
     step: stepDef.key,
     title: stepDef.title,
+    prevStep: prevDef?.key ?? null,
+    prevTitle: prevDef?.title ?? null,
     fromYmd: win.fromYmd,
     toYmd: win.toYmd,
-    totalReached,
+    total,
     limit: FUNNEL_USERS_LIMIT,
     users,
   };

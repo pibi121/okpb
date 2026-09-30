@@ -24,14 +24,23 @@ type FunnelUserRow = {
   tgUsername: string | null;
   name: string | null;
   partnerCode: string | null;
+  partnerName: string | null;
+  partnerTgUsername: string | null;
   source: string;
   registeredAt: string;
 };
 
+type FunnelUsersView = "reached" | "dropped";
+
 type FunnelUsersPayload = {
+  funnel: "main" | "pay";
+  basis: "cohort" | "fact";
+  view: FunnelUsersView;
   step: string;
   title: string;
-  totalReached: number;
+  prevStep: string | null;
+  prevTitle: string | null;
+  total: number;
   limit: number;
   users: FunnelUserRow[];
 };
@@ -52,6 +61,7 @@ type SalesPayload = {
     cashGrain: Grain;
     partnerIds: string[] | "all" | "none";
     note: string;
+    ghostUsers: number;
   };
   partners: PartnerOption[];
   kpi: {
@@ -189,6 +199,8 @@ export default function OpsSalesPage() {
   const [selectedFunnelStep, setSelectedFunnelStep] = useState<string | null>(
     null,
   );
+  const [selectedFunnelView, setSelectedFunnelView] =
+    useState<FunnelUsersView>("reached");
   const [funnelUsers, setFunnelUsers] = useState<FunnelUsersPayload | null>(
     null,
   );
@@ -307,14 +319,18 @@ export default function OpsSalesPage() {
   );
 
   const loadFunnelUsers = useCallback(
-    async (step: string) => {
+    async (step: string, view: FunnelUsersView = "reached") => {
       setSelectedFunnelStep(step);
+      setSelectedFunnelView(view);
       setFunnelUsersLoading(true);
       setFunnelUsersMsg("");
       try {
         const q = new URLSearchParams({
           mode: "funnel_users",
           step,
+          view,
+          funnel: funnelTab,
+          basis: funnelTab === "pay" ? payMode : "cohort",
           from,
           to,
         });
@@ -333,8 +349,15 @@ export default function OpsSalesPage() {
         setFunnelUsersLoading(false);
       }
     },
-    [from, to, selectedPartnerIds],
+    [from, to, selectedPartnerIds, funnelTab, payMode],
   );
+
+  function clearFunnelUsers() {
+    setSelectedFunnelStep(null);
+    setSelectedFunnelView("reached");
+    setFunnelUsers(null);
+    setFunnelUsersMsg("");
+  }
 
   useEffect(() => {
     void load();
@@ -606,6 +629,11 @@ export default function OpsSalesPage() {
       ) : (
         <>
           <p className="text-xs text-zinc-500">{data.meta.note}</p>
+          {data.meta.ghostUsers > 0 ? (
+            <p className="text-xs text-amber-300/80">
+              Создано без /start и не учтено в регистрациях: {data.meta.ghostUsers}
+            </p>
+          ) : null}
 
           <section>
             <h2 className="mb-2 text-sm font-medium text-zinc-300">
@@ -614,7 +642,7 @@ export default function OpsSalesPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Kpi
                 label="Регистраций (kpi.newUsers)"
-                hint="Telegram User.createdAt, календарный день MSK"
+                hint="Первый /start, календарный день MSK"
                 value={String(data.kpi.newUsers)}
               />
               <Kpi
@@ -782,6 +810,7 @@ export default function OpsSalesPage() {
                   }
                   onClick={() => {
                     setFunnelTab("main");
+                    clearFunnelUsers();
                   }}
                 >
                   Основная
@@ -795,9 +824,7 @@ export default function OpsSalesPage() {
                   }
                   onClick={() => {
                     setFunnelTab("pay");
-                    setSelectedFunnelStep(null);
-                    setFunnelUsers(null);
-                    setFunnelUsersMsg("");
+                    clearFunnelUsers();
                   }}
                 >
                   Оплаты
@@ -806,7 +833,7 @@ export default function OpsSalesPage() {
             </div>
             <p className="mt-1 text-xs text-zinc-500">
               {funnelTab === "main"
-                ? "Основная: вход (/start) → правила → меню → раздел → генерация → топап → оплаты. Клик по шагу — список людей. «% от всех» — от входа."
+                ? "Основная: регистрация (первый /start) → правила → меню → раздел → генерация → топап → оплаты. Первый шаг = те же регистрации, что в KPI и динамике; «% от всех» — от регистраций. Клик по шагу — кто дошёл; «не дошли» — кто был на шаге выше, но не дошёл сюда."
                 : payMode === "fact"
                   ? "Оплаты по факту: шаги и оплаты, случившиеся в выбранные даты (дата регистрации не важна). «% от всех» — от «открыл пополнение» за эти даты."
                   : "Оплаты по регистрации: среди зарегистрированных в выбранные даты. Открыл → сумма → способ → ссылка → оплатил (оплата могла быть позже)."}
@@ -820,7 +847,10 @@ export default function OpsSalesPage() {
                       ? "rounded-full bg-white/15 px-3 py-1 text-xs"
                       : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
                   }
-                  onClick={() => setPayMode("cohort")}
+                  onClick={() => {
+                    setPayMode("cohort");
+                    clearFunnelUsers();
+                  }}
                 >
                   По дате регистрации
                 </button>
@@ -831,7 +861,10 @@ export default function OpsSalesPage() {
                       ? "rounded-full bg-white/15 px-3 py-1 text-xs"
                       : "rounded-full border border-white/15 px-3 py-1 text-xs text-zinc-400"
                   }
-                  onClick={() => setPayMode("fact")}
+                  onClick={() => {
+                    setPayMode("fact");
+                    clearFunnelUsers();
+                  }}
                 >
                   По факту
                 </button>
@@ -842,36 +875,31 @@ export default function OpsSalesPage() {
                 const dropHard = i > 0 && f.pctOfPrev < 50 && f.uniqueUsers > 0;
                 const jumpUp = i > 0 && f.uniqueUsers > 0 && f.pctOfPrev > 100;
                 const selected =
-                  funnelTab === "main" && selectedFunnelStep === f.key;
-                const clickable = funnelTab === "main";
+                  selectedFunnelStep === f.key &&
+                  selectedFunnelView === "reached";
+                const droppedSelected =
+                  selectedFunnelStep === f.key &&
+                  selectedFunnelView === "dropped";
                 const bd = f.breakdown;
                 return (
                   <li key={f.key}>
                     <button
                       type="button"
-                      disabled={!clickable}
                       onClick={() => {
-                        if (!clickable) return;
-                        void loadFunnelUsers(f.key);
+                        void loadFunnelUsers(f.key, "reached");
                       }}
-                      className={
-                        clickable
-                          ? `mb-1 w-full rounded-xl px-2 py-1.5 text-left transition ${
-                              selected
-                                ? "bg-peach/15 ring-1 ring-peach/40"
-                                : "hover:bg-white/5"
-                            }`
-                          : "mb-1 w-full px-2 py-1.5 text-left"
-                      }
+                      className={`mb-1 w-full rounded-xl px-2 py-1.5 text-left transition ${
+                        selected
+                          ? "bg-peach/15 ring-1 ring-peach/40"
+                          : "hover:bg-white/5"
+                      }`}
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <span className="text-sm text-zinc-200">
                           {i + 1}. {f.title}
-                          {clickable ? (
-                            <span className="ml-2 text-[10px] text-zinc-600">
-                              люди →
-                            </span>
-                          ) : null}
+                          <span className="ml-2 text-[10px] text-zinc-600">
+                            дошли →
+                          </span>
                         </span>
                         <span className="font-mono text-sm">
                           <b className="text-peach">{f.uniqueUsers}</b>
@@ -919,34 +947,51 @@ export default function OpsSalesPage() {
                         />
                       </div>
                     </button>
+                    {i > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void loadFunnelUsers(f.key, "dropped");
+                        }}
+                        className={`ml-2 rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+                          droppedSelected
+                            ? "border-rose-300/60 bg-rose-400/15 text-rose-200"
+                            : "border-white/15 text-zinc-400 hover:bg-white/5"
+                        }`}
+                      >
+                        не дошли из «{funnel[i - 1]!.title}»
+                      </button>
+                    ) : null}
                   </li>
                 );
               })}
             </ul>
           </section>
 
-          {funnelTab === "main" && selectedFunnelStep ? (
+          {selectedFunnelStep ? (
             <section className="rounded-2xl border border-white/10 p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="font-display text-xl">
-                  Люди на шаге
+                  {selectedFunnelView === "dropped"
+                    ? "Не дошли до шага"
+                    : "Дошли до шага"}
                   {funnelUsers ? `: ${funnelUsers.title}` : ""}
                 </h2>
                 <button
                   type="button"
                   className="text-xs text-zinc-500 hover:text-zinc-300"
-                  onClick={() => {
-                    setSelectedFunnelStep(null);
-                    setFunnelUsers(null);
-                    setFunnelUsersMsg("");
-                  }}
+                  onClick={clearFunnelUsers}
                 >
                   Закрыть
                 </button>
               </div>
               <p className="mt-1 text-xs text-zinc-500">
                 {funnelUsers
-                  ? `Показано ${funnelUsers.users.length} из ${funnelUsers.totalReached} (лимит ${funnelUsers.limit}).`
+                  ? `${
+                      funnelUsers.view === "dropped"
+                        ? `Были на шаге «${funnelUsers.prevTitle}», но не дошли до «${funnelUsers.title}». `
+                        : ""
+                    }Показано ${funnelUsers.users.length} из ${funnelUsers.total} (лимит ${funnelUsers.limit}).`
                   : "Загрузка списка…"}
               </p>
               {funnelUsersMsg ? (
@@ -977,8 +1022,21 @@ export default function OpsSalesPage() {
                             {u.tgUsername ? `@${u.tgUsername}` : "—"}
                           </td>
                           <td className="py-1.5 pr-3">{u.name || "—"}</td>
-                          <td className="py-1.5 pr-3 font-mono">
-                            {u.partnerCode || "—"}
+                          <td className="py-1.5 pr-3">
+                            {u.partnerCode ? (
+                              <>
+                                <span className="font-mono">{u.partnerCode}</span>
+                                {u.partnerName ? ` · ${u.partnerName}` : ""}
+                                {u.partnerTgUsername ? (
+                                  <span className="font-mono text-zinc-500">
+                                    {" "}
+                                    @{u.partnerTgUsername}
+                                  </span>
+                                ) : null}
+                              </>
+                            ) : (
+                              "—"
+                            )}
                           </td>
                           <td className="py-1.5 pr-3 font-mono text-zinc-400">
                             {u.source}
@@ -996,7 +1054,9 @@ export default function OpsSalesPage() {
                 </div>
               ) : funnelUsers && !funnelUsersLoading ? (
                 <p className="mt-3 text-sm text-zinc-600">
-                  На этом шаге никого в выборке
+                  {funnelUsers.view === "dropped"
+                    ? "Отвалившихся на этом шаге нет"
+                    : "На этом шаге никого в выборке"}
                 </p>
               ) : null}
             </section>

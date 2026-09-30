@@ -116,7 +116,7 @@ export default function OpsHomePage() {
         <Card
           label="Новые люди"
           value={s.today.users}
-          hint="TG-регистрации за сегодня (MSK), как на /ops/sales"
+          hint="TG-аккаунты, созданные сегодня (MSK); в /ops/sales регистрация = первый /start"
         />
         <Card
           label="Персики «оплат»"

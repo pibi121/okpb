@@ -60,6 +60,10 @@ export async function GET(req: Request) {
           toYmd,
           step,
           partnerIds,
+          funnel: url.searchParams.get("funnel") === "pay" ? "pay" : "main",
+          basis: url.searchParams.get("basis") === "fact" ? "fact" : "cohort",
+          view:
+            url.searchParams.get("view") === "dropped" ? "dropped" : "reached",
         });
         return jsonOk(data);
       } catch (e) {

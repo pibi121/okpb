@@ -1,7 +1,13 @@
 import { jsonOk, withOps } from "@/lib/ops/http";
 import { getOpsSettings, saveOpsSettings } from "@/lib/ops/settings";
 import { writeAudit } from "@/lib/ops/audit";
-import { normalizeAgeGateEngine, parseAgeGateConfig } from "@/lib/age-gate";
+import {
+  applyAgeGatePatch,
+  parseAgeGateConfig,
+  publicAgeGateConfig,
+  serializeAgeGateConfig,
+} from "@/lib/age-gate";
+import { AGE_API_MODELS, checkAgeApiKey } from "@/lib/age-gate-api";
 import { prisma } from "@/lib/db";
 import { resolveAgeGateReview } from "@/lib/age-gate-review";
 
@@ -43,6 +49,9 @@ export async function GET(req: Request) {
               secondScore: gate.secondScore ?? null,
               faces: gate.faces ?? null,
               engine: gate.engine ?? null,
+              apiModel: gate.apiModel ?? null,
+              apiAgeMin: gate.apiAgeMin ?? null,
+              apiAgeMax: gate.apiAgeMax ?? null,
             },
           };
         }),
@@ -54,15 +63,27 @@ export async function GET(req: Request) {
     const pendingCount = await prisma.ageGateReview.count({
       where: { status: "pending" },
     });
+    // publicAgeGateConfig: the API key is replaced by a mask — never returned.
+    const pub = publicAgeGateConfig(cfg);
     return jsonOk({
-      ageGateEnabled: cfg.enabled,
-      engine: cfg.engine,
-      blockBuckets: cfg.blockBuckets,
-      faceThresh: cfg.faceThresh,
-      minScore: cfg.minScore,
-      minAdultScore: cfg.minAdultScore,
-      manualUncertainModeration: cfg.manualUncertainModeration,
-      failClosed: cfg.failClosed,
+      ageGateEnabled: pub.enabled,
+      engine: pub.engine,
+      blockBuckets: pub.blockBuckets,
+      faceThresh: pub.faceThresh,
+      minScore: pub.minScore,
+      minAdultScore: pub.minAdultScore,
+      manualUncertainModeration: pub.manualUncertainModeration,
+      failClosed: pub.failClosed,
+      apiKeySet: pub.apiKeySet,
+      apiKeyMasked: pub.apiKeyMasked,
+      apiModel: pub.apiModel,
+      apiPassAge: pub.apiPassAge,
+      apiFallbackLocal: pub.apiFallbackLocal,
+      apiFallbackEngine: pub.apiFallbackEngine,
+      notifyAll: pub.notifyAll,
+      notifyApproved: pub.notifyApproved,
+      notifyRejected: pub.notifyRejected,
+      apiModels: [...AGE_API_MODELS],
       pendingCount,
       note:
         "Age-gate только для Telegram (онбординг/гены). Лаборатория Peach (/api/characters, /api/peach) не проверяется. Metalnode не трогает.",
@@ -72,16 +93,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   return withOps("settings", async (actor) => {
-    const body = (await req.json()) as {
-      ageGateEnabled?: boolean;
-      engine?: string;
-      blockBuckets?: string;
-      faceThresh?: number;
-      minScore?: number;
-      minAdultScore?: number;
-      manualUncertainModeration?: boolean;
-      failClosed?: boolean;
-      action?: "approve" | "reject";
+    const body = (await req.json()) as Record<string, unknown> & {
+      action?: "approve" | "reject" | "check_key";
       id?: string;
     };
 
@@ -103,49 +116,40 @@ export async function POST(req: Request) {
       return jsonOk({ ...result });
     }
 
+    if (body.action === "check_key") {
+      // Typed-but-unsaved key is checked as is; otherwise the stored one.
+      const s0 = await getOpsSettings();
+      const stored = parseAgeGateConfig(s0.ageGateJson, s0.ageGateEnabled);
+      const typed = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+      const check = await checkAgeApiKey(typed || stored.apiKey);
+      return jsonOk({
+        ok: check.ok,
+        status: check.status ?? null,
+        balance: check.balance ?? null,
+        budget: check.budget ?? null,
+        error: check.error ?? null,
+      });
+    }
+
     const s = await getOpsSettings();
     const prev = parseAgeGateConfig(s.ageGateJson, s.ageGateEnabled);
-    const enabled =
-      typeof body.ageGateEnabled === "boolean" ? body.ageGateEnabled : prev.enabled;
-    const nextJson = {
-      engine:
-        body.engine !== undefined
-          ? normalizeAgeGateEngine(body.engine)
-          : prev.engine,
-      blockBuckets:
-        typeof body.blockBuckets === "string" && body.blockBuckets.trim()
-          ? body.blockBuckets.trim()
-          : prev.blockBuckets,
-      faceThresh:
-        typeof body.faceThresh === "number" && body.faceThresh > 0
-          ? body.faceThresh
-          : prev.faceThresh,
-      minScore:
-        typeof body.minScore === "number" && body.minScore > 0
-          ? body.minScore
-          : prev.minScore,
-      minAdultScore:
-        typeof body.minAdultScore === "number" && body.minAdultScore > 0
-          ? body.minAdultScore
-          : prev.minAdultScore,
-      manualUncertainModeration:
-        typeof body.manualUncertainModeration === "boolean"
-          ? body.manualUncertainModeration
-          : prev.manualUncertainModeration,
-      failClosed:
-        typeof body.failClosed === "boolean" ? body.failClosed : prev.failClosed,
-    };
+    const next = applyAgeGatePatch(prev, body);
     await saveOpsSettings({
-      ageGateEnabled: enabled,
-      ageGateJson: JSON.stringify(nextJson),
+      ageGateEnabled: next.enabled,
+      ageGateJson: serializeAgeGateConfig(next),
     });
+    const pub = publicAgeGateConfig(next);
     await writeAudit({
       actorId: actor.id,
       action: "safety_age_gate",
       targetType: "opsSetting",
       targetId: "main",
-      detail: { ageGateEnabled: enabled, ...nextJson },
+      // pub has no apiKey (mask + flag only) — key must never reach the audit log.
+      detail: {
+        ...pub,
+        apiKeyChanged: next.apiKey !== prev.apiKey,
+      },
     });
-    return jsonOk({ ok: true, ageGateEnabled: enabled, ...nextJson });
+    return jsonOk({ ok: true, ...pub });
   });
 }

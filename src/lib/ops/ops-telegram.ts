@@ -22,6 +22,7 @@ export const OPS_TG_TOPICS = [
   "errors",
   "quality",
   "deploys",
+  "agegate",
 ] as const;
 export type OpsTgTopic = (typeof OPS_TG_TOPICS)[number];
 
@@ -32,6 +33,7 @@ const TOPIC_TITLES: Record<OpsTgTopic, string> = {
   errors: "Ошибки",
   quality: "Контроль качества",
   deploys: "Деплои",
+  agegate: "AgeGate",
 };
 
 const TOPIC_ENV_KEYS: Record<OpsTgTopic, string> = {
@@ -41,6 +43,7 @@ const TOPIC_ENV_KEYS: Record<OpsTgTopic, string> = {
   errors: "OPS_TG_TOPIC_ERRORS",
   quality: "OPS_TG_TOPIC_QUALITY",
   deploys: "OPS_TG_TOPIC_DEPLOYS",
+  agegate: "OPS_TG_TOPIC_AGEGATE",
 };
 
 const STATE_FILE = () => path.join(dataRoot(), "ops-telegram.json");

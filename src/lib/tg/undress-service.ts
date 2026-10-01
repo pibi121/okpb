@@ -47,7 +47,9 @@ export async function startTgUndressGeneration(opts: {
   usedFree: boolean;
 }> {
   const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
-  await assertImageAllowedForGeneration(opts.photoBytes, opts.locale);
+  await assertImageAllowedForGeneration(opts.photoBytes, opts.locale, {
+    userId: opts.userId,
+  });
 
   await ensureUndressWelcome(opts.userId);
 

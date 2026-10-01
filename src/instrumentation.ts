@@ -120,6 +120,13 @@ export async function register() {
       .catch((e) => console.error("[peach] ops-tg callback poller:", e));
   }, 15_000);
 
+  // Age Gate info notices left in the disk queue before restart.
+  setTimeout(() => {
+    void import("@/lib/age-gate-notify")
+      .then(({ resumeAgeGateNoticeQueue }) => resumeAgeGateNoticeQueue())
+      .catch((e) => console.error("[peach] age-gate notice queue:", e));
+  }, 25_000);
+
   // Notify ops «Деплои» once per new prod boot / git sha.
   setTimeout(() => {
     void import("@/lib/ops/ops-telegram")

@@ -851,14 +851,15 @@ export async function POST(req: NextRequest) {
       "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGcP//Z",
       "base64",
     );
-    const { checkImageBufferAgeGate, getAgeGateConfig } = await import("@/lib/age-gate");
+    const { checkImageBufferAgeGate, getAgeGateConfig, publicAgeGateConfig } =
+      await import("@/lib/age-gate");
     const cfg = await getAgeGateConfig();
     const sample = await checkImageBufferAgeGate(tinyJpeg, cfg);
     return NextResponse.json({
       ok: true,
       action: "probe_age_gate",
       python: found,
-      config: cfg,
+      config: publicAgeGateConfig(cfg),
       sample,
       scriptExists: fs.existsSync(path.join(process.cwd(), "scripts", "age-gate-check.py")),
     });
@@ -866,32 +867,28 @@ export async function POST(req: NextRequest) {
 
   if (action === "set_age_gate") {
     const { saveOpsSettings, invalidateOpsSettings } = await import("@/lib/ops/settings");
-    const { normalizeAgeGateEngine } = await import("@/lib/age-gate");
-    const enabled = body.enabled === true;
-    const failClosed = body.failClosed === true;
-    const blockBuckets =
-      typeof body.blockBuckets === "string" && body.blockBuckets.trim()
-        ? body.blockBuckets.trim()
-        : "(0-2),(4-6),(8-12)";
+    const {
+      applyAgeGatePatch,
+      getAgeGateConfig,
+      publicAgeGateConfig,
+      serializeAgeGateConfig,
+    } = await import("@/lib/age-gate");
+    // Merge on top of the stored config so API key / notify settings survive.
+    const prev = await getAgeGateConfig();
+    const next = applyAgeGatePatch(prev, {
+      ...body,
+      ageGateEnabled: body.enabled === true,
+      failClosed: body.failClosed === true,
+    });
     await saveOpsSettings({
-      ageGateEnabled: enabled,
-      ageGateJson: JSON.stringify({
-        engine: normalizeAgeGateEngine(body.engine),
-        blockBuckets,
-        faceThresh: typeof body.faceThresh === "number" ? body.faceThresh : 0.6,
-        minScore: typeof body.minScore === "number" ? body.minScore : 0.55,
-        minAdultScore:
-          typeof body.minAdultScore === "number" ? body.minAdultScore : 0.85,
-        manualUncertainModeration: body.manualUncertainModeration === true,
-        failClosed,
-      }),
+      ageGateEnabled: next.enabled,
+      ageGateJson: serializeAgeGateConfig(next),
     });
     invalidateOpsSettings();
-    const { getAgeGateConfig } = await import("@/lib/age-gate");
     return NextResponse.json({
       ok: true,
       action: "set_age_gate",
-      config: await getAgeGateConfig(),
+      config: publicAgeGateConfig(await getAgeGateConfig()),
     });
   }
 

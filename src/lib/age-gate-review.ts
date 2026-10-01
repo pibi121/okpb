@@ -54,7 +54,12 @@ export async function recordAgeGateBlock(opts: {
         platformUserId: opts.platformUserId,
         eventKey: "bot.agegate.block",
         surface: opts.surface,
-        meta: { reason, hash, appeal },
+        meta: {
+          reason,
+          hash,
+          appeal,
+          engine: opts.result.engine || null,
+        },
       });
     }
 
@@ -269,6 +274,11 @@ async function buildOpsCaption(
     rawAgeYears?: number;
     gilOverride?: boolean;
     face?: { gilLabel?: string; gilScore?: number };
+    engine?: string;
+    apiModel?: string;
+    apiAgeMin?: number | null;
+    apiAgeMax?: number | null;
+    apiConfidence?: string;
   };
   const acc = await prisma.platformAccount.findFirst({
     where: { userId: row.userId, platform: "telegram" },
@@ -282,13 +292,25 @@ async function buildOpsCaption(
     gate.ageYears != null
       ? `~${Math.round(gate.ageYears)} лет`
       : gate.ageLabel || "—";
+  const isApi = gate.engine === "api";
+  const refusal = gate.reason === "model_refusal";
+  const apiEstimate =
+    gate.apiAgeMin != null
+      ? `Оценка API: ${gate.apiAgeMin}–${gate.apiAgeMax ?? gate.apiAgeMin} лет` +
+        (gate.apiConfidence ? ` (${escHtml(gate.apiConfidence)})` : "") +
+        ` · модель ${escHtml(gate.apiModel || "?")}`
+      : `Оценка API: модель не дала оценку · модель ${escHtml(gate.apiModel || "?")}`;
   const lines = [
-    `🔞 <b>Age Gate · ручная проверка</b> («Ей есть 18!»)`,
+    refusal
+      ? `🔞 <b>Age Gate · ручная проверка</b> (модель отказалась оценивать)`
+      : `🔞 <b>Age Gate · ручная проверка</b> («Ей есть 18!»)`,
     `Статус: <b>${opsStatusLabel(row.status)}</b>`,
     `Кто: ${who}`,
-    `Оценка: ${escHtml(String(age))}${gate.score != null ? ` · score ${gate.score}` : ""}`,
+    isApi
+      ? apiEstimate
+      : `Оценка: ${escHtml(String(age))}${gate.score != null ? ` · score ${gate.score}` : ""}`,
     `Причина: ${escHtml(gate.reason || "—")}`,
-    ...(gate.rawAgeYears != null
+    ...(!isApi && gate.rawAgeYears != null
       ? [
           `Детали: модель возраста ${Math.round(gate.rawAgeYears * 10) / 10} лет` +
             (gate.face?.gilLabel
@@ -434,6 +456,7 @@ export async function submitAgeGateUncertainReview(opts: {
   notifyUser?: boolean;
 }): Promise<{ reviewId: string; duplicate: boolean; photoUrl: string }> {
   const hash = opts.result.photoHash || ageGatePhotoHash(opts.photoBytes);
+  const userText = ageGateUncertainMessage(opts.locale, opts.result.reason);
   const existing = await prisma.ageGateReview.findFirst({
     where: {
       photoHash: hash,
@@ -446,7 +469,7 @@ export async function submitAgeGateUncertainReview(opts: {
     if (opts.notifyUser !== false) {
       await tgNotifyUser({
         userId: opts.userId,
-        text: ageGateUncertainMessage(opts.locale),
+        text: userText,
       }).catch(() => undefined);
     }
     return {
@@ -455,6 +478,15 @@ export async function submitAgeGateUncertainReview(opts: {
       photoUrl: existing.photoUrl,
     };
   }
+
+  // Anti-abuse: same daily cap as appeals — over it the row is still stored
+  // (user gets the message) but staff chat isn't spammed.
+  const dayCount = await prisma.ageGateReview.count({
+    where: {
+      userId: opts.userId,
+      createdAt: { gte: new Date(Date.now() - 24 * 3600_000) },
+    },
+  });
 
   const saved = saveGalleryBinary(
     opts.userId,
@@ -477,10 +509,16 @@ export async function submitAgeGateUncertainReview(opts: {
     },
   });
 
+  if (dayCount < 10) {
+    void notifyOpsAgeGateAppeal(row.id).catch((e) =>
+      console.error("[age-gate] ops notify:", e),
+    );
+  }
+
   if (opts.notifyUser !== false) {
     await tgNotifyUser({
       userId: opts.userId,
-      text: ageGateUncertainMessage(opts.locale),
+      text: userText,
     }).catch(() => undefined);
   }
 

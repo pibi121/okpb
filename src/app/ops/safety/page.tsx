@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { opsFetch } from "@/lib/ops/ops-fetch";
 
-type AgeGateEngine = "opencv" | "insightface";
+type AgeGateLocalEngine = "opencv" | "insightface";
+type AgeGateEngine = AgeGateLocalEngine | "api";
 
 type Payload = {
   ageGateEnabled: boolean;
@@ -14,9 +15,63 @@ type Payload = {
   minAdultScore: number;
   manualUncertainModeration: boolean;
   failClosed: boolean;
+  apiKeySet: boolean;
+  apiKeyMasked: string;
+  apiModel: string;
+  apiPassAge: number;
+  apiFallbackLocal: boolean;
+  apiFallbackEngine: AgeGateLocalEngine;
+  notifyAll: boolean;
+  notifyApproved: boolean;
+  notifyRejected: boolean;
+  apiModels: string[];
   pendingCount: number;
   note: string;
 };
+
+type KeyCheck = {
+  ok: boolean;
+  balance: unknown;
+  budget: unknown;
+  error: string | null;
+};
+
+const CUSTOM_MODEL = "__custom";
+
+function Toggle(props: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <label
+      className={`flex items-start justify-between gap-3 text-sm ${
+        props.disabled ? "opacity-50" : ""
+      }`}
+    >
+      <span>
+        {props.label}
+        {props.hint ? (
+          <span className="mt-0.5 block text-xs text-zinc-500">{props.hint}</span>
+        ) : null}
+      </span>
+      <input
+        type="checkbox"
+        className="mt-1"
+        disabled={props.disabled}
+        checked={props.checked}
+        onChange={(e) => props.onChange(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+function fmtMoney(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—";
+  return typeof v === "object" ? JSON.stringify(v) : String(v);
+}
 
 type PendingItem = {
   id: string;
@@ -44,6 +99,9 @@ export default function OpsSafetyPage() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState<PendingItem | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [customModel, setCustomModel] = useState(false);
+  const [keyCheck, setKeyCheck] = useState<KeyCheck | null>(null);
 
   useEffect(() => {
     if (!zoom) return;
@@ -67,7 +125,9 @@ export default function OpsSafetyPage() {
     void load().catch((e) => setMsg(e instanceof Error ? e.message : "ошибка"));
   }, [load]);
 
-  async function save(patch: Partial<Payload>) {
+  async function save(
+    patch: Partial<Payload> & { apiKeyClear?: boolean } = {},
+  ) {
     if (!d) return;
     setBusy(true);
     setMsg("");
@@ -82,14 +142,49 @@ export default function OpsSafetyPage() {
           faceThresh: next.faceThresh,
           minScore: next.minScore,
           minAdultScore: next.minAdultScore,
-          manualUncertainModeration: next.manualUncertainModeration,
           failClosed: next.failClosed,
+          // Empty key = keep the stored one (server never wipes it on empty).
+          ...(apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {}),
+          ...(patch.apiKeyClear ? { apiKeyClear: true } : {}),
+          apiModel: next.apiModel,
+          apiPassAge: next.apiPassAge,
+          apiFallbackLocal: next.apiFallbackLocal,
+          apiFallbackEngine: next.apiFallbackEngine,
+          notifyAll: next.notifyAll,
+          notifyApproved: next.notifyApproved,
+          notifyRejected: next.notifyRejected,
         }),
       });
+      setApiKeyInput("");
       setMsg("Сохранено");
       await load();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkKey() {
+    setBusy(true);
+    setMsg("");
+    setKeyCheck(null);
+    try {
+      const r = await opsFetch<KeyCheck>("/api/ops/safety", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "check_key",
+          ...(apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {}),
+        }),
+      });
+      setKeyCheck(r);
+    } catch (e) {
+      setKeyCheck({
+        ok: false,
+        balance: null,
+        budget: null,
+        error: e instanceof Error ? e.message : "ошибка",
+      });
     } finally {
       setBusy(false);
     }
@@ -114,7 +209,33 @@ export default function OpsSafetyPage() {
 
   if (!d) return <p className="text-zinc-500">Загружаю…</p>;
 
-  const engine = d.engine === "insightface" ? "insightface" : "opencv";
+  const engine: AgeGateEngine =
+    d.engine === "insightface" || d.engine === "api" ? d.engine : "opencv";
+  const modelIsPreset = d.apiModels.includes(d.apiModel);
+  const modelSelect = customModel || !modelIsPreset ? CUSTOM_MODEL : d.apiModel;
+  const engineBtn = (id: AgeGateEngine, label: string) => (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => setD({ ...d, engine: id })}
+      aria-pressed={engine === id}
+      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+        engine === id
+          ? "bg-white text-zinc-900 shadow"
+          : "text-zinc-400 hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  const inputCls =
+    "rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm";
+  const engineTitle =
+    engine === "api"
+      ? "ИИ по API (AITUNNEL)"
+      : engine === "insightface"
+        ? "Новая (InsightFace)"
+        : "Старая (OpenCV)";
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
@@ -275,133 +396,323 @@ export default function OpsSafetyPage() {
         </div>
       </div>
 
+
       <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">
-        <div className="text-sm font-medium">Модель проверки</div>
+        <div className="text-sm font-medium">Движок проверки</div>
         <p className="mt-1 text-xs text-zinc-500">
-          Выбор применяется только после «Сохранить настройки». Бакеты — для
-          старой модели; новая считает возраст в годах (&lt;13 блок, 13–18
-          сомнение).
+          Выбор и настройки применяются после «Сохранить настройки», без деплоя.
+          Ниже показаны настройки только выбранного движка.
         </p>
         <div
-          className="mt-3 inline-flex rounded-xl border border-white/15 bg-black/40 p-1"
+          className="mt-3 inline-flex flex-wrap rounded-xl border border-white/15 bg-black/40 p-1"
           role="group"
-          aria-label="Модель age-gate"
+          aria-label="Движок age-gate"
         >
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setD({ ...d, engine: "opencv" })}
-            aria-pressed={engine === "opencv"}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              engine === "opencv"
-                ? "bg-white text-zinc-900 shadow"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            Старая (OpenCV)
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setD({ ...d, engine: "insightface" })}
-            aria-pressed={engine === "insightface"}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              engine === "insightface"
-                ? "bg-white text-zinc-900 shadow"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            Новая (InsightFace)
-          </button>
+          {engineBtn("opencv", "Старая (OpenCV)")}
+          {engineBtn("insightface", "Новая (InsightFace)")}
+          {engineBtn("api", "ИИ по API (пока только AITUNNEL)")}
         </div>
         <p className="mt-2 text-xs text-zinc-400">
           Сейчас выбрано:{" "}
-          <span className="font-medium text-zinc-100">
-            {engine === "insightface"
-              ? "Новая (InsightFace)"
-              : "Старая (OpenCV)"}
-          </span>
+          <span className="font-medium text-zinc-100">{engineTitle}</span>
         </p>
       </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#121214] p-4">
+        <div className="text-sm font-medium">Общие настройки</div>
+        <Toggle
+          checked={d.failClosed}
+          onChange={(v) => setD({ ...d, failClosed: v })}
+          label="Fail-closed (если проверка недоступна — блокировать)"
+          hint="Выключено: при сбое проверки фото пропускается."
+        />
+      </div>
+
+      {engine === "opencv" ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#121214] p-4">
+          <div className="text-sm font-medium">Настройки: Старая (OpenCV)</div>
+          <label className="flex flex-col gap-1 text-sm">
+            Блокируемые возрастные бакеты
+            <input
+              value={d.blockBuckets}
+              onChange={(e) => setD({ ...d, blockBuckets: e.target.value })}
+              className={`${inputCls} font-mono text-xs`}
+            />
+            <span className="text-xs text-zinc-500">
+              По умолчанию: (0-2),(4-6),(8-12)
+            </span>
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Порог лица (0–1)
+            <input
+              type="number"
+              min={0.1}
+              max={0.99}
+              step={0.05}
+              value={d.faceThresh}
+              onChange={(e) => setD({ ...d, faceThresh: Number(e.target.value) })}
+              className={`w-28 ${inputCls}`}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Мин. уверенность для блока (дети)
+            <input
+              type="number"
+              min={0.1}
+              max={0.99}
+              step={0.05}
+              value={d.minScore ?? 0.55}
+              onChange={(e) => setD({ ...d, minScore: Number(e.target.value) })}
+              className={`w-28 ${inputCls}`}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Мин. score взрослого (иначе сомнение)
+            <input
+              type="number"
+              min={0.1}
+              max={0.99}
+              step={0.05}
+              value={d.minAdultScore ?? 0.85}
+              onChange={(e) =>
+                setD({ ...d, minAdultScore: Number(e.target.value) })
+              }
+              className={`w-28 ${inputCls}`}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {engine === "insightface" ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#121214] p-4">
+          <div className="text-sm font-medium">Настройки: Новая (InsightFace)</div>
+          <p className="text-xs text-zinc-500">
+            Возраст считается в годах: &lt;13 блок, 13–18 сомнение. Доп. шаг
+            Gil Levi убран.
+          </p>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Порог лица (0–1)
+            <input
+              type="number"
+              min={0.1}
+              max={0.99}
+              step={0.05}
+              value={d.faceThresh}
+              onChange={(e) => setD({ ...d, faceThresh: Number(e.target.value) })}
+              className={`w-28 ${inputCls}`}
+            />
+          </label>
+          <div className="flex flex-col gap-1 text-sm">
+            <label className="flex items-center justify-between gap-3">
+              Мин. score взрослого (граница «мягкого взрослого»)
+              <input
+                type="number"
+                min={0.1}
+                max={0.99}
+                step={0.05}
+                value={d.minAdultScore ?? 0.85}
+                onChange={(e) =>
+                  setD({ ...d, minAdultScore: Number(e.target.value) })
+                }
+                className={`w-28 ${inputCls}`}
+              />
+            </label>
+            <span className="text-xs text-zinc-500">
+              Граница = 18+(1−score)×10 лет (при 0.85 → ~19.5).
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {engine === "api" ? (
+        <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#121214] p-4">
+          <div className="text-sm font-medium">Настройки: ИИ по API (AITUNNEL)</div>
+          <p className="text-xs text-zinc-500">
+            Фото уменьшается до 1024 px и уходит в модель на оценку возраста.
+            Вердикты кэшируются по хэшу фото.
+          </p>
+
+          <div className="flex flex-col gap-2 text-sm">
+            <span>API-ключ</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder={
+                d.apiKeySet
+                  ? `сохранён: ${d.apiKeyMasked} (пусто = не менять)`
+                  : "вставьте ключ AITUNNEL"
+              }
+              className={`${inputCls} font-mono text-xs`}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={busy || (!apiKeyInput.trim() && !d.apiKeySet)}
+                onClick={() => void checkKey()}
+                className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-zinc-200 disabled:opacity-50"
+              >
+                Проверить ключ
+              </button>
+              {d.apiKeySet ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void save({ apiKeyClear: true })}
+                  className="rounded-full bg-rose-500/20 px-3 py-1.5 text-xs text-rose-300 disabled:opacity-50"
+                >
+                  Удалить ключ
+                </button>
+              ) : null}
+              {keyCheck ? (
+                <span
+                  className={`text-xs ${
+                    keyCheck.ok ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
+                  {keyCheck.ok
+                    ? `ок · баланс ${fmtMoney(keyCheck.balance)} · бюджет ${fmtMoney(keyCheck.budget)}`
+                    : `ошибка: ${keyCheck.error || "неизвестно"}`}
+                </span>
+              ) : null}
+            </div>
+            {!d.apiKeySet && !apiKeyInput.trim() ? (
+              <span className="text-xs text-amber-300">
+                Ключ не задан: с движком «API» все проверки будут недоступны.
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2 text-sm">
+            <span>Модель (одна активная)</span>
+            <select
+              value={modelSelect}
+              onChange={(e) => {
+                if (e.target.value === CUSTOM_MODEL) {
+                  setCustomModel(true);
+                  setD({ ...d, apiModel: "" });
+                } else {
+                  setCustomModel(false);
+                  setD({ ...d, apiModel: e.target.value });
+                }
+              }}
+              className={inputCls}
+            >
+              {d.apiModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                  {m === "gpt-5.4-mini" ? " (по умолчанию)" : ""}
+                </option>
+              ))}
+              <option value={CUSTOM_MODEL}>Другая модель…</option>
+            </select>
+            {modelSelect === CUSTOM_MODEL ? (
+              <input
+                value={d.apiModel}
+                onChange={(e) => setD({ ...d, apiModel: e.target.value })}
+                placeholder="id модели из GET /v1/models"
+                className={`${inputCls} font-mono text-xs`}
+              />
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1 text-sm">
+            <label className="flex items-center justify-between gap-3">
+              Пропускать, если нижняя граница возраста ≥ N
+              <input
+                type="number"
+                min={1}
+                max={99}
+                step={1}
+                value={d.apiPassAge}
+                onChange={(e) =>
+                  setD({ ...d, apiPassAge: Number(e.target.value) })
+                }
+                className={`w-28 ${inputCls}`}
+              />
+            </label>
+            <span className="text-xs text-zinc-500">
+              По умолчанию 16, включительно. Ниже порога — «Ей есть 18!» и
+              ручная проверка.
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Toggle
+              checked={d.apiFallbackLocal}
+              onChange={(v) => setD({ ...d, apiFallbackLocal: v })}
+              label="При ошибке API использовать локальную проверку"
+              hint="Ошибка = нет баланса, таймаут, сеть, 5xx. Пользователь ничего не замечает; алерт в ошибки OPS уходит в любом случае."
+            />
+            <select
+              value={d.apiFallbackEngine}
+              disabled={!d.apiFallbackLocal}
+              onChange={(e) =>
+                setD({
+                  ...d,
+                  apiFallbackEngine:
+                    e.target.value === "insightface" ? "insightface" : "opencv",
+                })
+              }
+              className={`${inputCls} disabled:opacity-50`}
+            >
+              <option value="opencv">Старая (OpenCV)</option>
+              <option value="insightface">Новая (InsightFace)</option>
+            </select>
+            {!d.apiFallbackLocal ? (
+              <span className="text-xs text-zinc-500">
+                Выключено: при ошибке API человек увидит «Проверка временно
+                недоступна».
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-white/10 bg-[#121214] p-4">
-        <div className="text-sm font-medium">Сомнения и «Ей есть 18!»</div>
+        <div className="text-sm font-medium">Отправка на ручную проверку</div>
         <p className="mt-1 text-xs text-zinc-500">
           Сомнительные и детские фото блокируются сразу. Под сообщением о блоке
-          у человека кнопка «Ей есть 18!» — фото попадает в очередь ниже, а в
-          ops-чат (тема «Контроль качества») уходит уведомление. Одобрили —
-          человеку придёт «Прости, наша ошибка…», и это же фото больше не
-          блокируется (по хэшу файла). Отклонили — остаётся блок.
+          у человека кнопка «Ей есть 18!» — фото попадает в очередь выше, а в
+          ops-чат (тема «Контроль качества») уходит фото с кнопками
+          «Одобрить / Заблокировать». Одобрили — человеку придёт «Прости, наша
+          ошибка…», и это же фото больше не блокируется (по хэшу файла).
+          Отклонили — остаётся блок.
+          {engine === "api"
+            ? " Если модель отказалась оценивать фото, заявка создаётся сразу, без кнопки у человека."
+            : ""}
         </p>
       </div>
 
-      <label className="flex flex-col gap-1 text-sm">
-        Блокируемые возрастные бакеты
-        <input
-          value={d.blockBuckets}
-          onChange={(e) => setD({ ...d, blockBuckets: e.target.value })}
-          className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 font-mono text-xs"
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#121214] p-4">
+        <div className="text-sm font-medium">Уведомления о событиях проверки</div>
+        <p className="text-xs text-zinc-500">
+          Лента в тему «AgeGate» ops-чата: фото, кто, время (МСК), статус. Без
+          кнопок. Относится ко всем движкам; технические ошибки сюда не
+          попадают. Одно сообщение на уникальное фото.
+        </p>
+        <Toggle
+          checked={d.notifyAll}
+          onChange={(v) => setD({ ...d, notifyAll: v })}
+          label="Информировать обо всех проверках фото"
         />
-        <span className="text-xs text-zinc-500">
-          Только для старой (OpenCV). По умолчанию: (0-2),(4-6),(8-12)
-        </span>
-      </label>
-
-      <label className="flex items-center justify-between gap-3 text-sm">
-        Порог лица (0–1)
-        <input
-          type="number"
-          min={0.1}
-          max={0.99}
-          step={0.05}
-          value={d.faceThresh}
-          onChange={(e) => setD({ ...d, faceThresh: Number(e.target.value) })}
-          className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
-        />
-      </label>
-
-      <label className="flex items-center justify-between gap-3 text-sm">
-        Мин. уверенность для блока (дети)
-        <input
-          type="number"
-          min={0.1}
-          max={0.99}
-          step={0.05}
-          value={d.minScore ?? 0.55}
-          onChange={(e) => setD({ ...d, minScore: Number(e.target.value) })}
-          className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
-        />
-      </label>
-
-      <div className="flex flex-col gap-1 text-sm">
-        <label className="flex items-center justify-between gap-3">
-          Мин. score взрослого (иначе uncertain)
-          <input
-            type="number"
-            min={0.1}
-            max={0.99}
-            step={0.05}
-            value={d.minAdultScore ?? 0.85}
-            onChange={(e) =>
-              setD({ ...d, minAdultScore: Number(e.target.value) })
-            }
-            className="w-28 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
+        <div className="ml-4 flex flex-col gap-2 border-l border-white/10 pl-4">
+          <Toggle
+            checked={d.notifyApproved}
+            disabled={!d.notifyAll}
+            onChange={(v) => setD({ ...d, notifyApproved: v })}
+            label="Принятые"
           />
-        </label>
-        <span className="text-xs text-zinc-500">
-          OpenCV: порог softmax взрослого бакета. InsightFace: soft-adult band =
-          18+(1−score)×10 (при 0.85 → ~19.5y).
-        </span>
+          <Toggle
+            checked={d.notifyRejected}
+            disabled={!d.notifyAll}
+            onChange={(v) => setD({ ...d, notifyRejected: v })}
+            label="Отклонённые"
+            hint="С причиной, в том числе «нет лица»."
+          />
+        </div>
       </div>
-
-      <label className="flex items-center justify-between gap-3 text-sm">
-        Fail-closed (если чекер упал — блокировать)
-        <input
-          type="checkbox"
-          checked={d.failClosed}
-          onChange={(e) => setD({ ...d, failClosed: e.target.checked })}
-        />
-      </label>
 
       <button
         type="button"

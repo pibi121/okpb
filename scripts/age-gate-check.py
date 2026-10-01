@@ -6,7 +6,7 @@ Engines:
   opencv      — Gil Levi DNN age buckets (default)
   insightface — buffalo genderage.onnx continuous age years
                 + SCRFD-500M face det + Attribute pad 1.5
-                + Gil Levi tight-crop child corroboration
+                (no extra Gil Levi step)
 
 Stdout JSON:
   { "ok": true, "blocked": false, "uncertain": false, "faces": 1,
@@ -85,11 +85,6 @@ FACE_MODEL_NAMES = ("face.prototxt", "face.caffemodel")
 OPENCV_AGE_NAMES = ("age.prototxt", "age.caffemodel")
 GENDERAGE_NAME = "genderage.onnx"
 DET_500M_NAME = "det_500m.onnx"
-
-# Gil Levi tight-crop corroboration for insightface engine (genderage misses some minors).
-# Adult A scores ~0.61 on pad=0; children score ≥~0.76 — keep gap.
-GIL_CHILD_OVERRIDE_MIN_SCORE = 0.70
-GIL_CHILD_OVERRIDE_MAX_YEARS = 12.0
 
 
 def models_dir() -> Path:
@@ -606,13 +601,12 @@ def analyze_insightface(
     import onnxruntime as ort
 
     d = models_dir()
-    # genderage + SCRFD det; Gil Levi age nets for tight-crop child corroboration
-    # (genderage alone ages some clear minors as ~25–30y adults).
-    age_paths = ensure_opencv_age_models(d)
+    # genderage + SCRFD det; OpenCV SSD face model only as detector fallback.
+    face_paths = ensure_face_models(d)
     genderage_path = ensure_genderage_model(d)
     det_path = ensure_det_500m(d)
     paths = {
-        **{k: age_paths[k] for k in (*FACE_MODEL_NAMES, *OPENCV_AGE_NAMES)},
+        **{k: face_paths[k] for k in FACE_MODEL_NAMES},
         GENDERAGE_NAME: genderage_path,
         DET_500M_NAME: det_path,
     }
@@ -625,7 +619,6 @@ def analyze_insightface(
         str(genderage_path),
         providers=["CPUExecutionProvider"],
     )
-    age_net = load_caffe(age_paths["age.prototxt"], age_paths["age.caffemodel"])
 
     img = load_image_bytes(img_bytes)
     # SCRFD boxes match Attribute training better than OpenCV SSD.
@@ -633,7 +626,7 @@ def analyze_insightface(
     faces = detect_faces_scrfd(det_session, img, conf_thresh=scrfd_thresh)
     if not faces:
         # Fallback: OpenCV SSD if SCRFD misses
-        face_net = load_caffe(age_paths["face.prototxt"], age_paths["face.caffemodel"])
+        face_net = load_caffe(face_paths["face.prototxt"], face_paths["face.caffemodel"])
         faces = detect_faces(face_net, img, face_thresh)
     if not faces:
         return {
@@ -656,17 +649,6 @@ def analyze_insightface(
         img, (x1, y1, x2, y2), input_size=96, box_scale=1.5
     )
     age_years = predict_age_years_insightface(session, face96)
-    raw_years = float(age_years)
-
-    # Tight-crop Gil Levi: catches minors that genderage reports as young adults.
-    # Threshold 0.70 keeps adult fixture A (gil ~0.61 on pad=0) from flipping.
-    gil_label, gil_score, _, _, _ = predict_age(
-        age_net, crop_face(img, (x1, y1, x2, y2), pad_ratio=0.0)
-    )
-    gil_override = False
-    if gil_label in CHILD_BUCKETS and gil_score >= GIL_CHILD_OVERRIDE_MIN_SCORE:
-        age_years = min(raw_years, GIL_CHILD_OVERRIDE_MAX_YEARS)
-        gil_override = True
 
     blocked, uncertain, reason, age_label, score = classify_years(
         age_years, min_adult_score
@@ -674,14 +656,10 @@ def analyze_insightface(
     item = {
         "ageLabel": age_label,
         "ageYears": round(age_years, 2),
-        "rawAgeYears": round(raw_years, 2),
         "score": round(score, 4),
         "faceConfidence": round(float(fconf), 4),
         "blocked": blocked,
         "uncertain": uncertain,
-        "gilLabel": gil_label,
-        "gilScore": round(float(gil_score), 4),
-        "gilOverride": gil_override,
     }
     return {
         "ok": True,
@@ -692,8 +670,6 @@ def analyze_insightface(
         "ageLabel": age_label,
         "score": round(score, 4),
         "ageYears": round(age_years, 2),
-        "rawAgeYears": round(raw_years, 2),
-        "gilOverride": gil_override,
         "engine": "insightface-genderage",
         "face": item,
         "models": {k: paths[k].stat().st_size for k in paths},

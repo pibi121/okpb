@@ -1,6 +1,7 @@
 /**
- * Age / minor safety gate — local on Railway (CPU).
- * Engines: opencv (Gil Levi buckets, default) | insightface (genderage years).
+ * Age / minor safety gate.
+ * Engines: opencv (Gil Levi buckets) | insightface (genderage years) — local on
+ * Railway (CPU) | api (vision model via AITUNNEL, key from Age Gate settings).
  * Does NOT use Metalnode GPU (safe while LoRA train is running).
  *
  * Scope:
@@ -15,8 +16,16 @@ import { dataRoot, ensureDataDirs } from "@/lib/paths";
 import { getOpsSettings } from "@/lib/ops/settings";
 import { characterImagesDir, listCharacterPhotos } from "@/lib/character-dataset";
 import { prisma } from "@/lib/db";
+import {
+  AGE_API_DEFAULT_MODEL,
+  type AgeApiVerdict,
+  queryAgeApi,
+  redactSecrets,
+  reportAgeApiFailure,
+} from "@/lib/age-gate-api";
 
-export type AgeGateEngine = "opencv" | "insightface";
+export type AgeGateLocalEngine = "opencv" | "insightface";
+export type AgeGateEngine = AgeGateLocalEngine | "api";
 
 export type AgeGateResult = {
   ok: boolean;
@@ -27,10 +36,18 @@ export type AgeGateResult = {
   ageLabel?: string | null;
   /** Continuous age years (insightface engine); null for opencv buckets */
   ageYears?: number | null;
-  /** insightface: model age before Gil Levi child override */
+  /** Legacy (insightface before Gil Levi removal): model age before child override */
   rawAgeYears?: number | null;
   gilOverride?: boolean;
   face?: { gilLabel?: string; gilScore?: number } | null;
+  /** api engine: estimate range / confidence / model / cache hit */
+  apiModel?: string;
+  apiAgeMin?: number | null;
+  apiAgeMax?: number | null;
+  apiConfidence?: string;
+  apiCached?: boolean;
+  /** api failed → local engine answered instead */
+  apiFallback?: boolean;
   score?: number | null;
   secondLabel?: string | null;
   secondScore?: number | null;
@@ -43,7 +60,7 @@ export type AgeGateResult = {
 
 export type AgeGateConfig = {
   enabled: boolean;
-  /** opencv (default) | insightface — model switch; moderation settings stay shared */
+  /** opencv | insightface (default) | api — model switch; moderation settings stay shared */
   engine: AgeGateEngine;
   /** Comma buckets e.g. (0-2),(4-6),(8-12) — opencv-only meaning */
   blockBuckets: string;
@@ -56,7 +73,21 @@ export type AgeGateConfig = {
   manualUncertainModeration: boolean;
   /** If checker crashes while enabled — block (true) or allow (false) */
   failClosed: boolean;
+  /** api engine: AITUNNEL key (DB only; never returned to client/audit/logs) */
+  apiKey: string;
+  apiModel: string;
+  /** api engine: photo passes if estimated age_min >= this (inclusive) */
+  apiPassAge: number;
+  /** api engine: on technical API error use a local engine instead */
+  apiFallbackLocal: boolean;
+  apiFallbackEngine: AgeGateLocalEngine;
+  /** Info feed into ops topic AgeGate (all engines) */
+  notifyAll: boolean;
+  notifyApproved: boolean;
+  notifyRejected: boolean;
 };
+
+export const AGE_API_DEFAULT_PASS_AGE = 16;
 
 /** Block child face buckets only (up to ~12). Teen (15-20) is uncertain, not hard-block. */
 const DEFAULT_BUCKETS = "(0-2),(4-6),(8-12)";
@@ -67,7 +98,31 @@ export function normalizeAgeGateEngine(raw: unknown): AgeGateEngine {
     .toLowerCase()
     .trim();
   if (s === "insightface" || s === "onnx") return "insightface";
+  if (s === "api") return "api";
   return "opencv";
+}
+
+export function normalizeAgeGateLocalEngine(raw: unknown): AgeGateLocalEngine {
+  return normalizeAgeGateEngine(raw) === "insightface" ? "insightface" : "opencv";
+}
+
+function cleanApiModel(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  return /^[\w.\-:/]{1,80}$/.test(s) ? s : AGE_API_DEFAULT_MODEL;
+}
+
+function cleanPassAge(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return AGE_API_DEFAULT_PASS_AGE;
+  return Math.min(99, Math.max(1, Math.round(n * 10) / 10));
+}
+
+/** `sk-…ab12` — safe to show in OPS UI. */
+export function maskApiKey(key: string): string {
+  const k = (key || "").trim();
+  if (!k) return "";
+  if (k.length <= 8) return "…" + k.slice(-2);
+  return `${k.slice(0, 3)}…${k.slice(-4)}`;
 }
 
 export function parseAgeGateConfig(
@@ -103,6 +158,96 @@ export function parseAgeGateConfig(
     minAdultScore: Math.min(0.99, Math.max(0.1, minAdult)),
     // Тумблер снят: сомнения = блок; человек может оспорить кнопкой «Ей есть 18!».
     manualUncertainModeration: false,
+    apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey.trim() : "",
+    apiModel: cleanApiModel(parsed.apiModel),
+    apiPassAge: cleanPassAge(parsed.apiPassAge),
+    apiFallbackLocal: parsed.apiFallbackLocal === true,
+    apiFallbackEngine: normalizeAgeGateLocalEngine(parsed.apiFallbackEngine),
+    notifyAll: parsed.notifyAll === true,
+    notifyApproved: parsed.notifyApproved !== false,
+    notifyRejected: parsed.notifyRejected !== false,
+  };
+}
+
+/**
+ * Apply a validated partial update (from OPS UI / tools) on top of the current
+ * config. Unspecified fields keep their value; empty `apiKey` never wipes the
+ * stored key (use `apiKeyClear: true` for that).
+ */
+export function applyAgeGatePatch(
+  prev: AgeGateConfig,
+  body: Record<string, unknown>,
+): AgeGateConfig {
+  const num = (v: unknown, fallback: number) =>
+    typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback;
+  const bool = (v: unknown, fallback: boolean) =>
+    typeof v === "boolean" ? v : fallback;
+  let apiKey = prev.apiKey;
+  if (body.apiKeyClear === true) apiKey = "";
+  else if (typeof body.apiKey === "string" && body.apiKey.trim()) {
+    apiKey = body.apiKey.trim().slice(0, 300);
+  }
+  return {
+    ...prev,
+    enabled: bool(body.ageGateEnabled, prev.enabled),
+    engine:
+      body.engine !== undefined
+        ? normalizeAgeGateEngine(body.engine)
+        : prev.engine,
+    blockBuckets:
+      typeof body.blockBuckets === "string" && body.blockBuckets.trim()
+        ? body.blockBuckets.trim()
+        : prev.blockBuckets,
+    faceThresh: num(body.faceThresh, prev.faceThresh),
+    minScore: num(body.minScore, prev.minScore),
+    minAdultScore: num(body.minAdultScore, prev.minAdultScore),
+    failClosed: bool(body.failClosed, prev.failClosed),
+    apiKey,
+    apiModel:
+      body.apiModel !== undefined ? cleanApiModel(body.apiModel) : prev.apiModel,
+    apiPassAge:
+      body.apiPassAge !== undefined
+        ? cleanPassAge(body.apiPassAge)
+        : prev.apiPassAge,
+    apiFallbackLocal: bool(body.apiFallbackLocal, prev.apiFallbackLocal),
+    apiFallbackEngine:
+      body.apiFallbackEngine !== undefined
+        ? normalizeAgeGateLocalEngine(body.apiFallbackEngine)
+        : prev.apiFallbackEngine,
+    notifyAll: bool(body.notifyAll, prev.notifyAll),
+    notifyApproved: bool(body.notifyApproved, prev.notifyApproved),
+    notifyRejected: bool(body.notifyRejected, prev.notifyRejected),
+  };
+}
+
+/** What gets stored in OpsSettings.ageGateJson (includes apiKey — DB only). */
+export function serializeAgeGateConfig(cfg: AgeGateConfig): string {
+  return JSON.stringify({
+    engine: cfg.engine,
+    blockBuckets: cfg.blockBuckets,
+    faceThresh: cfg.faceThresh,
+    minScore: cfg.minScore,
+    minAdultScore: cfg.minAdultScore,
+    manualUncertainModeration: cfg.manualUncertainModeration,
+    failClosed: cfg.failClosed,
+    apiKey: cfg.apiKey,
+    apiModel: cfg.apiModel,
+    apiPassAge: cfg.apiPassAge,
+    apiFallbackLocal: cfg.apiFallbackLocal,
+    apiFallbackEngine: cfg.apiFallbackEngine,
+    notifyAll: cfg.notifyAll,
+    notifyApproved: cfg.notifyApproved,
+    notifyRejected: cfg.notifyRejected,
+  });
+}
+
+/** Config safe for API responses / audit: key replaced by mask + flag. */
+export function publicAgeGateConfig(cfg: AgeGateConfig) {
+  const { apiKey, ...rest } = cfg;
+  return {
+    ...rest,
+    apiKeySet: Boolean(apiKey),
+    apiKeyMasked: maskApiKey(apiKey),
   };
 }
 
@@ -465,6 +610,151 @@ export async function checkImageBufferAgeGate(
     );
   }
 
+  if (config.engine === "api") {
+    return checkViaApi(buf, config, photoHash);
+  }
+  return checkLocal(buf, config, photoHash, config.engine);
+}
+
+/** api engine: vision model verdict; technical errors fall back / become checker_unavailable. */
+async function checkViaApi(
+  buf: Buffer,
+  config: AgeGateConfig,
+  photoHash: string,
+): Promise<AgeGateResult> {
+  const model = config.apiModel;
+  const verdict: AgeApiVerdict = config.apiKey
+    ? await queryAgeApi(buf, photoHash, {
+        apiKey: config.apiKey,
+        apiModel: model,
+      })
+    : { kind: "error", error: "api_key_missing", retryable: false };
+
+  if (verdict.kind === "estimate") {
+    const base = {
+      engine: "api",
+      photoHash,
+      apiModel: model,
+      apiAgeMin: verdict.ageMin,
+      apiAgeMax: verdict.ageMax,
+      apiConfidence: verdict.confidence,
+      apiCached: verdict.cached,
+    };
+    let out: AgeGateResult;
+    if (!verdict.faceFound || verdict.ageMin == null) {
+      out = {
+        ...base,
+        ok: true,
+        blocked: true,
+        uncertain: false,
+        faces: 0,
+        reason: "no_face",
+        ageLabel: null,
+        ageYears: null,
+        score: null,
+      };
+    } else {
+      const pass = verdict.ageMin >= config.apiPassAge;
+      out = {
+        ...base,
+        ok: true,
+        blocked: !pass,
+        uncertain: false,
+        faces: 1,
+        reason: pass ? "adult_ok" : "probable_minor",
+        ageLabel: `${verdict.ageMin}–${verdict.ageMax}`,
+        ageYears: verdict.ageBest,
+        score: null,
+      };
+    }
+    logCheckResult(out, "api");
+    return out;
+  }
+
+  if (verdict.kind === "refusal") {
+    // Model declined to look at the photo → human decides (never auto-pass).
+    const out: AgeGateResult = {
+      ok: true,
+      blocked: false,
+      uncertain: true,
+      reason: "model_refusal",
+      engine: "api",
+      photoHash,
+      apiModel: model,
+      apiCached: verdict.cached,
+    };
+    logCheckResult(out, "api");
+    return out;
+  }
+
+  // Technical failure (no key / 401 / 402 / timeout / network / 5xx / garbage).
+  console.error(
+    "[age-gate] api error:",
+    redactSecrets(
+      `${verdict.error}${verdict.status ? ` status=${verdict.status}` : ""} model=${model}`,
+      config.apiKey,
+    ),
+  );
+  void reportAgeApiFailure(verdict.error, verdict.status, model);
+
+  if (config.apiFallbackLocal) {
+    const local = await checkLocal(
+      buf,
+      config,
+      photoHash,
+      config.apiFallbackEngine,
+    );
+    return { ...local, apiFallback: true };
+  }
+  if (!config.failClosed) {
+    return {
+      ok: true,
+      blocked: false,
+      skipped: true,
+      error: verdict.error,
+      reason: "checker_unavailable",
+      engine: "api",
+      photoHash,
+    };
+  }
+  return {
+    ok: false,
+    blocked: true,
+    error: verdict.error,
+    reason: "checker_unavailable",
+    engine: "api",
+    photoHash,
+  };
+}
+
+function logCheckResult(parsed: AgeGateResult, engine: string) {
+  console.log(
+    "[age-gate] result",
+    JSON.stringify({
+      engine: parsed.engine || engine,
+      blocked: parsed.blocked,
+      uncertain: parsed.uncertain,
+      reason: parsed.reason,
+      ageLabel: parsed.ageLabel,
+      ageYears: parsed.ageYears ?? null,
+      score: parsed.score,
+      faces: parsed.faces,
+      error: parsed.error,
+      apiModel: parsed.apiModel ?? null,
+      apiAgeMin: parsed.apiAgeMin ?? null,
+      apiAgeMax: parsed.apiAgeMax ?? null,
+      apiConfidence: parsed.apiConfidence ?? null,
+      apiCached: parsed.apiCached ?? null,
+    }),
+  );
+}
+
+async function checkLocal(
+  buf: Buffer,
+  config: AgeGateConfig,
+  photoHash: string,
+  engine: AgeGateLocalEngine,
+): Promise<AgeGateResult> {
   ensureDataDirs();
   const ready = await ensureOpenCv();
   if (!ready) {
@@ -479,7 +769,7 @@ export async function checkImageBufferAgeGate(
     };
   }
 
-  if (config.engine === "insightface") {
+  if (engine === "insightface") {
     const ortOk = await ensureOnnxRuntime();
     if (!ortOk) {
       console.error(
@@ -524,7 +814,7 @@ export async function checkImageBufferAgeGate(
         script,
         "--stdin",
         "--engine",
-        config.engine,
+        engine,
         "--block",
         config.blockBuckets,
         "--face-thresh",
@@ -552,24 +842,7 @@ export async function checkImageBufferAgeGate(
     }
     parsed.photoHash = photoHash;
     parsed = applyUncertainPolicy(parsed, config);
-    console.log(
-      "[age-gate] result",
-      JSON.stringify({
-        engine: parsed.engine || config.engine,
-        blocked: parsed.blocked,
-        uncertain: parsed.uncertain,
-        reason: parsed.reason,
-        ageLabel: parsed.ageLabel,
-        ageYears: parsed.ageYears ?? null,
-        rawAgeYears: parsed.rawAgeYears ?? null,
-        gilOverride: parsed.gilOverride ?? null,
-        gilLabel: parsed.face?.gilLabel ?? null,
-        gilScore: parsed.face?.gilScore ?? null,
-        score: parsed.score,
-        faces: parsed.faces,
-        error: parsed.error,
-      }),
-    );
+    logCheckResult(parsed, engine);
     if (!parsed.ok) {
       // Infra/download errors must not brick all uploads with the "minor" message.
       console.error("[age-gate] checker error:", parsed.error || parsed.reason);
@@ -635,7 +908,16 @@ export function ageGateBlockMessage(
   return "По фото похоже, что на снимке несовершеннолетний. Из соображений безопасности мы не можем использовать его для генерации. Загрузите чёткое фото взрослого человека (18+).";
 }
 
-export function ageGateUncertainMessage(locale: "ru" | "en" = "ru"): string {
+export function ageGateUncertainMessage(
+  locale: "ru" | "en" = "ru",
+  reason?: string,
+): string {
+  if (reason === "model_refusal") {
+    if (locale === "en") {
+      return "We couldn't check this photo automatically, so we sent it for manual moderation. We'll let you know the decision.";
+    }
+    return "Не смогли проверить фото автоматически, отправили на ручную модерацию. Сообщим о решении.";
+  }
   if (locale === "en") {
     return "Your photo is under review — we'll let you know once we've checked it.";
   }
@@ -682,7 +964,7 @@ export class AgeGateUncertainError extends Error {
   /** Optional bytes (e.g. from character photo scan) for enqueue */
   buf?: Buffer;
   constructor(result: AgeGateResult, locale: "ru" | "en" = "ru", buf?: Buffer) {
-    super(ageGateUncertainMessage(locale));
+    super(ageGateUncertainMessage(locale, result.reason));
     this.result = result;
     this.buf = buf;
   }
@@ -692,11 +974,35 @@ export class AgeGateUncertainError extends Error {
 export async function assertImageAllowedForGeneration(
   buf: Buffer,
   locale: "ru" | "en" = "ru",
+  /** Who uploaded it — used only for the AgeGate info feed in ops TG. */
+  ctx?: { userId?: string | null },
 ): Promise<AgeGateResult> {
-  const result = await checkImageBufferAgeGate(buf);
+  const cfg = await getAgeGateConfig();
+  const result = await checkImageBufferAgeGate(buf, cfg);
+  queueCheckNotice(buf, result, cfg, ctx?.userId);
   if (result.blocked) throw new AgeGateBlockedError(result, locale, buf);
   if (result.uncertain) throw new AgeGateUncertainError(result, locale, buf);
   return result;
+}
+
+/** Fire-and-forget: info feed into ops topic AgeGate. Never blocks / throws. */
+function queueCheckNotice(
+  buf: Buffer,
+  result: AgeGateResult,
+  cfg: AgeGateConfig,
+  userId?: string | null,
+) {
+  if (!cfg.enabled || !cfg.notifyAll) return;
+  void import("@/lib/age-gate-notify")
+    .then(({ queueAgeGateNotice }) =>
+      queueAgeGateNotice({ buf, result, cfg, userId: userId || null }),
+    )
+    .catch((e) =>
+      console.warn(
+        "[age-gate] notice queue:",
+        e instanceof Error ? e.message : e,
+      ),
+    );
 }
 
 /** Scan all character dataset photos; throws if any look underage or uncertain. */
@@ -711,11 +1017,21 @@ export async function assertCharacterPhotosAllowed(
   const photos = listCharacterPhotos(characterId);
   const dir = characterImagesDir(characterId);
   let last: AgeGateResult = { ok: true, blocked: false, reason: "no_photos" };
+  let ownerId: string | null = null;
+  if (cfg.notifyAll && photos.length) {
+    ownerId =
+      (
+        await prisma.character
+          .findUnique({ where: { id: characterId }, select: { userId: true } })
+          .catch(() => null)
+      )?.userId || null;
+  }
   for (const p of photos) {
     const abs = path.join(dir, p.name);
     if (!fs.existsSync(abs)) continue;
     const buf = fs.readFileSync(abs);
     last = await checkImageBufferAgeGate(buf, cfg);
+    queueCheckNotice(buf, last, cfg, ownerId);
     if (last.blocked) throw new AgeGateBlockedError(last, locale, buf);
     if (last.uncertain) throw new AgeGateUncertainError(last, locale, buf);
   }

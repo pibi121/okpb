@@ -201,7 +201,7 @@ export async function addCharacterPhotoFromBuffer(
 
   if (!opts?.skipAgeGate) {
     const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
-    await assertImageAllowedForGeneration(buf, opts?.locale || "ru");
+    await assertImageAllowedForGeneration(buf, opts?.locale || "ru", { userId });
   }
 
   saveCharacterPhoto(characterId, fileName, buf, ch.triggerWord);

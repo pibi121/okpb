@@ -465,7 +465,9 @@ export async function runFunnelV2PhotoGen(opts: {
   try {
     photoBytes = await loadPhotoBytes(opts.photoUrl);
     const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
-    await assertImageAllowedForGeneration(photoBytes, opts.locale);
+    await assertImageAllowedForGeneration(photoBytes, opts.locale, {
+      userId: opts.userId,
+    });
   } catch (e) {
     const { AgeGateBlockedError, AgeGateUncertainError } = await import(
       "@/lib/age-gate"
@@ -759,7 +761,9 @@ export async function handleFunnelV2PhotoUpload(opts: {
 }): Promise<void> {
   try {
     const { assertImageAllowedForGeneration } = await import("@/lib/age-gate");
-    await assertImageAllowedForGeneration(opts.photoBytes, opts.locale);
+    await assertImageAllowedForGeneration(opts.photoBytes, opts.locale, {
+      userId: opts.userId,
+    });
   } catch (e) {
     const { AgeGateBlockedError, AgeGateUncertainError } = await import(
       "@/lib/age-gate"

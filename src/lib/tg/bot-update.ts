@@ -2467,7 +2467,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         const { assertImageAllowedForGeneration } = await import(
           "@/lib/age-gate"
         );
-        await assertImageAllowedForGeneration(buf, locale);
+        await assertImageAllowedForGeneration(buf, locale, { userId: user.id });
       } catch (e) {
         const { AgeGateBlockedError, AgeGateUncertainError } = await import(
           "@/lib/age-gate"
@@ -2593,7 +2593,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       const { assertImageAllowedForGeneration } = await import(
         "@/lib/age-gate"
       );
-      await assertImageAllowedForGeneration(buf, locale);
+      await assertImageAllowedForGeneration(buf, locale, { userId: user.id });
     } catch (e) {
       const { AgeGateBlockedError, AgeGateUncertainError } = await import(
         "@/lib/age-gate"

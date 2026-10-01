@@ -266,6 +266,9 @@ async function buildOpsCaption(
     ageLabel?: string;
     ageYears?: number;
     score?: number;
+    rawAgeYears?: number;
+    gilOverride?: boolean;
+    face?: { gilLabel?: string; gilScore?: number };
   };
   const acc = await prisma.platformAccount.findFirst({
     where: { userId: row.userId, platform: "telegram" },
@@ -285,6 +288,15 @@ async function buildOpsCaption(
     `Кто: ${who}`,
     `Оценка: ${escHtml(String(age))}${gate.score != null ? ` · score ${gate.score}` : ""}`,
     `Причина: ${escHtml(gate.reason || "—")}`,
+    ...(gate.rawAgeYears != null
+      ? [
+          `Детали: модель возраста ${Math.round(gate.rawAgeYears * 10) / 10} лет` +
+            (gate.face?.gilLabel
+              ? ` · доп. проверка ${escHtml(gate.face.gilLabel)} ${gate.face.gilScore ?? "—"}`
+              : "") +
+            (gate.gilOverride ? " · ⚠ занижено доп. проверкой" : ""),
+        ]
+      : []),
     `Заявка: <code>${escHtml(row.id)}</code>`,
     `Подана: ${formatMsk(row.createdAt)} МСК`,
   ];

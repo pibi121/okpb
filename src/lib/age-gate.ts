@@ -27,6 +27,10 @@ export type AgeGateResult = {
   ageLabel?: string | null;
   /** Continuous age years (insightface engine); null for opencv buckets */
   ageYears?: number | null;
+  /** insightface: model age before Gil Levi child override */
+  rawAgeYears?: number | null;
+  gilOverride?: boolean;
+  face?: { gilLabel?: string; gilScore?: number } | null;
   score?: number | null;
   secondLabel?: string | null;
   secondScore?: number | null;
@@ -557,6 +561,10 @@ export async function checkImageBufferAgeGate(
         reason: parsed.reason,
         ageLabel: parsed.ageLabel,
         ageYears: parsed.ageYears ?? null,
+        rawAgeYears: parsed.rawAgeYears ?? null,
+        gilOverride: parsed.gilOverride ?? null,
+        gilLabel: parsed.face?.gilLabel ?? null,
+        gilScore: parsed.face?.gilScore ?? null,
         score: parsed.score,
         faces: parsed.faces,
         error: parsed.error,

@@ -95,7 +95,7 @@ export default function OpsTeamPage() {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-200 hover:bg-white/5"
+            className="rounded-full border border-white/15 px-4 py-2 text-sm text-foreground hover:bg-white/5"
             onClick={() => void generateCreds().catch((e) => setMsg(e instanceof Error ? e.message : "ошибка"))}
           >
             Сгенерировать логин и пароль
@@ -140,7 +140,7 @@ export default function OpsTeamPage() {
               value={login}
               onChange={(e) => setLogin(e.target.value)}
               placeholder="например p_a1b2c3d4"
-              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-zinc-100"
+              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-foreground"
               required
             />
           </label>
@@ -150,7 +150,7 @@ export default function OpsTeamPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="сгенерируй или впиши свой"
-              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-zinc-100"
+              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-foreground"
               required
             />
           </label>
@@ -160,7 +160,7 @@ export default function OpsTeamPage() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Иван · YouTube канал X"
-              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-zinc-100"
+              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-foreground"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-zinc-400">
@@ -168,7 +168,7 @@ export default function OpsTeamPage() {
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-zinc-100"
+              className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-foreground"
             >
               {(roles.length
                 ? roles
@@ -196,7 +196,7 @@ export default function OpsTeamPage() {
             <p className="text-sm font-medium text-peach">
               Передай человеку (один раз):
             </p>
-            <pre className="mt-2 whitespace-pre-wrap break-all rounded-xl bg-black/30 p-3 text-sm text-zinc-100">
+            <pre className="mt-2 whitespace-pre-wrap break-all rounded-xl bg-black/30 p-3 text-sm text-foreground">
               {`Логин: ${issued.login}\nПароль: ${issued.password}\nВход: /ops/login`}
             </pre>
             <button
@@ -217,11 +217,11 @@ export default function OpsTeamPage() {
       <ul className="text-sm">
         {staff.map((s) => (
           <li key={s.id} className="border-t border-white/8 py-2">
-            <span className="text-zinc-200">
+            <span className="text-foreground">
               {s.name || "—"} · {s.roleLabel}
             </span>
             <span className="ml-2 text-zinc-500">
-              логин <code className="text-zinc-300">{s.login}</code>
+              логин <code className="text-zinc-700">{s.login}</code>
             </span>
             {s.adminNotes ? (
               <div className="mt-0.5 text-xs text-zinc-500">{s.adminNotes}</div>

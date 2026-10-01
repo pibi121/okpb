@@ -536,7 +536,7 @@ export default function OpsSalesPage() {
               Партнёр
               <button
                 type="button"
-                className="mt-1 flex min-w-[11rem] items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-left text-sm text-zinc-200"
+                className="mt-1 flex min-w-[11rem] items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-left text-sm text-foreground"
                 onClick={() => setPartnersOpen((v) => !v)}
               >
                 <span className="truncate">{partnerSummary}</span>
@@ -549,25 +549,25 @@ export default function OpsSalesPage() {
                     value={partnerSearch}
                     onChange={(e) => setPartnerSearch(e.target.value)}
                     placeholder="Поиск: имя, code, TG id"
-                    className="mb-2 w-full rounded-lg border border-white/10 bg-[#0c0c0e] px-2 py-1.5 text-sm text-zinc-200"
+                    className="mb-2 w-full rounded-lg border border-white/10 bg-[#0c0c0e] px-2 py-1.5 text-sm text-foreground"
                   />
                   <div className="mb-1 flex gap-1">
                     <button
                       type="button"
-                      className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-zinc-300"
+                      className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-zinc-700"
                       onClick={() => selectAllPartners()}
                     >
                       Все
                     </button>
                     <button
                       type="button"
-                      className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-zinc-300"
+                      className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-zinc-700"
                       onClick={() => clearAllPartners()}
                     >
                       Снять все
                     </button>
                   </div>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-white/5">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground hover:bg-white/5">
                     <input
                       type="checkbox"
                       checked={partnersAllSelected}
@@ -586,7 +586,7 @@ export default function OpsSalesPage() {
                       return (
                         <label
                           key={p.id}
-                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-300 hover:bg-white/5"
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-700 hover:bg-white/5"
                         >
                           <input
                             type="checkbox"
@@ -634,7 +634,7 @@ export default function OpsSalesPage() {
           ) : null}
 
           <section>
-            <h2 className="mb-2 text-sm font-medium text-zinc-300">
+            <h2 className="mb-2 text-sm font-medium text-zinc-700">
               Первичные регистрации (даты из фильтра)
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -763,7 +763,7 @@ export default function OpsSalesPage() {
                       />
                       {methodLabel(m.method)}
                     </span>
-                    <span className="font-mono text-zinc-300">
+                    <span className="font-mono text-zinc-700">
                       {m.count} опл.
                       {showRub ? ` · ${fmtMoney(m.rubMinor / 100)} ₽` : ""}
                       {showPeaches ? ` · ${m.peaches} 🍑` : ""}
@@ -876,7 +876,7 @@ export default function OpsSalesPage() {
                       }`}
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <span className="text-sm text-zinc-200">
+                        <span className="text-sm text-foreground">
                           {i + 1}. {f.title}
                           <span className="ml-2 text-[10px] text-zinc-600">
                             дошли →
@@ -960,7 +960,7 @@ export default function OpsSalesPage() {
                 </h2>
                 <button
                   type="button"
-                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                  className="text-xs text-zinc-500 hover:text-foreground"
                   onClick={clearFunnelUsers}
                 >
                   Закрыть
@@ -997,7 +997,7 @@ export default function OpsSalesPage() {
                       {funnelUsers.users.map((u) => (
                         <tr
                           key={u.userId}
-                          className="border-b border-white/5 text-zinc-300"
+                          className="border-b border-white/5 text-zinc-700"
                         >
                           <td className="py-1.5 pr-3 font-mono">
                             {u.tgUsername ? `@${u.tgUsername}` : "—"}

@@ -156,7 +156,7 @@ export default function OpsAnalyticsPage() {
               {data.funnel.map((f, i) => (
                 <li key={f.key} className="border-t border-white/8 pt-3 first:border-0 first:pt-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-sm text-zinc-200">
+                    <span className="text-sm text-foreground">
                       {i + 1}. {f.title}
                     </span>
                     <span className="font-mono text-lg text-peach">{f.uniqueUsers}</span>
@@ -174,7 +174,7 @@ export default function OpsAnalyticsPage() {
               <ul className="mt-2 max-h-80 space-y-1 overflow-auto text-sm">
                 {data.topEvents.map((e) => (
                   <li key={e.key} className="flex justify-between gap-2 border-t border-white/5 py-1">
-                    <span className="text-zinc-300">{e.title}</span>
+                    <span className="text-zinc-700">{e.title}</span>
                     <span className="shrink-0 font-mono text-zinc-500">{e.count}</span>
                   </li>
                 ))}
@@ -188,7 +188,7 @@ export default function OpsAnalyticsPage() {
                     key={`${s.kind}:${s.code}`}
                     className="flex justify-between gap-2 border-t border-white/5 py-1"
                   >
-                    <span className="text-zinc-300">
+                    <span className="text-zinc-700">
                       {s.kind}
                       {s.code ? ` / ${s.code}` : ""}
                     </span>
@@ -258,7 +258,7 @@ export default function OpsAnalyticsPage() {
               </a>
             </div>
             {userReport ? (
-              <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-black/40 p-3 text-xs text-zinc-300">
+              <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-black/40 p-3 text-xs text-zinc-700">
                 {userReport}
               </pre>
             ) : null}
@@ -279,7 +279,7 @@ export default function OpsAnalyticsPage() {
                     {r.userId.slice(0, 8)}…
                   </button>
                   {" · "}
-                  <span className="text-zinc-200">{r.stepTitle}</span>
+                  <span className="text-foreground">{r.stepTitle}</span>
                   <span className="text-zinc-600">
                     {" "}
                     (день{r.dayIndex}, {r.surface}

@@ -223,7 +223,7 @@ export default function OpsJobsPage() {
             className="relative flex max-h-[92vh] max-w-[96vw] flex-col gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 text-sm text-zinc-300">
+            <div className="flex items-center justify-between gap-3 text-sm text-zinc-700">
               <span>
                 {viewer.kind} · {viewer.user.name || viewer.user.email} ·{" "}
                 {fmtTime(viewer.createdAt)}

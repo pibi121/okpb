@@ -34,7 +34,7 @@ export default function OpsLinksPage() {
         <h1 className="font-display text-3xl">Свои ссылки</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Метки для рекламы и каналов (как UTM): человек заходит по{" "}
-          <code className="text-zinc-300">?start=m_код</code>. По каждой ссылке
+          <code className="text-zinc-700">?start=m_код</code>. По каждой ссылке
           видны клики, заходы и оплаты.
         </p>
       </div>

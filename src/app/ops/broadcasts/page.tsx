@@ -539,7 +539,7 @@ export default function OpsBroadcastsPage() {
             </button>
           </div>
           {buttons.length ? (
-            <ul className="mt-2 space-y-1 text-xs text-zinc-300">
+            <ul className="mt-2 space-y-1 text-xs text-zinc-700">
               {buttons.map((b, i) => (
                 <li key={`${b.path}-${i}`} className="flex justify-between gap-2">
                   <span>

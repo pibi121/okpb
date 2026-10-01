@@ -115,7 +115,7 @@ export default function OpsUsersPage() {
               setPage(next);
               void load(q, next);
             }}
-            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-300 disabled:opacity-40"
+            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-700 disabled:opacity-40"
           >
             ← Раньше
           </button>
@@ -130,7 +130,7 @@ export default function OpsUsersPage() {
               setPage(next);
               void load(q, next);
             }}
-            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-300 disabled:opacity-40"
+            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-700 disabled:opacity-40"
           >
             Ещё раньше →
           </button>

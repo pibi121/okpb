@@ -221,8 +221,8 @@ export default function OpsSafetyPage() {
       aria-pressed={engine === id}
       className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
         engine === id
-          ? "bg-white text-zinc-900 shadow"
-          : "text-zinc-400 hover:text-zinc-200"
+          ? "bg-zinc-900 shadow"
+          : "text-zinc-600 hover:text-foreground"
       }`}
     >
       {label}
@@ -288,7 +288,7 @@ export default function OpsSafetyPage() {
             <button
               type="button"
               onClick={() => setZoom(null)}
-              className="rounded-full border border-white/20 px-4 py-2 text-sm text-zinc-300"
+              className="rounded-full border border-white/20 px-4 py-2 text-sm text-zinc-700"
             >
               Закрыть
             </button>
@@ -414,7 +414,7 @@ export default function OpsSafetyPage() {
         </div>
         <p className="mt-2 text-xs text-zinc-400">
           Сейчас выбрано:{" "}
-          <span className="font-medium text-zinc-100">{engineTitle}</span>
+          <span className="font-medium text-foreground">{engineTitle}</span>
         </p>
       </div>
 
@@ -551,7 +551,7 @@ export default function OpsSafetyPage() {
                 type="button"
                 disabled={busy || (!apiKeyInput.trim() && !d.apiKeySet)}
                 onClick={() => void checkKey()}
-                className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-zinc-200 disabled:opacity-50"
+                className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-foreground disabled:opacity-50"
               >
                 Проверить ключ
               </button>

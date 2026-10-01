@@ -87,7 +87,7 @@ export default function OpsInboxPage() {
                   onClick={() => void openThread(t.userId)}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-zinc-200">
+                    <span className="font-medium text-foreground">
                       {t.name || `TG ${t.tgId}`}
                       {t.unread ? (
                         <span className="ml-2 rounded-full bg-peach/20 px-1.5 py-0.5 text-[10px] text-peach">
@@ -111,7 +111,7 @@ export default function OpsInboxPage() {
         <div className="flex min-h-[420px] flex-col rounded-2xl border border-white/10">
           {active ? (
             <>
-              <div className="border-b border-white/8 px-4 py-3 text-sm text-zinc-300">
+              <div className="border-b border-white/8 px-4 py-3 text-sm text-zinc-700">
                 {userLabel}
               </div>
               <div className="flex-1 space-y-2 overflow-auto p-4">
@@ -120,7 +120,7 @@ export default function OpsInboxPage() {
                     key={m.id}
                     className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                       m.direction === "inbound"
-                        ? "bg-white/8 text-zinc-200"
+                        ? "bg-white/8 text-foreground"
                         : "ml-auto bg-peach/15 text-peach"
                     }`}
                   >

@@ -72,8 +72,8 @@ export default function OpsBotPage() {
         <h1 className="font-display text-3xl">Боты (dual)</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Несколько токенов на одних данных. Primary для ссылки /bot.{" "}
-          <b className="text-zinc-300">Активный</b> — полная студия и мини-апп.{" "}
-          <b className="text-zinc-300">Неактивный</b> — резерв: только текст на /start, без
+          <b className="text-zinc-700">Активный</b> — полная студия и мини-апп.{" "}
+          <b className="text-zinc-700">Неактивный</b> — резерв: только текст на /start, без
           рассылок. Live: {d.liveCount}
           {typeof d.pollableCount === "number" ? ` · poll: ${d.pollableCount}` : ""}.
         </p>
@@ -141,7 +141,7 @@ export default function OpsBotPage() {
           <select
             name="status"
             defaultValue="standby"
-            className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-zinc-200"
+            className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-foreground"
           >
             <option value="standby">Неактивный (резерв) — только /start</option>
             <option value="active">Активный — полная студия</option>
@@ -165,7 +165,7 @@ export default function OpsBotPage() {
           });
         }}
       >
-        <div className="text-sm font-medium text-zinc-300">Только ссылка /bot (без токена)</div>
+        <div className="text-sm font-medium text-zinc-700">Только ссылка /bot (без токена)</div>
         <input
           name="username"
           placeholder="username_бота"

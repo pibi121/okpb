@@ -34,14 +34,14 @@ const DEMO_PARTNER_BY_TG: Record<
     commissionPct: 50,
   },
   // ~×2.7 vs first demo; higher purchase rate, uneven numbers
-  // 2026-09-25: +2d×2.5 avg; 2026-09-29: +4d×1.55 avg, Δcomm on top of prior balance 6336
+  // 2026-09-25: +2d×2.5; 2026-09-29: +4d×1.55; 2026-10-01: +2d + partial repeats from old refs
   "8612204954": {
-    referrals: 1458,
-    purchases: 312,
-    purchaseGrossPeaches: 182640,
-    commissionPeaches: 91320,
-    balancePeaches: 24161,
-    totalEarnedPeaches: 91320,
+    referrals: 1610,
+    purchases: 368,
+    purchaseGrossPeaches: 215390,
+    commissionPeaches: 107695,
+    balancePeaches: 40536,
+    totalEarnedPeaches: 107695,
     commissionPct: 50,
   },
 };

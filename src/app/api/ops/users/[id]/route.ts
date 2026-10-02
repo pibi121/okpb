@@ -64,6 +64,7 @@ export async function POST(req: Request, ctx: Ctx) {
       note?: string;
       text?: string;
       role?: string;
+      confirm?: string;
     };
     const action = body.action || "";
 
@@ -186,6 +187,87 @@ export async function POST(req: Request, ctx: Ctx) {
         detail: { role },
       });
       return jsonOk({ ok: true });
+    }
+
+    if (action === "delete") {
+      if (actor.adminRole !== "owner" && actor.adminRole !== "developer") {
+        return jsonErr("Удалять аккаунты могут хозяин и разработка", 403);
+      }
+      if (id === actor.id) {
+        return jsonErr("Нельзя удалить свой аккаунт");
+      }
+      if (user.adminRole === "owner") {
+        return jsonErr("Нельзя удалить хозяина");
+      }
+      if (user.adminRole && actor.adminRole !== "owner") {
+        return jsonErr("Сотрудников удаляет только хозяин", 403);
+      }
+
+      const confirm = String(body.confirm || "").trim();
+      if (confirm !== "УДАЛИТЬ") {
+        return jsonErr('Для удаления введи УДАЛИТЬ в поле подтверждения');
+      }
+
+      const tg = await prisma.platformAccount.findMany({
+        where: { userId: id, platform: "telegram" },
+        select: { platformUserId: true },
+      });
+      const characters = await prisma.character.findMany({
+        where: { userId: id },
+        select: { id: true },
+      });
+      const funnelCount = await prisma.funnelEvent.count({ where: { userId: id } });
+
+      // Tables without Prisma FK to User (won't cascade).
+      await prisma.ageGateReview.deleteMany({ where: { userId: id } });
+      await prisma.tgOutbox.deleteMany({ where: { userId: id } });
+      await prisma.gpuJob.updateMany({
+        where: { userId: id },
+        data: { userId: null },
+      });
+
+      await writeAudit({
+        actorId: actor.id,
+        action: "delete",
+        targetType: "user",
+        targetId: id,
+        detail: {
+          email: user.email,
+          name: user.name,
+          adminRole: user.adminRole || "",
+          tgIds: tg.map((t) => t.platformUserId),
+          funnelEventsRemoved: funnelCount,
+          charactersRemoved: characters.length,
+        },
+      });
+
+      // Cascades: FunnelEvent, PlatformAccount, gallery, ledger, payments, characters, …
+      await prisma.user.delete({ where: { id } });
+
+      // Best-effort disk cleanup (gallery/<userId>, characters/<characterId>).
+      try {
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        const { dataRoot, galleryRoot } = await import("@/lib/paths");
+        const galDir = path.join(galleryRoot(), id);
+        if (fs.existsSync(galDir)) {
+          fs.rmSync(galDir, { recursive: true, force: true });
+        }
+        const charRoot = path.join(dataRoot(), "characters");
+        for (const ch of characters) {
+          const dir = path.join(charRoot, ch.id);
+          if (fs.existsSync(dir)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[ops] user delete disk cleanup:",
+          e instanceof Error ? e.message.slice(0, 160) : e,
+        );
+      }
+
+      return jsonOk({ ok: true, deleted: true });
     }
 
     return jsonErr("Неизвестное действие");

@@ -2209,7 +2209,18 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       ) {
         return;
       }
-      if (!funnelV2RulesAccepted(user) || chatState === "funnel_v2_awaiting_rules") {
+      // Re-read: parallel «accept rules» may have just committed.
+      const fresh = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          ageConfirmed: true,
+          tgFunnelV2Preview: true,
+          tgFunnelV2RulesOk: true,
+        },
+      });
+      // Only if not accepted — do not key off chatState alone (caused a second
+      // rules message after the immortal-link hub).
+      if (fresh && !funnelV2RulesAccepted(fresh)) {
         const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
         await sendFunnelV2Rules(chatId, user.id, locale);
         return;

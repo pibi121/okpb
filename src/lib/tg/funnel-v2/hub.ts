@@ -125,6 +125,27 @@ export async function sendFunnelV2Rules(
   await setTgSession(String(chatId), {
     chatState: "funnel_v2_awaiting_rules",
   });
+
+  // Stale «Главное меню» from a previous account must not sit under rules.
+  try {
+    const gone = (await tgSendMessage(
+      chatId,
+      "\u200b",
+      {
+        reply_markup: { remove_keyboard: true },
+        disable_notification: true,
+      },
+      opts?.token,
+    )) as { message_id?: number };
+    if (gone?.message_id) {
+      await tgDeleteMessage(chatId, gone.message_id, opts?.token).catch(
+        () => undefined,
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+
   const { tgRulesArticleUrl } = await import("@/lib/tg/rules");
   const rulesUrl = tgRulesArticleUrl(locale);
   const text =
@@ -138,6 +159,8 @@ export async function sendFunnelV2Rules(
       text,
       {
         reply_markup: funnelV2RulesKeyboard(),
+        link_preview_options: { is_disabled: true },
+        disable_web_page_preview: true,
       },
       opts?.token,
     ),
@@ -216,13 +239,12 @@ export async function sendFunnelV2Hub(
   const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
   const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
 
-  // Prefer replace carrier over in-place edit (media ↔ text switches break edit).
+  // Order after rules: 1) reply «Главное меню» 2) hub 3) one-time pinned immortal link.
   void opts;
+  await attachV2ReplyKbSilent(chatId);
   await funnelV2ReplaceUi(platformUserId, chatId, () =>
     sendCoverPhoto(chatId, "hub", text, markup),
   );
-  await attachV2ReplyKb(chatId);
-  // Once after first hub (registration/rules path): immortal link + pin.
   const { maybeSendBanBackupAfterOnboard } = await import(
     "@/lib/tg/ban-backup-notice"
   );
@@ -248,6 +270,10 @@ export async function acceptFunnelV2Rules(
       data: { ageConfirmed: true },
     });
   }
+  // Drop awaiting_rules before hub so a parallel tap can't re-send rules.
+  await setTgSession(String(chatId), { chatState: "idle" }).catch(
+    () => undefined,
+  );
   if (messageId) {
     try {
       await tgDeleteMessage(chatId, messageId);

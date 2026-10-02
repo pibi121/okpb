@@ -1793,8 +1793,12 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   }
 
   // Don't interleave auto-rules while the user is tapping «agree».
+  // Funnel v2 owns its own rules screen — legacy auto-rules must not append.
   if (!user.ageConfirmed && data !== CB.rulesAgree && data !== "rules:agree") {
-    await maybeSendAutoRules(chatId, user.id);
+    const { userOnFunnelV2 } = await import("@/lib/tg/funnel-v2/mode");
+    if (!(await userOnFunnelV2(user))) {
+      await maybeSendAutoRules(chatId, user.id);
+    }
   }
 
   const lang = parseLangCb(data);
@@ -2191,12 +2195,14 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   const pending = parsePending(session?.pendingJson || "{}");
   const chatState = session?.chatState || "idle";
 
+  let onFunnelV2 = false;
   {
     const { userOnFunnelV2, routeFunnelV2MenuText } = await import(
       "@/lib/tg/funnel-v2"
     );
     const { funnelV2RulesAccepted } = await import("@/lib/tg/funnel-v2/mode");
     if (await userOnFunnelV2(user)) {
+      onFunnelV2 = true;
       if (
         text &&
         (await routeFunnelV2MenuText({
@@ -2219,10 +2225,12 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         },
       });
       const blank = !text || !text.replace(/[\u200b\s]/g, "");
-      // Only if not accepted — never re-open rules after accept.
-      if (!blank && fresh && !funnelV2RulesAccepted(fresh)) {
-        const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
-        await sendFunnelV2Rules(chatId, user.id, locale);
+      if (!fresh || !funnelV2RulesAccepted(fresh)) {
+        // Stay on the v2 rules screen. Never fall through to the legacy pitch.
+        if (!blank) {
+          const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+          await sendFunnelV2Rules(chatId, user.id, locale);
+        }
         return;
       }
     } else if (
@@ -2234,7 +2242,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     }
   }
 
-  if (!user.ageConfirmed) {
+  if (!onFunnelV2 && !user.ageConfirmed) {
     await maybeSendAutoRules(chatId, user.id);
     if (chatState === "awaiting_lang" || chatState === "awaiting_rules") {
       // Legacy awaiting_lang: nudge into rules flow without language picker.
@@ -2255,10 +2263,12 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     return;
   }
 
-  await maybeSendWelcomePush(chatId, user.id, locale, (body, extra) =>
-    tgSendMessage(chatId, body, extra),
-  );
-  await maybeSendFunnelDrips(chatId, user.id);
+  if (!onFunnelV2) {
+    await maybeSendWelcomePush(chatId, user.id, locale, (body, extra) =>
+      tgSendMessage(chatId, body, extra),
+    );
+    await maybeSendFunnelDrips(chatId, user.id);
+  }
 
   if (chatState === "funnel_v2_awaiting_partner_label" && text?.trim()) {
     const { handleFunnelV2EarnNewLabel } = await import(

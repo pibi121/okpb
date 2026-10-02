@@ -113,12 +113,7 @@ export function funnelV2RulesKeyboard() {
   };
 }
 
-export async function sendFunnelV2Rules(
-  chatId: number,
-  userId: string,
-  locale: TgLocale,
-  opts?: { token?: string },
-) {
+async function rulesAcceptedNow(userId: string): Promise<boolean> {
   const existing = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -127,14 +122,38 @@ export async function sendFunnelV2Rules(
       tgFunnelV2RulesOk: true,
     },
   });
-  // Hard stop: never show rules again after accept (also restores menu path).
-  if (existing && funnelV2RulesAccepted(existing)) {
+  return Boolean(existing && funnelV2RulesAccepted(existing));
+}
+
+export async function sendFunnelV2Rules(
+  chatId: number,
+  userId: string,
+  locale: TgLocale,
+  opts?: { token?: string },
+) {
+  // Fresh call after accept → hub. A call already in flight must NOT also open
+  // the hub: acceptFunnelV2Rules owns that, and a second hub repeats the pin path.
+  if (await rulesAcceptedNow(userId)) {
     await sendFunnelV2Hub(chatId, userId, locale);
     return;
   }
 
-  await prisma.user.update({
-    where: { id: userId },
+  // Parallel accept may have committed while we were loading. Do not overwrite
+  // idle / send rules on top of the hub.
+  if (await rulesAcceptedNow(userId)) return;
+
+  // Only stamp "rules shown" if accept has not landed. An unconditional update
+  // would reset nudge flags after the hub is already open.
+  const marked = await prisma.user.updateMany({
+    where: {
+      id: userId,
+      NOT: {
+        OR: [
+          { tgFunnelV2Preview: true, tgFunnelV2RulesOk: true },
+          { tgFunnelV2Preview: false, ageConfirmed: true },
+        ],
+      },
+    },
     data: {
       tgRulesShownAt: new Date(),
       tgRulesNudge10mSent: false,
@@ -142,9 +161,17 @@ export async function sendFunnelV2Rules(
       tgRulesNudge24hSent: false,
     },
   });
+  if (!marked.count || (await rulesAcceptedNow(userId))) return;
+
   await setTgSession(String(chatId), {
     chatState: "funnel_v2_awaiting_rules",
   });
+  if (await rulesAcceptedNow(userId)) {
+    await setTgSession(String(chatId), { chatState: "idle" }).catch(
+      () => undefined,
+    );
+    return;
+  }
 
   // Only strip a leftover reply keyboard if we previously installed one.
   try {
@@ -171,6 +198,13 @@ export async function sendFunnelV2Rules(
     }
   } catch {
     /* ignore */
+  }
+
+  if (await rulesAcceptedNow(userId)) {
+    await setTgSession(String(chatId), { chatState: "idle" }).catch(
+      () => undefined,
+    );
+    return;
   }
 
   const { tgRulesArticleUrl } = await import("@/lib/tg/rules");

@@ -140,6 +140,40 @@ export default function OpsUserCardPage() {
             Заблокировать
           </button>
         )}
+        <button
+          type="button"
+          className="rounded-full border border-coral/40 px-4 py-1.5 text-sm text-coral"
+          onClick={() => {
+            const ok = window.confirm(
+              "Удалить аккаунт навсегда?\n\n" +
+                "Уйдут: Telegram-привязка, события аналитики (FunnelEvent), " +
+                "галерея, персонажи, платежи и персики этого человека.\n\n" +
+                "После удаления можно очистить историю с ботом и пройти /start как новый.",
+            );
+            if (!ok) return;
+            const confirm = window.prompt(
+              'Чтобы подтвердить, введи слово УДАЛИТЬ (заглавными):',
+            );
+            if (confirm !== "УДАЛИТЬ") {
+              setErr("Удаление отменено — нужно ввести УДАЛИТЬ");
+              return;
+            }
+            setMsg("");
+            setErr("");
+            void opsFetch(`/api/ops/users/${params.id}`, {
+              method: "POST",
+              body: JSON.stringify({ action: "delete", confirm: "УДАЛИТЬ" }),
+            })
+              .then(() => {
+                window.location.href = "/ops/users";
+              })
+              .catch((e) =>
+                setErr(e instanceof Error ? e.message : "не удалось удалить"),
+              );
+          }}
+        >
+          Удалить аккаунт
+        </button>
       </div>
 
       <form

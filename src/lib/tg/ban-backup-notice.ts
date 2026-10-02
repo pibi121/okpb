@@ -1,21 +1,46 @@
 import { prisma } from "@/lib/db";
 import { t, type TgLocale } from "@/lib/tg/i18n";
-import { tgSendMessage } from "@/lib/tg/telegram-api";
+import { tgPinChatMessage, tgSendMessage } from "@/lib/tg/telegram-api";
 
 /** After N successful TG deliveries of photo/video work. */
 export const BAN_BACKUP_GEN_MILESTONES = new Set([1, 3, 6, 9]);
+
+const BRIDGE_URL = "https://pichbitch.live/";
+
+function banBackupMarkup(locale: TgLocale) {
+  return {
+    inline_keyboard: [[{ text: t("ban_backup_btn", locale), url: BRIDGE_URL }]],
+  };
+}
 
 export async function sendBanBackupNotice(
   chatId: number,
   locale: TgLocale,
   token?: string,
-) {
-  await tgSendMessage(
+  opts?: { pin?: boolean },
+): Promise<number | null> {
+  const sent = (await tgSendMessage(
     chatId,
     t("ban_backup_notice", locale),
-    { disable_web_page_preview: true },
+    {
+      disable_web_page_preview: true,
+      reply_markup: banBackupMarkup(locale),
+    },
     token,
-  );
+  )) as { message_id?: number };
+
+  const mid = sent?.message_id ?? null;
+  if (opts?.pin && mid) {
+    try {
+      await tgPinChatMessage(chatId, mid, {}, token);
+    } catch (e) {
+      console.warn(
+        "[tg] pin ban-backup notice failed:",
+        e instanceof Error ? e.message.slice(0, 160) : e,
+      );
+    }
+  }
+  return mid;
 }
 
 /** Once: right after the first main-menu hub (post-rules onboarding). */
@@ -23,6 +48,7 @@ export async function maybeSendBanBackupAfterOnboard(
   chatId: number,
   userId: string,
   locale: TgLocale,
+  token?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -30,11 +56,27 @@ export async function maybeSendBanBackupAfterOnboard(
   });
   if (!user || user.tgBanBackupOnboardSent) return;
 
-  await sendBanBackupNotice(chatId, locale);
+  // Mark first so a hub double-call can't spam / re-pin.
   await prisma.user.update({
     where: { id: userId },
     data: { tgBanBackupOnboardSent: true },
   });
+
+  try {
+    await sendBanBackupNotice(chatId, locale, token, { pin: true });
+  } catch (e) {
+    // Allow a later hub open to retry if send failed.
+    await prisma.user
+      .update({
+        where: { id: userId },
+        data: { tgBanBackupOnboardSent: false },
+      })
+      .catch(() => undefined);
+    console.warn(
+      "[tg] ban-backup onboard send failed:",
+      e instanceof Error ? e.message.slice(0, 200) : e,
+    );
+  }
 }
 
 /**

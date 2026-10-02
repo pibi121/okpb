@@ -194,6 +194,25 @@ export async function tgDeleteMessage(
   );
 }
 
+/** Pin a message (works in private chats with the bot). */
+export async function tgPinChatMessage(
+  chatId: number | string,
+  messageId: number,
+  extra: Record<string, unknown> = {},
+  token?: string,
+) {
+  return tgApi(
+    "pinChatMessage",
+    {
+      chat_id: chatId,
+      message_id: messageId,
+      disable_notification: true,
+      ...extra,
+    },
+    token,
+  );
+}
+
 export async function tgApiForm<T = unknown>(
   method: string,
   form: FormData,

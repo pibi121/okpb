@@ -222,6 +222,11 @@ export async function sendFunnelV2Hub(
     sendCoverPhoto(chatId, "hub", text, markup),
   );
   await attachV2ReplyKb(chatId);
+  // Once after first hub (registration/rules path): immortal link + pin.
+  const { maybeSendBanBackupAfterOnboard } = await import(
+    "@/lib/tg/ban-backup-notice"
+  );
+  await maybeSendBanBackupAfterOnboard(chatId, userId, locale);
 }
 
 export async function acceptFunnelV2Rules(

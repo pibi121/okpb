@@ -680,18 +680,24 @@ Until cutover, it won't send any messages.`,
   },
 
   ban_backup_notice: {
-    ru: `❗️ <b>БОТ МОГУТ ЗАБЛОКИРОВАТЬ</b> ❗️
+    ru: `<b>НЕ ПОТЕРЯЙ БОТ!</b>
 
-Чтобы не потерять, сохрани себе:
+<a href="http://pichbitch.live/">Бессмертная ссылка на рабочий бот здесь</a>
 
-📎 Сайт, где всегда актуальная рабочая ссылка 👉 http://pichbitch.live/
-💦 Наш чат 👉 https://t.me/+6aVo5HU0Yrc4NjYy`,
-    en: `❗️ <b>THE BOT MAY GET BLOCKED</b> ❗️
+А также в нашем канале: <a href="https://t.me/offpeachbitch">@offpeachbitch</a>
 
-Save these so you don't lose us:
+Перешли сообщение в избранное, чтобы не потерять!`,
+    en: `<b>DON'T LOSE THE BOT!</b>
 
-📎 Always-updated working link 👉 http://pichbitch.live/
-💦 Our chat 👉 https://t.me/+6aVo5HU0Yrc4NjYy`,
+<a href="http://pichbitch.live/">Immortal link to the working bot</a>
+
+Also in our channel: <a href="https://t.me/offpeachbitch">@offpeachbitch</a>
+
+Forward this message to Saved Messages so you don't lose it!`,
+  },
+  ban_backup_btn: {
+    ru: "Бессмертная ссылка",
+    en: "Immortal link",
   },
 
   gen_insufficient: {

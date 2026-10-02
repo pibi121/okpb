@@ -40,6 +40,31 @@ export async function beginOnboardingWithoutLang(
   chatId: number,
   userId: string,
 ) {
+  const gate = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      locale: true,
+      ageConfirmed: true,
+      tgFunnelV2Preview: true,
+      tgFunnelV2RulesOk: true,
+    },
+  });
+  const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
+    "@/lib/tg/funnel-v2/mode"
+  );
+  // Live/preview v2 must never get the legacy pitch video + auto rules.
+  if (gate && (await userOnFunnelV2(gate))) {
+    const locale: TgLocale = gate.locale === "en" ? "en" : "ru";
+    if (funnelV2RulesAccepted(gate)) {
+      const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
+      await sendFunnelV2Hub(chatId, userId, locale);
+    } else {
+      const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+      await sendFunnelV2Rules(chatId, userId, locale);
+    }
+    return;
+  }
+
   const platformUserId = String(chatId);
   await prisma.user.update({
     where: { id: userId },
@@ -67,9 +92,23 @@ export async function maybeSendAutoRules(
 ): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { ageConfirmed: true, locale: true },
+    select: {
+      ageConfirmed: true,
+      locale: true,
+      tgFunnelV2Preview: true,
+      tgFunnelV2RulesOk: true,
+    },
   });
   if (!user || user.ageConfirmed) return false;
+  const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
+    "@/lib/tg/funnel-v2/mode"
+  );
+  if (
+    funnelV2RulesAccepted(user) ||
+    (await userOnFunnelV2(user))
+  ) {
+    return false;
+  }
 
   const platformUserId = String(chatId);
   const session = await getTgSession(platformUserId);
@@ -327,8 +366,21 @@ export async function confirmRulesAndWelcome(
 ) {
   const before = await prisma.user.findUnique({
     where: { id: userId },
-    select: { ageConfirmed: true },
+    select: {
+      ageConfirmed: true,
+      tgFunnelV2Preview: true,
+      tgFunnelV2RulesOk: true,
+    },
   });
+
+  if (before) {
+    const { userOnFunnelV2 } = await import("@/lib/tg/funnel-v2/mode");
+    if (await userOnFunnelV2(before)) {
+      const { acceptFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+      await acceptFunnelV2Rules(chatId, userId, locale);
+      return;
+    }
+  }
 
   // Already confirmed — only re-open hub (do not reset drip timers).
   if (before?.ageConfirmed) {
@@ -401,8 +453,12 @@ export async function maybeSendRulesNudges(
   });
   if (!user) return;
 
-  // Funnel v2 preview: nudge until tgFunnelV2RulesOk (even if age already confirmed).
-  if (user.tgFunnelV2Preview && !user.tgFunnelV2RulesOk) {
+  const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
+    "@/lib/tg/funnel-v2/mode"
+  );
+  // Funnel v2 (live or preview): nudge with v2 rules only, never the legacy pitch.
+  if (await userOnFunnelV2(user)) {
+    if (funnelV2RulesAccepted(user)) return;
     const locale: TgLocale = user.locale === "en" ? "en" : "ru";
     const anchor = user.tgRulesShownAt?.getTime() || user.createdAt.getTime();
     const ageMs = Date.now() - anchor;

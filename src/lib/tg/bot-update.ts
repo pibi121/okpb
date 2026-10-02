@@ -2218,9 +2218,9 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           tgFunnelV2RulesOk: true,
         },
       });
-      // Only if not accepted — do not key off chatState alone (caused a second
-      // rules message after the immortal-link hub).
-      if (fresh && !funnelV2RulesAccepted(fresh)) {
+      const blank = !text || !text.replace(/[\u200b\s]/g, "");
+      // Only if not accepted — never re-open rules after accept.
+      if (!blank && fresh && !funnelV2RulesAccepted(fresh)) {
         const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
         await sendFunnelV2Rules(chatId, user.id, locale);
         return;

@@ -1,5 +1,10 @@
 /**
  * Funnel v2 hub: rules + main menu (inline only + reply «Главное меню»).
+ *
+ * After rules accept, order must be:
+ * 1) reply keyboard «Главное меню»
+ * 2) hub (cover + inline)
+ * 3) one-time pinned immortal link
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
@@ -25,6 +30,7 @@ export function funnelV2ReplyKeyboard() {
   };
 }
 
+/** Install reply «Главное меню» and keep the carrier message (deleting it can drop the keyboard). */
 async function attachV2ReplyKb(chatId: number) {
   const platformUserId = String(chatId);
   let already: number | undefined;
@@ -34,14 +40,13 @@ async function attachV2ReplyKb(chatId: number) {
   } catch {
     /* ignore */
   }
-  // Telegram keeps ReplyKeyboard after the first set — don't spam empty carriers.
   if (already) return;
 
   let sent: { message_id?: number } | undefined;
   try {
     sent = (await tgSendMessage(
       chatId,
-      "Кнопка <b>🏠 Главное меню</b> закреплена внизу экрана.",
+      "Кнопка <b>🏠 Главное меню</b> внизу экрана.",
       {
         ...funnelV2ReplyKeyboard(),
         disable_notification: true,
@@ -60,7 +65,8 @@ async function attachV2ReplyKb(chatId: number) {
 
 /**
  * Install reply «Главное меню» without leaving the sticky notice as last message.
- * Sends a silent carrier, remembers it, then deletes it (keyboard stays).
+ * Sends a silent carrier, remembers it, then deletes it (keyboard stays on most clients).
+ * Prefer attachV2ReplyKb after rules — deleting the carrier is unreliable.
  */
 export async function attachV2ReplyKbSilent(chatId: number) {
   const platformUserId = String(chatId);
@@ -113,6 +119,20 @@ export async function sendFunnelV2Rules(
   locale: TgLocale,
   opts?: { token?: string },
 ) {
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      ageConfirmed: true,
+      tgFunnelV2Preview: true,
+      tgFunnelV2RulesOk: true,
+    },
+  });
+  // Hard stop: never show rules again after accept (also restores menu path).
+  if (existing && funnelV2RulesAccepted(existing)) {
+    await sendFunnelV2Hub(chatId, userId, locale);
+    return;
+  }
+
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -126,21 +146,28 @@ export async function sendFunnelV2Rules(
     chatState: "funnel_v2_awaiting_rules",
   });
 
-  // Stale «Главное меню» from a previous account must not sit under rules.
+  // Only strip a leftover reply keyboard if we previously installed one.
   try {
-    const gone = (await tgSendMessage(
-      chatId,
-      "\u200b",
-      {
-        reply_markup: { remove_keyboard: true },
-        disable_notification: true,
-      },
-      opts?.token,
-    )) as { message_id?: number };
-    if (gone?.message_id) {
-      await tgDeleteMessage(chatId, gone.message_id, opts?.token).catch(
-        () => undefined,
-      );
+    const acc = await getTgSession(String(chatId));
+    const pending = parsePending(acc?.pendingJson || "{}");
+    if (pending.replyKbCarrierId) {
+      const gone = (await tgSendMessage(
+        chatId,
+        "\u200b",
+        {
+          reply_markup: { remove_keyboard: true },
+          disable_notification: true,
+        },
+        opts?.token,
+      )) as { message_id?: number };
+      if (gone?.message_id) {
+        await tgDeleteMessage(chatId, gone.message_id, opts?.token).catch(
+          () => undefined,
+        );
+      }
+      await setTgSession(String(chatId), {
+        pending: { replyKbCarrierId: undefined },
+      }).catch(() => undefined);
     }
   } catch {
     /* ignore */
@@ -239,9 +266,9 @@ export async function sendFunnelV2Hub(
   const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
   const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
 
-  // Order after rules: 1) reply «Главное меню» 2) hub 3) one-time pinned immortal link.
+  // 1) reply keyboard  2) hub  3) one-time pinned immortal link
   void opts;
-  await attachV2ReplyKbSilent(chatId);
+  await attachV2ReplyKb(chatId);
   await funnelV2ReplaceUi(platformUserId, chatId, () =>
     sendCoverPhoto(chatId, "hub", text, markup),
   );
@@ -270,7 +297,6 @@ export async function acceptFunnelV2Rules(
       data: { ageConfirmed: true },
     });
   }
-  // Drop awaiting_rules before hub so a parallel tap can't re-send rules.
   await setTgSession(String(chatId), { chatState: "idle" }).catch(
     () => undefined,
   );
@@ -281,6 +307,5 @@ export async function acceptFunnelV2Rules(
       /* ignore */
     }
   }
-  // Single path: hub (faststart CTA after rules removed).
   await sendFunnelV2Hub(chatId, userId, locale);
 }

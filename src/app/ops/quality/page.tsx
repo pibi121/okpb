@@ -131,7 +131,7 @@ export default function OpsQualityPage() {
                         : "отклонено"}
                   </span>
                   <span className="text-xs text-zinc-500">
-                    {r.chargedPeaches} 🍑
+                    {r.chargedPeaches}₽
                     {r.refundedPeaches
                       ? ` · возврат ${r.refundedPeaches}`
                       : ""}
@@ -153,7 +153,7 @@ export default function OpsQualityPage() {
                 </div>
                 <div className="text-[11px] text-zinc-500">
                   Заявок у юзера: {r.userClaimsTotal} · баланс{" "}
-                  {r.user.balancePeaches} 🍑 · {fmtTime(r.createdAt)}
+                  {r.user.balancePeaches}₽ · {fmtTime(r.createdAt)}
                 </div>
                 {r.item.title ? (
                   <div className="text-xs text-zinc-400">{r.item.title}</div>

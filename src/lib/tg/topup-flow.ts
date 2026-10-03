@@ -27,7 +27,7 @@ import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 export function topupInlineKeyboard(locale: TgLocale) {
   const rows = TG_QUICK_TOPUP_AMOUNTS.map((n) => [
-    { text: `🍑 ${n}`, callback_data: TOPUP_CB.amount(n) },
+    { text: `${n}₽`, callback_data: TOPUP_CB.amount(n) },
   ]);
   void locale;
   return { inline_keyboard: rows };
@@ -208,8 +208,8 @@ export async function handleTopupAmount(
     await tgSendMessage(
       chatId,
       locale === "en"
-        ? `Max top-up is ${TG_MAX_TOPUP_PEACHES} 🍑 per payment.`
-        : `Максимум за одно пополнение — ${TG_MAX_TOPUP_PEACHES} 🍑.`,
+        ? `Max top-up is ${TG_MAX_TOPUP_PEACHES}₽ per payment.`
+        : `Максимум за одно пополнение — ${TG_MAX_TOPUP_PEACHES}₽.`,
       { reply_markup: topupInlineKeyboard(locale) },
     );
     return;

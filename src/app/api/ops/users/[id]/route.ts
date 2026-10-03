@@ -92,7 +92,7 @@ export async function POST(req: Request, ctx: Ctx) {
         actorId: actor.id,
         note: body.reason || "",
       });
-      if (!res.ok) return jsonErr(`Не хватает персиков (сейчас ${res.balance})`);
+      if (!res.ok) return jsonErr(`Не хватает средств (сейчас ${res.balance}₽)`);
       await writeAudit({
         actorId: actor.id,
         action: "debit",

@@ -48,13 +48,13 @@ export default function OpsMoneyPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-2xl border border-white/10 p-4">
           <div className="text-[11px] uppercase text-zinc-500">
-            Персики сегодня
+            Пополнения сегодня, ₽
           </div>
           <div className="mt-1 text-2xl">{d.peachesInToday}</div>
         </div>
         <div className="rounded-2xl border border-white/10 p-4">
           <div className="text-[11px] uppercase text-zinc-500">
-            Персики за месяц
+            Пополнения за месяц, ₽
           </div>
           <div className="mt-1 text-2xl">{d.peachesInMonth}</div>
         </div>

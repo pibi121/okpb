@@ -88,7 +88,7 @@ export default function OpsPartnersPage() {
             key={w.id}
             className="mt-2 rounded-2xl border border-white/10 p-4 text-sm"
           >
-            {w.partner.user.name} · {w.partner.code} · {w.amountPeaches} 🍑
+            {w.partner.user.name} · {w.partner.code} · {w.amountPeaches}₽
             <div className="text-zinc-500">{w.payoutDetails}</div>
             <div className="mt-2 flex gap-2">
               <button

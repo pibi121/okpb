@@ -27,7 +27,7 @@ const UI = {
     pending: "Генерация…",
     again: "Снять ещё",
     againHint: "Готово! Можно сразу сделать следующую генерацию.",
-    lowBal: "Персиков мало — пополни, чтобы не останавливаться.",
+    lowBal: "Баланса мало — пополни, чтобы не останавливаться.",
     topup: "Пополнить баланс",
   },
   en: {
@@ -40,7 +40,7 @@ const UI = {
     pending: "Generating…",
     again: "Make another",
     againHint: "Done! Ready for the next generation.",
-    lowBal: "Low on peaches — top up to keep going.",
+    lowBal: "Low balance — top up to keep going.",
     topup: "Top up balance",
   },
 } as const;

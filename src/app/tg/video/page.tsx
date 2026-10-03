@@ -71,7 +71,7 @@ const UI = {
     starting: "Запускаю…",
     line: "Реплика",
     topup: "Пополнить баланс",
-    needPeaches: "Недостаточно персиков",
+    needPeaches: "Недостаточно средств",
     emptyMode: "Нет шаблонов в этом режиме",
   },
   en: {
@@ -98,7 +98,7 @@ const UI = {
     starting: "Starting…",
     line: "Line",
     topup: "Top up balance",
-    needPeaches: "Not enough peaches",
+    needPeaches: "Not enough balance",
     emptyMode: "No templates in this mode",
   },
 } as const;
@@ -475,7 +475,7 @@ function VideoPageInner() {
                     ) : null}
                   </div>
                   <small>
-                    {t.pricePeaches} 🍑
+                    {t.pricePeaches}₽
                     {t.durationSec ? ` · ~${t.durationSec}с` : ""}
                     {t.hasSpeech ? (locale === "ru" ? " · речь" : " · speech") : ""}
                   </small>

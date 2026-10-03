@@ -119,7 +119,7 @@ export default function OpsHomePage() {
           hint="TG-аккаунты, созданные сегодня (MSK); в /ops/sales регистрация = первый /start"
         />
         <Card
-          label="Персики «оплат»"
+          label="Оплаты, ₽"
           value={s.today.peachesIn}
           hint="Пока оплаты-заглушки — это не живые деньги"
         />

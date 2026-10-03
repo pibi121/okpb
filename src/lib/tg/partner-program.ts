@@ -342,7 +342,7 @@ export async function requestPartnerWithdrawal(opts: {
   const profile = await ensurePartnerProfile(opts.userId);
   const min = 500;
   if (opts.amountPeaches < min) {
-    throw new Error(`Минимум для вывода: ${min} 🍑`);
+    throw new Error(`Минимум для вывода: ${min}₽`);
   }
   if (profile.balancePeaches < opts.amountPeaches) {
     throw new Error("Недостаточно на партнёрском балансе");

@@ -246,10 +246,10 @@ export function peachesToStars(
 
 export function formatPeachPrice(peaches: number, locale: "ru" | "en"): string {
   const n = peaches.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
-  return locale === "ru" ? `${n} 🍑` : `${n} peaches`;
+  return `${n}₽`;
 }
 
-/** Human line for video quote: "12 сек × 25 🍑 = 300 🍑". */
+/** Human line for video quote: "12 сек × 25₽ = 300₽". */
 export function formatVideoSecQuote(
   tier: TgVideoSecTier,
   durationSec: number,
@@ -259,9 +259,9 @@ export function formatVideoSecQuote(
   const rate = videoSecRate(tier);
   const total = videoPeachesForSec(tier, durationSec);
   if (locale === "en") {
-    return `${sec}s × ${rate} = ${formatPeachPrice(total, "en")}`;
+    return `${sec}s × ${rate}₽ = ${formatPeachPrice(total, "en")}`;
   }
-  return `${sec} сек × ${rate} 🍑 = ${formatPeachPrice(total, "ru")}`;
+  return `${sec} сек × ${rate}₽ = ${formatPeachPrice(total, "ru")}`;
 }
 
 /** @deprecated use balancePeaches */

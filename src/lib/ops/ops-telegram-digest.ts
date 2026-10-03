@@ -213,7 +213,7 @@ export async function buildMarketingDigest(
   lines.push(`👥 Активных людей: <b>${usersTouched.length}</b>`);
   lines.push(`🆕 Регистраций: <b>${newUsers}</b>`);
   lines.push(
-    `💳 Оплат: <b>${paidOrders.length}</b> · ${peaches} 🍑 · ${rub.toFixed(0)} ₽`,
+    `💳 Оплат: <b>${paidOrders.length}</b> · ${rub.toFixed(0)} ₽`,
   );
   lines.push("");
   lines.push("<b>Воронка (уникальные люди)</b>");

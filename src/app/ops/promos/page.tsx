@@ -32,7 +32,7 @@ export default function OpsPromosPage() {
       <div>
         <h1 className="font-display text-3xl">Промокоды</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Человек пишет код в бот → на баланс падают персики. Один код — один раз на юзера. Лимит — сколько всего людей могут активировать.
+          Человек пишет код в бот → на баланс падают рубли. Один код — один раз на юзера. Лимит — сколько всего людей могут активировать.
         </p>
       </div>
       {msg ? <p className="text-sm text-emerald-300">{msg}</p> : null}
@@ -72,7 +72,7 @@ export default function OpsPromosPage() {
           type="number"
           min={1}
           required
-          placeholder="Персиков"
+          placeholder="Сумма, ₽"
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
         />
         <input
@@ -100,7 +100,7 @@ export default function OpsPromosPage() {
             <div>
               <div className="font-mono text-peach">{r.code}</div>
               <div className="text-zinc-400">
-                +{r.amountPeaches} 🍑 · использовали {r.redeemedCount}/{r.maxRedemptions}
+                +{r.amountPeaches}₽ · использовали {r.redeemedCount}/{r.maxRedemptions}
                 {r.note ? ` · ${r.note}` : ""}
                 {" · "}
                 {r.enabled ? "вкл" : "выкл"} · {fmtTime(r.createdAt)}

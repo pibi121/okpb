@@ -271,7 +271,7 @@ export async function notifyOpsQualityClaim(claimId: string) {
     `Пользователь: ${escHtml(who)} (${escHtml(uname)})`,
     `Id: <code>${escHtml(claim.userId)}</code>`,
     `Работа: <code>${escHtml(claim.galleryItemId)}</code>`,
-    `Списано: <b>${claim.chargedPeaches}</b> 🍑`,
+    `Списано: <b>${claim.chargedPeaches}₽</b>`,
     `Заявок всего: <b>${totalClaims}</b>`,
     `Время: ${formatMsk(claim.createdAt)} МСК`,
   ].join("\n");
@@ -432,7 +432,7 @@ export async function resolveQualityClaim(opts: {
       `Тип: <b>${kind === "video" ? "видео" : "фото"}</b>`,
       `Пользователь: <code>${escHtml(claim.userId)}</code>`,
       `Работа: <code>${escHtml(claim.galleryItemId)}</code>`,
-      `Списано: <b>${claim.chargedPeaches}</b> 🍑` +
+      `Списано: <b>${claim.chargedPeaches}₽</b>` +
         (refunded ? ` → возврат <b>${refunded}</b>` : ""),
       `Заявок всего: <b>${totalClaims}</b>`,
       `Решено: ${formatMsk(new Date())} МСК`,

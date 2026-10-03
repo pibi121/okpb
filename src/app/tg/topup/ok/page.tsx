@@ -15,8 +15,8 @@ export default function TgTopupOkPage() {
           <h2>{ru ? "Оплата принята" : "Payment received"}</h2>
           <p style={{ color: "var(--tg-muted)", marginTop: 8 }}>
             {ru
-              ? "Если персики ещё не появились — подожди несколько секунд и обнови баланс. Зачисление идёт после подтверждения от платёжной системы."
-              : "If peaches are not there yet, wait a few seconds and refresh. Credits arrive after the payment provider confirms."}
+              ? "Если баланс ещё не обновился — подожди несколько секунд и обнови. Зачисление идёт после подтверждения от платёжной системы."
+              : "If the balance hasn't updated yet, wait a few seconds and refresh. Credits arrive after the payment provider confirms."}
           </p>
           <button
             type="button"

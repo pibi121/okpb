@@ -82,7 +82,7 @@ export default function OpsUserCardPage() {
         <h1 className="mt-2 font-display text-3xl">{data.name || "Без имени"}</h1>
         <p className="text-sm text-zinc-500">
           {tg ? `@${tg.username || tg.platformUserId}` : data.email} · {data.locale} · баланс{" "}
-          <b>{data.balancePeaches}</b> 🍑
+          <b>{data.balancePeaches}</b> ₽
           {data.blocked ? " · заблокирован" : ""}
         </p>
       </div>
@@ -101,7 +101,7 @@ export default function OpsUserCardPage() {
             });
           }}
         >
-          <h2 className="text-sm font-medium">Начислить персики</h2>
+          <h2 className="text-sm font-medium">Начислить на баланс</h2>
           <input name="amount" type="number" min={1} className="mt-2 w-full rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
           <input name="reason" placeholder="Почему" className="mt-2 w-full rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm" />
           <button className="mt-3 rounded-full btn-grad px-4 py-1.5 text-sm">Начислить</button>
@@ -147,7 +147,7 @@ export default function OpsUserCardPage() {
             const ok = window.confirm(
               "Удалить аккаунт навсегда?\n\n" +
                 "Уйдут: Telegram-привязка, события аналитики (FunnelEvent), " +
-                "галерея, персонажи, платежи и персики этого человека.\n\n" +
+                "галерея, персонажи, платежи и баланс этого человека.\n\n" +
                 "После удаления можно очистить историю с ботом и пройти /start как новый.",
             );
             if (!ok) return;
@@ -245,7 +245,7 @@ export default function OpsUserCardPage() {
       </section>
 
       <section>
-        <h2 className="text-[11px] uppercase tracking-widest text-peach">Движение персиков</h2>
+        <h2 className="text-[11px] uppercase tracking-widest text-peach">Движение баланса</h2>
         <ul className="mt-2 text-sm text-zinc-400">
           {data.ledger.map((l) => (
             <li key={l.id}>

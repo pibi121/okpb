@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       const amount = Math.floor(Number(body.amountPeaches) || 0);
       const max = Math.floor(Number(body.maxRedemptions) || 0);
       if (!code || code.length < 3) return jsonErr("Код слишком короткий");
-      if (amount < 1) return jsonErr("Сколько персиков начислять?");
+      if (amount < 1) return jsonErr("Сколько рублей начислять?");
       if (max < 1) return jsonErr("Сколько человек может воспользоваться?");
       try {
         const row = await prisma.promoCode.create({

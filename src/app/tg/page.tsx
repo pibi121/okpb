@@ -540,7 +540,7 @@ export default function TgFeedPage() {
               })()}
               <div className="tg-reel-meta">
                 <span className="tg-price">
-                  {item.price} 🍑
+                  {item.price}₽
                   {item.kind === "video" && item.durationSec
                     ? ` · ~${item.durationSec}с`
                     : ""}

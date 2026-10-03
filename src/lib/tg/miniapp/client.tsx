@@ -548,7 +548,7 @@ export function TgShell({
         </Link>
         <div className="tg-header-actions">
           <div className="tg-header-balance-row">
-            <span className="tg-header-balance">🍑 {bal}</span>
+            <span className="tg-header-balance">{bal}₽</span>
             <button
               type="button"
               className="tg-header-topup"

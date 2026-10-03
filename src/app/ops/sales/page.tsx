@@ -528,8 +528,8 @@ export default function OpsSalesPage() {
                 className="mt-1 block rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
               >
                 <option value="rub">₽</option>
-                <option value="peaches">🍑</option>
-                <option value="both">₽ + 🍑</option>
+                <option value="peaches">баланс</option>
+                <option value="both">₽ + баланс</option>
               </select>
             </label>
             <div className="relative text-xs text-zinc-500">
@@ -657,8 +657,8 @@ export default function OpsSalesPage() {
               ) : null}
               {showPeaches ? (
                 <Kpi
-                  label="Сумма оплат, 🍑"
-                  hint="Topup-персики этих регистраций"
+                  label="Сумма оплат, баланс"
+                  hint="Topup-кредиты этих регистраций"
                   value={fmtMoney(data.kpi.revenueSumPeaches)}
                 />
               ) : null}
@@ -676,8 +676,8 @@ export default function OpsSalesPage() {
               ) : null}
               {showPeaches ? (
                 <Kpi
-                  label="Доход на регистрацию, 🍑"
-                  hint="Сумма 🍑 ÷ число регистраций"
+                  label="Доход на регистрацию, баланс"
+                  hint="Сумма баланса ÷ число регистраций"
                   value={fmtMoney(data.kpi.revenuePerRegPeaches)}
                 />
               ) : null}
@@ -725,7 +725,7 @@ export default function OpsSalesPage() {
               ) : null}
               {showPeaches ? (
                 <span>
-                  <b className="text-peach">{data.cash.peaches}</b> 🍑
+                  <b className="text-peach">{data.cash.peaches}</b>₽
                   <span className="text-zinc-500">
                     {" "}
                     · {data.cash.peachPayers} чел. с topup
@@ -766,7 +766,7 @@ export default function OpsSalesPage() {
                     <span className="font-mono text-zinc-700">
                       {m.count} опл.
                       {showRub ? ` · ${fmtMoney(m.rubMinor / 100)} ₽` : ""}
-                      {showPeaches ? ` · ${m.peaches} 🍑` : ""}
+                      {showPeaches ? ` · ${m.peaches}₽` : ""}
                     </span>
                   </li>
                 ))}

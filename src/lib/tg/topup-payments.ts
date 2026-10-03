@@ -81,10 +81,8 @@ export function formatTopupPriceLine(
 ): string {
   const rub = peachesToRub(peaches);
   const usd = peachesToUsdt(peaches);
-  if (locale === "en") {
-    return `${peaches} 🍑 = ${rub} ₽ (≈ $${usd})`;
-  }
-  return `${peaches} 🍑 = ${rub} ₽ (≈ $${usd})`;
+  void locale;
+  return `${rub} ₽ (≈ $${usd})`;
 }
 
 export async function createTopupPayment(opts: {
@@ -117,10 +115,10 @@ export async function createTopupPayment(opts: {
   const feeRebate = topupFeeRebatePeaches(peaches, opts.method);
   const bonus = packBonus + feeRebate;
   if (peaches < TG_MIN_TOPUP_PEACHES) {
-    throw new Error(`Минимум ${TG_MIN_TOPUP_PEACHES} 🍑`);
+    throw new Error(`Минимум ${TG_MIN_TOPUP_PEACHES}₽`);
   }
   if (peaches > TG_MAX_TOPUP_PEACHES) {
-    throw new Error(`Максимум за раз — ${TG_MAX_TOPUP_PEACHES} 🍑`);
+    throw new Error(`Максимум за раз — ${TG_MAX_TOPUP_PEACHES}₽`);
   }
 
   const rub = peachesToRub(peaches);
@@ -146,8 +144,8 @@ export async function createTopupPayment(opts: {
       externalId: order.externalId,
       description:
         opts.locale === "en"
-          ? `PeachBitch top-up ${peaches} peaches`
-          : `Пополнение PeachBitch ${peaches} персиков`,
+          ? `PeachBitch top-up ${peaches} RUB`
+          : `Пополнение PeachBitch ${peaches}₽`,
       metadata: {
         userId: opts.userId,
         peaches,

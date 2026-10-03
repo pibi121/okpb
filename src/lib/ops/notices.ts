@@ -14,9 +14,9 @@ export const NOTICE_SLOTS = [
     slot: "gen_fail_our_fault",
     title: "Генерация упала не по вине человека",
     textRu:
-      "Не получилось собрать кадр — это сбой у нас, не у тебя. Персики за эту попытку вернутся. Можно запустить ещё раз.",
+      "Не получилось собрать кадр — это сбой у нас, не у тебя. Средства за эту попытку вернутся. Можно запустить ещё раз.",
     textEn:
-      "We failed to render this one — that's on us, not you. Peaches for this attempt come back. You can try again.",
+      "We failed to render this one — that's on us, not you. Balance for this attempt comes back. You can try again.",
   },
   {
     slot: "lora_fail",
@@ -29,8 +29,8 @@ export const NOTICE_SLOTS = [
   {
     slot: "payment_ok",
     title: "Оплата прошла",
-    textRu: "Пополнение дошло ✅ На баланс зачислено {n} 🍑",
-    textEn: "Payment received ✅ {n} 🍑 added to your balance",
+    textRu: "Пополнение дошло ✅ На баланс зачислено {n}₽",
+    textEn: "Payment received ✅ {n}₽ added to your balance",
   },
   {
     slot: "payment_fail",

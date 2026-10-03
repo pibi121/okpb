@@ -315,7 +315,7 @@ function CatalogRow({
               Нужно превью
             </span>
           ) : null}
-          <span className="text-zinc-500">{item.pricePeaches} 🍑</span>
+          <span className="text-zinc-500">{item.pricePeaches}₽</span>
           {item.durationSec > 0 ? (
             <span className="text-zinc-500">~{item.durationSec}с</span>
           ) : null}

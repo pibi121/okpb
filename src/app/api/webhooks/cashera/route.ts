@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
               [
                 {
                   text:
-                    locale === "en" ? "Top up again 🍑" : "Пополнить снова 🍑",
+                    locale === "en" ? "Top up again" : "Пополнить снова",
                   callback_data: onFv2 ? FV2.topup : "tu:open",
                 },
               ],

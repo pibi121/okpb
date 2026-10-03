@@ -192,7 +192,7 @@ export async function startTgLoraI2vGeneration(opts: {
     });
     if (!paid.ok) {
       throw new Error(
-        `Недостаточно персиков (нужно ${price}, есть ${paid.balance})`,
+        `Недостаточно средств (нужно ${price}₽, есть ${paid.balance}₽)`,
       );
     }
   }
@@ -761,7 +761,7 @@ export async function startTgVideoGeneration(opts: {
       templateId: opts.templateId,
     });
     if (!paid.ok) {
-      throw new Error(`Недостаточно персиков (нужно ${price}, есть ${paid.balance})`);
+      throw new Error(`Недостаточно средств (нужно ${price}₽, есть ${paid.balance}₽)`);
     }
   }
 
@@ -999,7 +999,7 @@ export async function startTgPhotoGeneration(opts: {
       templateId: opts.templateId,
     });
     if (!paid.ok) {
-      throw new Error(`Недостаточно персиков (нужно ${price}, есть ${paid.balance})`);
+      throw new Error(`Недостаточно средств (нужно ${price}₽, есть ${paid.balance}₽)`);
     }
   }
 

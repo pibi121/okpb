@@ -66,10 +66,10 @@ const UI = {
     uploadHint:
       "Выбери сразу несколько фото из галереи. Удаляй лишние крестиком.",
     uploadedMany: "Загружено {added} · всего {count}/{max}",
-    trainPrice: "Подготовка: {price}🍑",
-    trainBalance: "У вас на балансе: {balance}🍑",
-    trainShort: "Не хватает: {need}🍑",
-    insufficient: "Недостаточно персиков",
+    trainPrice: "Подготовка: {price}₽",
+    trainBalance: "У вас на балансе: {balance}₽",
+    trainShort: "Не хватает: {need}₽",
+    insufficient: "Недостаточно средств",
     topup: "Пополнить →",
     favAdd: "В избранное",
     favRemove: "Убрать из избранного",
@@ -77,7 +77,7 @@ const UI = {
     bannerTitle: "Создай свою модель",
     bannerSub: "5–20 фото · ~1–2 часа · макс. качество навсегда",
     bannerCta: "Начать",
-    bannerPrice: "{price}🍑",
+    bannerPrice: "{price}₽",
     deletePhoto: "Удалить",
     picked: "Выбрано {n} фото — загружаю…",
     partialFail: "Не удалось прочитать {n} фото (HEIC?) — остальные загружены",
@@ -117,10 +117,10 @@ const UI = {
     uploadHint:
       "Select several photos from the gallery. Remove extras with ✕.",
     uploadedMany: "Uploaded {added} · total {count}/{max}",
-    trainPrice: "Setup: {price}🍑",
-    trainBalance: "Your balance: {balance}🍑",
-    trainShort: "Need {need}🍑 more",
-    insufficient: "Not enough peaches",
+    trainPrice: "Setup: {price}₽",
+    trainBalance: "Your balance: {balance}₽",
+    trainShort: "Need {need}₽ more",
+    insufficient: "Not enough balance",
     topup: "Top up →",
     favAdd: "Add to favorites",
     favRemove: "Remove from favorites",
@@ -128,7 +128,7 @@ const UI = {
     bannerTitle: "Create your model",
     bannerSub: "5–20 photos · ~1–2 hours · max quality forever",
     bannerCta: "Start",
-    bannerPrice: "{price}🍑",
+    bannerPrice: "{price}₽",
     deletePhoto: "Remove",
     picked: "Selected {n} photos — uploading…",
     partialFail: "Could not read {n} photos (HEIC?) — rest uploaded",
@@ -729,7 +729,7 @@ function TgCharactersPageInner() {
         >
           {busyId === c.id && !progress
             ? "…"
-            : `🚀 ${u.train} · ${trainPrice}🍑`}
+            : `🚀 ${u.train} · ${trainPrice}₽`}
         </button>
       </div>
     );

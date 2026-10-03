@@ -2123,8 +2123,8 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         await tgSendMessage(
           chatId,
           locale === "en"
-            ? `🍑 <b>+${promo.amount} peaches</b> added!\nBalance: <b>${promo.balance}</b> 🍑`
-            : `🍑 <b>+${promo.amount} персиков</b> начислено!\nБаланс: <b>${promo.balance}</b> 🍑`,
+            ? `<b>+${promo.amount}₽</b> added!\nBalance: <b>${promo.balance}₽</b>`
+            : `<b>+${promo.amount}₽</b> начислено!\nБаланс: <b>${promo.balance}₽</b>`,
           mainMenuExtra(locale),
         );
       } else {
@@ -2497,7 +2497,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           return;
         }
         const msgText = e instanceof Error ? e.message : String(e);
-        if (/Недостаточно персиков|free_race/i.test(msgText)) {
+        if (/Недостаточно (персиков|средств)|free_race/i.test(msgText)) {
           await tgSendMessage(chatId, msgText, {
             reply_markup: {
               inline_keyboard: [
@@ -2623,7 +2623,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         return;
       }
       const msgText = e instanceof Error ? e.message : String(e);
-      if (/Недостаточно персиков|free_race/i.test(msgText)) {
+      if (/Недостаточно (персиков|средств)|free_race/i.test(msgText)) {
         await tgSendMessage(chatId, msgText, {
           reply_markup: {
             inline_keyboard: [
@@ -2854,7 +2854,7 @@ export async function flushTgOutbox() {
                 ? `Готово! Я сделал фото с ней в позе: «${pose}»\n\n`
                 : "") +
               "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. " +
-              "За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑";
+              "За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусов";
           }
           const pricePeaches = Number(
             (payload as { pricePeaches?: number }).pricePeaches || 0,
@@ -2936,7 +2936,7 @@ export async function flushTgOutbox() {
             if (payload.successKind === "funnel_v2_blur" || payload.blurTrial) {
               await sendMessage(
                 payload.caption?.trim() ||
-                  "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑",
+                  "Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусов",
                 {
                   reply_markup: funnelV2PhotoBlurKeyboard(locale, {
                     pricePeaches: Number(

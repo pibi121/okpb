@@ -23,7 +23,7 @@ export function userFacingTgError(
   }
 
   if (/OutOfMemory|CUDA out of memory|ran out of memory/i.test(trimmed)) {
-    return "Сервер сейчас перегружен. Подожди ~1 минуту и запусти генерацию ещё раз — персики вернули, если списание было.";
+    return "Сервер сейчас перегружен. Подожди ~1 минуту и запусти генерацию ещё раз — средства вернули, если списание было.";
   }
 
   if (

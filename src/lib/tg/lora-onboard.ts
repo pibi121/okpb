@@ -301,8 +301,8 @@ export async function startLoraTrainingForUser(opts: {
     const detail = (kicked.detail || "").slice(0, 180);
     const failText =
       opts.locale === "en"
-        ? `Training failed to start${detail ? `: ${detail}` : ""}. Peaches refunded — try again.`
-        : `Не удалось запустить обучение${detail ? `: ${detail}` : ""}. 🍑 возвращены — попробуй ещё раз.`;
+        ? `Training failed to start${detail ? `: ${detail}` : ""}. Balance refunded — try again.`
+        : `Не удалось запустить обучение${detail ? `: ${detail}` : ""}. Средства возвращены — попробуй ещё раз.`;
     if (opts.chatId) {
       await tgSendMessage(opts.chatId, failText);
     } else if (platformUserId) {

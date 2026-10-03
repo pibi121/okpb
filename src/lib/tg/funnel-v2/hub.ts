@@ -15,7 +15,6 @@ import {
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
 import {
   funnelV2RulesAccepted,
-  getFunnelBalance,
   userOnFunnelV2,
 } from "@/lib/tg/funnel-v2/mode";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
@@ -260,13 +259,9 @@ export async function funnelV2HubKeyboard(userId: string) {
   return { inline_keyboard: rows };
 }
 
-export async function buildFunnelV2HubText(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  const bal = user ? await getFunnelBalance(user) : 0;
-  const { formatRub } = await import("@/lib/tg/funnel-v2/money");
+export async function buildFunnelV2HubText(_userId: string): Promise<string> {
   return (
     `<b>Что мне сделать для тебя?</b>\n\n` +
-    `Твой баланс: <b>${formatRub(bal)}</b>\n\n` +
     `● Раздеть девушку на фотографии 💦\n` +
     `● Поставить её в любую 🔞 позу\n` +
     `● Превратить фотографию в видео\n` +

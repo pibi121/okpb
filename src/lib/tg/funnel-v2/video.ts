@@ -3,7 +3,7 @@
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
-import { peachesToUsdt } from "@/lib/tg-pricing";
+import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
   tgAnswerCallbackQuery,
@@ -145,7 +145,7 @@ async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]
 }
 
 function priceLine(peaches: number): string {
-  return `${peaches}🍑 (${peaches} рублей / ${peachesToUsdt(peaches)}$)`;
+  return formatRubOnly(peaches);
 }
 
 export async function sendFunnelV2VideoHub(
@@ -162,10 +162,10 @@ export async function sendFunnelV2VideoHub(
   const slice = tpls.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
 
   const header = photoUrl
-    ? "<b>Фотография загружена</b>, но ты можешь заменить её на другую"
-    : "<b>Фотография пока не загружена</b>";
+    ? ""
+    : "<b>Фотография пока не загружена</b>\n\n";
   const body =
-    `${header}\n\n` +
+    `${header}` +
     `Здесь тебе доступны шаблоны обычного секса 🍓, сюжетные🍿, с диалогами 💬\n\n` +
     `Выбирай то, что тебе хочется с ней сделать 😜`;
 
@@ -361,12 +361,12 @@ async function runFunnelV2VideoGen(opts: {
         opts.chatId,
         "needTopup",
         "Сейчас я не могу сгенерировать видео для тебя, пока ты не пополнишь баланс.\n\n" +
-          "Сейчас тебя ждёт много бонусных 🍑 за пополнение баланса.",
+          "Сейчас тебя ждёт много бонусов за пополнение баланса.",
         {
           inline_keyboard: [
             [
               {
-                text: "Пополнить баланс 🍑",
+                text: "Пополнить баланс",
                 callback_data: FV2.topup,
                 style: "success",
               },
@@ -381,7 +381,7 @@ async function runFunnelV2VideoGen(opts: {
 
   const deb = await debitFunnelBalance(opts.userId, row.price);
   if (!deb.ok) {
-    await tgSendMessage(opts.chatId, "Недостаточно персиков.");
+    await tgSendMessage(opts.chatId, "Недостаточно средств на балансе.");
     return;
   }
 

@@ -156,7 +156,7 @@ export async function setTgSession(
   ) {
     pending.replyKbCarrierId = prevPending.replyKbCarrierId;
   }
-  // Funnel v2 UI carrier + ref photo survive hub/menu clears.
+  // Funnel v2 UI carrier + ref photo + post-topup intents survive clears.
   if (patch.clearPending) {
     if (
       prevPending.funnelV2UiMessageId != null &&
@@ -175,6 +175,18 @@ export async function setTgSession(
       patch.pending?.funnelV2PhotoKey === undefined
     ) {
       pending.funnelV2PhotoKey = prevPending.funnelV2PhotoKey;
+    }
+    if (
+      prevPending.funnelV2ReturnHubAfterTopup &&
+      patch.pending?.funnelV2ReturnHubAfterTopup === undefined
+    ) {
+      pending.funnelV2ReturnHubAfterTopup = true;
+    }
+    if (
+      prevPending.funnelV2Unblur &&
+      patch.pending?.funnelV2Unblur === undefined
+    ) {
+      pending.funnelV2Unblur = prevPending.funnelV2Unblur;
     }
   }
 

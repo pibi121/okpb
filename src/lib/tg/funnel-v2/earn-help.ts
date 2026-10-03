@@ -2,51 +2,38 @@
  * Earn + Help for funnel v2 — same copy + tagged partner links in-bot.
  */
 import type { TgLocale } from "@/lib/tg/i18n";
-import { t, tFormat } from "@/lib/tg/i18n";
+import { tFormat } from "@/lib/tg/i18n";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
 import { tgRulesArticleUrl, tgAffiliateAttributionNote } from "@/lib/tg/rules";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
-import { tgSupportContact, tgSupportUrl } from "@/lib/tg/support";
+import { tgSupportContact } from "@/lib/tg/support";
 import { setTgSession } from "@/lib/tg/session";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 export async function showHelpInPlaceProxy(chatId: number, locale: TgLocale) {
   const rulesUrl = tgRulesArticleUrl(locale);
+  const support = tgSupportContact();
+  const text =
+    `📩 Поддержка: ${support}\n\n` +
+    `<b>НЕ ПОТЕРЯЙ БОТ!</b>\n\n` +
+    `<a href="http://pichbitch.live/">Бессмертная ссылка на рабочий бот здесь</a>\n\n` +
+    `А также в нашем канале: @offpeachbitch\n\n` +
+    `Перешли сообщение в избранное, чтобы не потерять!\n\n` +
+    `📜 <a href="${rulesUrl}">правила пользования ботом</a>\n\n` +
+    `PlaVER`;
   await funnelV2ReplaceUi(String(chatId), chatId, () =>
-    tgSendMessage(
-      chatId,
-      tFormat("help_title", locale, {
-        support: tgSupportContact(),
-        rulesUrl,
-      }),
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: t("help_guide_btn", locale),
-                web_app: { url: tgMiniAppUrl("guide") },
-              },
-            ],
-            [
-              {
-                text: t("help_rules_btn", locale),
-                url: rulesUrl,
-              },
-            ],
-            [
-              {
-                text: t("help_support_btn", locale),
-                url: tgSupportUrl(),
-              },
-            ],
-            [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
-          ],
-        },
+    tgSendMessage(chatId, text, {
+      link_preview_options: { is_disabled: true },
+      disable_web_page_preview: true,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
+        ],
       },
-    ),
+    }),
   );
+  void locale;
 }
 
 export async function showEarnInPlaceProxy(

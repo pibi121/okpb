@@ -104,10 +104,12 @@ export async function applyTeaseOverlay(
     .toBuffer();
 }
 
-/** Convenience: blur + watermark from saved lab preset (used by Funnel TG trials). */
+/** Convenience: blur + optional watermark from saved lab preset (Funnel TG trials). */
 export async function applyTeaseFromLabPreset(
   photoBytes: Buffer,
 ): Promise<Buffer> {
   const { preset, overlayBytes } = loadTeaseAssets();
-  return applyTeaseOverlay(photoBytes, overlayBytes, preset);
+  const overlay =
+    preset.overlayOpacity > 0.01 ? overlayBytes : null;
+  return applyTeaseOverlay(photoBytes, overlay, preset);
 }

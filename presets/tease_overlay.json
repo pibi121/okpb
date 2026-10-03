@@ -1,11 +1,11 @@
 ﻿{
   "version": 1,
-  "blurPx": 47,
+  "blurPx": 21,
   "overlayScale": 0.83,
-  "overlayOpacity": 0.85,
+  "overlayOpacity": 0,
   "overlayX": 0.5,
   "overlayY": 0.7,
   "overlayFile": "tease_cta.png",
-  "updatedAt": "2026-09-29T07:11:00.000Z",
-  "notes": "Owner: blur +30% (36→47); overlay unchanged"
+  "updatedAt": "2026-10-03T00:00:00.000Z",
+  "notes": "TZ 2026-10-03: blur 21px, watermark off"
 }

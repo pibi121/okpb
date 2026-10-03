@@ -4,17 +4,7 @@ import { setMediaOverlay, type TgMediaSlot } from "@/lib/tg/media-assets";
 
 /** Funnel + help texts that are safe to edit from the cabinet. */
 export const FUNNEL_SLOTS: { slot: TgI18nKey; title: string }[] = [
-  { slot: "start_pitch", title: "Старт / выбор языка" },
-  { slot: "rules_step", title: "Правила 18+" },
-  { slot: "rules_agree_btn", title: "Кнопка согласия с правилами" },
-  { slot: "welcome_after_rules", title: "Приветствие после правил" },
-  { slot: "welcome_free_push", title: "Пуш через 30 секунд" },
-  { slot: "onboard_pick_studio_btn", title: "Кнопка: готовый персонаж" },
-  { slot: "onboard_create_char_btn", title: "Кнопка: создать свою модель" },
   { slot: "help_title", title: "Помощь" },
-  { slot: "help_guide_btn", title: "Кнопка: инструкция" },
-  { slot: "help_rules_btn", title: "Кнопка: политика/правила/оферта" },
-  { slot: "help_support_btn", title: "Кнопка: поддержка" },
   { slot: "gen_insufficient", title: "Не хватает персиков" },
   { slot: "generating", title: "Генерация запущена" },
   { slot: "gen_error", title: "Ошибка генерации (человеку)" },
@@ -22,72 +12,31 @@ export const FUNNEL_SLOTS: { slot: TgI18nKey; title: string }[] = [
 
 export const MEDIA_COPY_SLOTS: { slot: TgMediaSlot; title: string; dbSlot: string }[] =
   [
-    { slot: "start", title: "Медиа на старте", dbSlot: "media_start" },
-    { slot: "welcome", title: "Медиа приветствия", dbSlot: "media_welcome" },
     { slot: "photo_upload", title: "Медиа загрузки фото", dbSlot: "media_photo_upload" },
     { slot: "topup", title: "Медиа пополнения", dbSlot: "media_topup" },
   ];
 
 let loaded = false;
 let loadedAt = 0;
-let plaverScrubbed = false;
 const OVERLAY_TTL_MS = 15_000;
 
-/** Drop leftover PlaVER watermark from seeded start_pitch once. */
-async function scrubStartPitchPlaver() {
-  if (plaverScrubbed) return;
-  const row = await prisma.botCopy.findUnique({ where: { slot: "start_pitch" } });
-  plaverScrubbed = true;
-  if (!row) return;
-  const has =
-    /PlaVER/i.test(row.textRu || "") || /PlaVER/i.test(row.textEn || "");
-  if (!has) return;
-  await prisma.botCopy.update({
-    where: { slot: "start_pitch" },
-    data: {
-      textRu: M.start_pitch.ru,
-      textEn: M.start_pitch.en,
-    },
-  });
-}
-
 let helpCopySynced = false;
-let startPitchSynced = false;
 
-/** Force-sync help text + guide button from code (ops may still edit later). */
+/** Force-sync help title from code (ops may still edit later). */
 async function syncHelpCopyFromCode() {
   if (helpCopySynced) return;
   helpCopySynced = true;
-  for (const slot of ["help_title", "help_guide_btn"] as const) {
-    const d = M[slot];
-    if (!d) continue;
-    await prisma.botCopy.upsert({
-      where: { slot },
-      create: { slot, textRu: d.ru, textEn: d.en },
-      update: { textRu: d.ru, textEn: d.en },
-    });
-  }
-}
-
-/** Drop language-picker lines from start_pitch / hub studio button if still in DB. */
-async function syncStartPitchFromCode() {
-  if (startPitchSynced) return;
-  startPitchSynced = true;
-  for (const slot of ["start_pitch", "hub_open_studio_btn"] as const) {
-    const d = M[slot];
-    if (!d) continue;
-    await prisma.botCopy.upsert({
-      where: { slot },
-      create: { slot, textRu: d.ru, textEn: d.en },
-      update: { textRu: d.ru, textEn: d.en },
-    });
-  }
+  const d = M.help_title;
+  if (!d) return;
+  await prisma.botCopy.upsert({
+    where: { slot: "help_title" },
+    create: { slot: "help_title", textRu: d.ru, textEn: d.en },
+    update: { textRu: d.ru, textEn: d.en },
+  });
 }
 
 export async function loadCopyOverlay() {
-  await scrubStartPitchPlaver();
   await syncHelpCopyFromCode();
-  await syncStartPitchFromCode();
   const rows = await prisma.botCopy.findMany();
   const textRows = rows
     .filter((r) => !r.slot.startsWith("media_"))

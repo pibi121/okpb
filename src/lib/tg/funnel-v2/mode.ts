@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getOpsSettings } from "@/lib/ops/settings";
 
 export type FunnelV2User = {
-  id: string;
+  id?: string;
   tgFunnelV2Preview?: boolean;
   tgFunnelV2PreviewBalance?: number;
   tgFunnelV2BlurTrialsUsed?: number;

@@ -43,7 +43,7 @@ export async function sendBanBackupNotice(
   return mid;
 }
 
-/** Once: right after the first main-menu hub (post-rules onboarding). */
+/** Once: after rules accept, before the first hub (pinned immortal link). */
 export async function maybeSendBanBackupAfterOnboard(
   chatId: number,
   userId: string,

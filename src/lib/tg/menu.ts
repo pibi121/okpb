@@ -1,8 +1,6 @@
 import type { TgLocale } from "@/lib/tg/i18n";
-import { t, tFormat } from "@/lib/tg/i18n";
-import { tgSendMediaMessage } from "@/lib/tg/media-assets";
-import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
-import { getBalancePeaches } from "@/lib/tg/wallet";
+import { t } from "@/lib/tg/i18n";
+import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 import {
   tgDeleteMessage,
   tgEditMessageCaption,
@@ -103,63 +101,6 @@ async function attachReplyKeyboardSilent(chatId: number, locale: TgLocale) {
   }
 }
 
-/** Inline CTAs under hub message. */
-export function hubInlineKeyboard(locale: TgLocale) {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: t("hub_btn_undress", locale),
-          callback_data: HUB_CB.undress,
-        },
-      ],
-      [
-        { text: t("hub_btn_video_one", locale), callback_data: HUB_CB.videoOne },
-        {
-          text: t("hub_btn_photo_look", locale),
-          callback_data: HUB_CB.photoLook,
-        },
-      ],
-      [
-        {
-          text: t("hub_btn_video_look", locale),
-          callback_data: HUB_CB.videoLook,
-        },
-        {
-          text: t("hub_btn_create_look", locale),
-          web_app: { url: tgLoraTrainMiniAppUrl() },
-        },
-      ],
-      [
-        { text: t("hub_btn_topup", locale), callback_data: HUB_CB.topup },
-        { text: t("hub_btn_help", locale), callback_data: HUB_CB.help },
-      ],
-      [{ text: t("hub_btn_earn", locale), callback_data: HUB_CB.earn }],
-    ],
-  };
-}
-
-/** Welcome free offer removed — starter peaches instead. */
-export async function shouldShowWelcomeFreeOffer(
-  _userId: string,
-): Promise<boolean> {
-  return false;
-}
-
-export async function buildHubCaption(
-  userId: string,
-  locale: TgLocale,
-): Promise<string> {
-  const bal = await getBalancePeaches(userId);
-  const { getUndressFreeCredits } = await import(
-    "@/lib/tg/undress-entitlement"
-  );
-  const free = await getUndressFreeCredits(userId);
-  const undress_free =
-    free >= 1 ? t("hub_undress_free_suffix", locale) : "";
-  return tFormat("hub_main", locale, { balance: bal, undress_free });
-}
-
 /** Edit existing bot message in-place, or send a new text message. */
 export async function editOrSendNavMessage(opts: {
   chatId: number;
@@ -210,6 +151,7 @@ export function genStartingExtra(locale: TgLocale) {
   };
 }
 
+/** @deprecated Legacy hub — redirects to Funnel v2 main menu. */
 export async function sendMainMenuHub(
   chatId: number,
   userId: string,
@@ -221,30 +163,7 @@ export async function sendMainMenuHub(
     editHasMedia?: boolean;
   },
 ) {
-  const caption = await buildHubCaption(userId, locale);
-  const markup = hubInlineKeyboard(locale);
-
-  if (opts?.editMessageId) {
-    await editOrSendNavMessage({
-      chatId,
-      text: caption,
-      reply_markup: markup,
-      messageId: opts.editMessageId,
-      hasMedia: opts.editHasMedia,
-    });
-    // In-place edit cannot set a reply keyboard — always re-attach via carrier
-    // so the bottom bar survives bot switches / speech one_time keyboards.
-    if (opts.attachReplyKeyboard !== false) {
-      await attachReplyKeyboardSilent(chatId, locale);
-    }
-    return;
-  }
-
-  const attachKb = opts?.attachReplyKeyboard !== false;
-  // Video/photo without caption — full hub copy is the following text message.
-  await tgSendMediaMessage(chatId, "welcome", "");
-  await tgSendMessage(chatId, caption, { reply_markup: markup });
-  if (attachKb) {
-    await attachReplyKeyboardSilent(chatId, locale);
-  }
+  void opts;
+  const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
+  await sendFunnelV2Hub(chatId, userId, locale);
 }

@@ -91,34 +91,38 @@ export async function tgDeliverVideo(opts: {
   caption?: string;
   extra?: Record<string, unknown>;
   token?: string;
-}): Promise<void> {
+}): Promise<{ message_id?: number } | undefined> {
   const { telegramVideoSizeExtra } = await import("@/lib/tg/mp4-probe");
   const rel = mediaRelativePath(opts.url);
   const bytes = rel ? localBytesFromResultUrl(rel) : null;
   const extra = telegramVideoSizeExtra(bytes, opts.extra || {});
   if (bytes?.length) {
-    await tgSendVideoFile(
+    return (await tgSendVideoFile(
       opts.chatId,
       bytes,
       filenameFromPath(opts.url, "video.mp4"),
       opts.caption,
       extra,
       opts.token,
-    );
-    return;
+    )) as { message_id?: number };
   }
   if (isPrivateGalleryPath(opts.url)) {
     throw new Error(
       "media_unavailable: private gallery file missing on disk",
     );
   }
-  await tgSendVideo(
+  // URL fallback: bust Telegram's per-URL media cache when file content changes.
+  const abs = tgAbsoluteUrl(opts.url);
+  const bust = abs.includes("?")
+    ? `${abs}&v=${Date.now()}`
+    : `${abs}?v=${Date.now()}`;
+  return (await tgSendVideo(
     opts.chatId,
-    tgAbsoluteUrl(opts.url),
+    bust,
     opts.caption,
     extra,
     opts.token,
-  );
+  )) as { message_id?: number };
 }
 
 /** Permanent Telegram fetch failures — do not retry forever. */

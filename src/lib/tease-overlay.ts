@@ -25,13 +25,13 @@ export const TEASE_OVERLAY_DEFAULT_FILE = "tease_cta.png";
 
 export const DEFAULT_TEASE_PRESET: TeaseOverlayPreset = {
   version: 1,
-  blurPx: 47,
+  blurPx: 21,
   overlayScale: 0.55,
-  overlayOpacity: 0.95,
+  overlayOpacity: 0,
   overlayX: 0.5,
   overlayY: 0.5,
   overlayFile: TEASE_OVERLAY_DEFAULT_FILE,
-  notes: "Tuned in /peach/tease-lab",
+  notes: "TZ: blur 21px, watermark off",
 };
 
 export function clampTeasePreset(

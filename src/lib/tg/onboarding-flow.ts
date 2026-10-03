@@ -1,14 +1,9 @@
 import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
-import {
-  scheduleWelcomePush,
-  startLoraBonusWindow,
-} from "@/lib/tg/tg-promo";
-import { scheduleFunnelDrip } from "@/lib/tg/funnel-drip";
-import { tgSendMediaMessage } from "@/lib/tg/media-assets";
-import { tgRulesArticleUrl } from "@/lib/tg/rules";
+import { startLoraBonusWindow } from "@/lib/tg/tg-promo";
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
 import { showPhotoUploadProgress } from "@/lib/tg/photo-upload-ui";
+import { tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { prisma } from "@/lib/db";
 import {
@@ -27,15 +22,8 @@ import {
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { tryStartLoraTraining } from "@/lib/tg/lora-onboard";
-import { sendMainMenuHub } from "@/lib/tg/menu";
 
-const RULES_AUTO_MS = 5_000;
-
-export async function sendStartPitch(chatId: number) {
-  await tgSendMediaMessage(chatId, "start", t("start_pitch", "ru"));
-}
-
-/** First /start for new users: pitch → default RU → rules in ~5s. */
+/** First /start: Funnel v2 rules or hub (legacy pitch removed). */
 export async function beginOnboardingWithoutLang(
   chatId: number,
   userId: string,
@@ -49,121 +37,20 @@ export async function beginOnboardingWithoutLang(
       tgFunnelV2RulesOk: true,
     },
   });
-  const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
-    "@/lib/tg/funnel-v2/mode"
-  );
-  // Live/preview v2 must never get the legacy pitch video + auto rules.
-  if (gate && (await userOnFunnelV2(gate))) {
-    const locale: TgLocale = gate.locale === "en" ? "en" : "ru";
-    if (funnelV2RulesAccepted(gate)) {
-      const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
-      await sendFunnelV2Hub(chatId, userId, locale);
-    } else {
-      const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
-      await sendFunnelV2Rules(chatId, userId, locale);
-    }
-    return;
-  }
-
-  const platformUserId = String(chatId);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { locale: "ru" },
-  });
-  const rulesAutoAt = Date.now() + RULES_AUTO_MS;
-  await setTgSession(platformUserId, {
-    chatState: "awaiting_rules",
-    clearPending: true,
-    pending: { rulesAutoAt, rulesAutoSent: false },
-  });
-  await sendStartPitch(chatId);
-
-  setTimeout(() => {
-    void maybeSendAutoRules(chatId, userId).catch((e) =>
-      console.error("[tg-onboard] auto rules", e),
-    );
-  }, RULES_AUTO_MS + 50);
-}
-
-/** Send rules once when due (timer, poll, or next inbound). */
-export async function maybeSendAutoRules(
-  chatId: number,
-  userId: string,
-): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      ageConfirmed: true,
-      locale: true,
-      tgFunnelV2Preview: true,
-      tgFunnelV2RulesOk: true,
-    },
-  });
-  if (!user || user.ageConfirmed) return false;
-  const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
-    "@/lib/tg/funnel-v2/mode"
-  );
-  if (
-    funnelV2RulesAccepted(user) ||
-    (await userOnFunnelV2(user))
-  ) {
-    return false;
-  }
-
-  const platformUserId = String(chatId);
-  const session = await getTgSession(platformUserId);
-  const pending = parsePending(session?.pendingJson || "{}");
-  if (pending.rulesAutoSent) return false;
-  if (session?.chatState && session.chatState !== "awaiting_rules") return false;
-
-  const due = pending.rulesAutoAt || 0;
-  if (!due || due > Date.now()) return false;
-
-  const locale: TgLocale = user.locale === "en" ? "en" : "ru";
-  await setTgSession(platformUserId, {
-    chatState: "awaiting_rules",
-    pending: { ...pending, rulesAutoSent: true, rulesAutoAt: due },
-  });
-  await sendRulesStep(chatId, locale, { userId });
-  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
-  trackFunnelEventBg({
-    userId,
-    platformUserId,
-    eventKey: "bot.rules.shown",
-    meta: { locale, auto: true },
-  });
-  return true;
-}
-
-export async function sendRulesStep(
-  chatId: number,
-  locale: TgLocale,
-  opts?: { userId?: string; nudge?: boolean; token?: string },
-) {
-  const prefix = opts?.nudge ? t("rules_nudge_prefix", locale) : "";
-  const body =
-    prefix +
-    tFormat("rules_step", locale, {
-      rulesUrl: tgRulesArticleUrl(locale),
+  if (!gate?.locale) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { locale: "ru" },
     });
-  await tgSendMessage(
-    chatId,
-    body,
-    {
-      link_preview_options: { is_disabled: true },
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: t("rules_agree_btn", locale), callback_data: "rules:agree" }],
-        ],
-      },
-    },
-    opts?.token,
-  );
-  if (opts?.userId) {
-    await prisma.user.updateMany({
-      where: { id: opts.userId, tgRulesShownAt: null },
-      data: { tgRulesShownAt: new Date() },
-    });
+  }
+  const locale: TgLocale = gate?.locale === "en" ? "en" : "ru";
+  const { funnelV2RulesAccepted } = await import("@/lib/tg/funnel-v2/mode");
+  if (gate && funnelV2RulesAccepted(gate)) {
+    const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
+    await sendFunnelV2Hub(chatId, userId, locale);
+  } else {
+    const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+    await sendFunnelV2Rules(chatId, userId, locale);
   }
 }
 
@@ -173,42 +60,14 @@ export async function onLanguagePicked(
   locale: TgLocale,
 ) {
   await prisma.user.update({ where: { id: userId }, data: { locale } });
-  const platformUserId = String(chatId);
-  await setTgSession(platformUserId, {
-    chatState: "awaiting_rules",
-    pending: { rulesAutoSent: true },
-  });
-  await sendRulesStep(chatId, locale, { userId });
+  const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+  await sendFunnelV2Rules(chatId, userId, locale);
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId,
-    platformUserId,
+    platformUserId: String(chatId),
     eventKey: "bot.rules.shown",
     meta: { locale, fromLangSwitch: true },
-  });
-}
-
-export async function sendWelcomeAfterRules(
-  chatId: number,
-  platformUserId: string,
-  locale: TgLocale,
-  userId: string,
-) {
-  await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
-  await scheduleWelcomePush(userId);
-  await scheduleFunnelDrip(userId);
-  // Skip "Добро пожаловать…" — go straight to hub («пофантазируем») + CTAs.
-  await sendMainMenuHub(chatId, userId, locale, { attachReplyKeyboard: true });
-  const { maybeSendBanBackupAfterOnboard } = await import(
-    "@/lib/tg/ban-backup-notice"
-  );
-  await maybeSendBanBackupAfterOnboard(chatId, userId, locale);
-  const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
-  trackFunnelEventBg({
-    userId,
-    platformUserId,
-    eventKey: "bot.welcome.after_rules",
-    meta: { locale, hubDirect: true },
   });
 }
 
@@ -364,53 +223,9 @@ export async function confirmRulesAndWelcome(
   userId: string,
   locale: TgLocale,
 ) {
-  const before = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      ageConfirmed: true,
-      tgFunnelV2Preview: true,
-      tgFunnelV2RulesOk: true,
-    },
-  });
-
-  if (before) {
-    const { userOnFunnelV2 } = await import("@/lib/tg/funnel-v2/mode");
-    if (await userOnFunnelV2(before)) {
-      const { acceptFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
-      await acceptFunnelV2Rules(chatId, userId, locale);
-      return;
-    }
-  }
-
-  // Already confirmed — only re-open hub (do not reset drip timers).
-  if (before?.ageConfirmed) {
-    await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
-    await sendMainMenuHub(chatId, userId, locale, { attachReplyKeyboard: true });
-    return;
-  }
-
-  // Credit starter BEFORE flipping ageConfirmed — if credit fails, user can retry the button.
-  const already = await prisma.ledgerEntry.findFirst({
-    where: { userId, reason: "tg_starter" },
-    select: { id: true },
-  });
-  if (!already) {
-    await import("@/lib/ops/prices").then(({ ensurePriceOverlay }) =>
-      ensurePriceOverlay(true),
-    );
-    const { photoActressPeaches } = await import("@/lib/tg-pricing");
-    const { creditPeaches } = await import("@/lib/tg/wallet");
-    const amount = Math.max(1, photoActressPeaches());
-    await creditPeaches(userId, amount, "tg_starter", {
-      source: "rules_confirm",
-    });
-  }
-  await prisma.user.update({
-    where: { id: userId },
-    data: { ageConfirmed: true, locale },
-  });
-
-  await sendWelcomeAfterRules(chatId, platformUserId, locale, userId);
+  void platformUserId;
+  const { acceptFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+  await acceptFunnelV2Rules(chatId, userId, locale);
 }
 
 /** Rules agree nudges: 10m / 3h / 24h after first rules message. */
@@ -433,6 +248,7 @@ function isDeadTelegramChat(err: unknown): boolean {
   );
 }
 
+/** Rules agree nudges 10m / 3h / 24h — always current Funnel rules screen. */
 export async function maybeSendRulesNudges(
   chatId: number,
   userId: string,
@@ -453,69 +269,8 @@ export async function maybeSendRulesNudges(
   });
   if (!user) return;
 
-  const { userOnFunnelV2, funnelV2RulesAccepted } = await import(
-    "@/lib/tg/funnel-v2/mode"
-  );
-  // Funnel v2 (live or preview): nudge with v2 rules only, never the legacy pitch.
-  if (await userOnFunnelV2(user)) {
-    if (funnelV2RulesAccepted(user)) return;
-    const locale: TgLocale = user.locale === "en" ? "en" : "ru";
-    const anchor = user.tgRulesShownAt?.getTime() || user.createdAt.getTime();
-    const ageMs = Date.now() - anchor;
-    const MS_10M = 10 * 60_000;
-    const MS_3H = 3 * 60 * 60_000;
-    const MS_24H = 24 * 60 * 60_000;
-
-    const sendV2 = async (
-      flag: "tgRulesNudge10mSent" | "tgRulesNudge3hSent" | "tgRulesNudge24hSent",
-      eventKey: string,
-    ) => {
-      try {
-        const { resolveUserTelegramDelivery } = await import(
-          "@/lib/tg/notify-user"
-        );
-        const dest = await resolveUserTelegramDelivery(userId);
-        if (!dest?.token) {
-          await silenceRulesNudges(userId);
-          return;
-        }
-        const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
-        await sendFunnelV2Rules(chatId, userId, locale, { token: dest.token });
-        await prisma.user.update({
-          where: { id: userId },
-          data: { [flag]: true },
-        });
-        const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
-        trackFunnelEventBg({
-          userId,
-          platformUserId: String(chatId),
-          eventKey,
-          surface: "system",
-        });
-      } catch (e) {
-        if (isDeadTelegramChat(e)) {
-          await silenceRulesNudges(userId);
-          return;
-        }
-        throw e;
-      }
-    };
-
-    if (!user.tgRulesNudge10mSent && ageMs >= MS_10M) {
-      await sendV2("tgRulesNudge10mSent", "bot.rules.nudge_10m");
-      return;
-    }
-    if (!user.tgRulesNudge3hSent && ageMs >= MS_3H) {
-      await sendV2("tgRulesNudge3hSent", "bot.rules.nudge_3h");
-      return;
-    }
-    if (!user.tgRulesNudge24hSent && ageMs >= MS_24H) {
-      await sendV2("tgRulesNudge24hSent", "bot.rules.nudge_24h");
-    }
-    return;
-  }
-
-  if (user.ageConfirmed) return;
+  const { funnelV2RulesAccepted } = await import("@/lib/tg/funnel-v2/mode");
+  if (funnelV2RulesAccepted(user)) return;
 
   const locale: TgLocale = user.locale === "en" ? "en" : "ru";
   const anchor = user.tgRulesShownAt?.getTime() || user.createdAt.getTime();
@@ -524,15 +279,7 @@ export async function maybeSendRulesNudges(
   const MS_3H = 3 * 60 * 60_000;
   const MS_24H = 24 * 60 * 60_000;
 
-  // Seed shownAt for legacy unconfirmed users so nudge clock starts.
-  if (!user.tgRulesShownAt) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { tgRulesShownAt: user.createdAt },
-    });
-  }
-
-  const sendNudge = async (
+  const sendV2 = async (
     flag: "tgRulesNudge10mSent" | "tgRulesNudge3hSent" | "tgRulesNudge24hSent",
     eventKey: string,
   ) => {
@@ -545,12 +292,8 @@ export async function maybeSendRulesNudges(
         await silenceRulesNudges(userId);
         return;
       }
-      await setTgSession(String(chatId), { chatState: "awaiting_rules" });
-      await sendRulesStep(chatId, locale, {
-        userId,
-        nudge: true,
-        token: dest.token,
-      });
+      const { sendFunnelV2Rules } = await import("@/lib/tg/funnel-v2/hub");
+      await sendFunnelV2Rules(chatId, userId, locale, { token: dest.token });
       await prisma.user.update({
         where: { id: userId },
         data: { [flag]: true },
@@ -572,15 +315,15 @@ export async function maybeSendRulesNudges(
   };
 
   if (!user.tgRulesNudge10mSent && ageMs >= MS_10M) {
-    await sendNudge("tgRulesNudge10mSent", "bot.rules.nudge_10m");
+    await sendV2("tgRulesNudge10mSent", "bot.rules.nudge_10m");
     return;
   }
   if (!user.tgRulesNudge3hSent && ageMs >= MS_3H) {
-    await sendNudge("tgRulesNudge3hSent", "bot.rules.nudge_3h");
+    await sendV2("tgRulesNudge3hSent", "bot.rules.nudge_3h");
     return;
   }
   if (!user.tgRulesNudge24hSent && ageMs >= MS_24H) {
-    await sendNudge("tgRulesNudge24hSent", "bot.rules.nudge_24h");
+    await sendV2("tgRulesNudge24hSent", "bot.rules.nudge_24h");
   }
 }
 

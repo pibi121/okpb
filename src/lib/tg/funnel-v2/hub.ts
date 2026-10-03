@@ -3,8 +3,8 @@
  *
  * After rules accept, order must be:
  * 1) reply keyboard «Главное меню»
- * 2) hub (cover + inline)
- * 3) one-time pinned immortal link
+ * 2) one-time pinned immortal link
+ * 3) hub (cover + inline)
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
@@ -228,46 +228,52 @@ export async function sendFunnelV2Rules(
   );
 }
 
-export function funnelV2HubKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: "💦 Раздеть и сделать фото 💦",
-          callback_data: FV2.photo,
-          style: "success",
-        },
-      ],
-      [
-        {
-          text: "🍓 Сделать горячее видео 🍓",
-          callback_data: FV2.video,
-          style: "danger",
-        },
-      ],
-      [{ text: "⭐️ PRO режим", callback_data: FV2.pro }],
-      [{ text: "🍑 Баланс и пополнение", callback_data: FV2.topup }],
-      [
-        { text: "🤑 Заработать", callback_data: FV2.earn },
-        { text: "ℹ️ Помощь", callback_data: FV2.help },
-      ],
+export async function funnelV2HubKeyboard(userId: string) {
+  const { userHasFunnelV2ProAccess } = await import(
+    "@/lib/tg/funnel-v2/pro-access"
+  );
+  const showPro = await userHasFunnelV2ProAccess(userId);
+  const rows: Array<Array<Record<string, unknown>>> = [
+    [
+      {
+        text: "💦 Раздеть и сделать фото 💦",
+        callback_data: FV2.photo,
+        style: "success",
+      },
     ],
-  };
+    [
+      {
+        text: "🍓 Сделать горячее видео 🍓",
+        callback_data: FV2.video,
+        style: "danger",
+      },
+    ],
+  ];
+  if (showPro) {
+    rows.push([{ text: "⭐️ PRO режим", callback_data: FV2.pro }]);
+  }
+  rows.push([{ text: "🍑 Баланс и пополнение", callback_data: FV2.topup }]);
+  rows.push([
+    { text: "🤑 Заработать", callback_data: FV2.earn },
+    { text: "ℹ️ Помощь", callback_data: FV2.help },
+  ]);
+  return { inline_keyboard: rows };
 }
 
 export async function buildFunnelV2HubText(userId: string): Promise<string> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   const bal = user ? await getFunnelBalance(user) : 0;
+  const { formatRub } = await import("@/lib/tg/funnel-v2/money");
   return (
-    `<b>Ну что, с чего начнём?</b>\n\n` +
-    `Твой баланс: <b>${bal}🍑</b>\n\n` +
-    `Вот список того, что я умею делать максимально реалистично:\n\n` +
-    `1. Раздеть по 1 фото, поставить её в любую позу 💦 и оживить\n\n` +
-    `2. Сделать 🍓 видео с ней по 1 фото с сексом, диалогами, сюжетами по готовым шаблонам\n\n` +
-    `3. Сделать PRO образ твоего персонажа, чтобы вывести реализм на новый уровень и делать самые качественные фото/видео в ⭐️ PRO-режиме\n\n` +
+    `<b>Что мне сделать для тебя?</b>\n\n` +
+    `Твой баланс: <b>${formatRub(bal)}</b>\n\n` +
+    `● Раздеть девушку на фотографии 💦\n` +
+    `● Поставить её в любую 🔞 позу\n` +
+    `● Превратить фотографию в видео\n` +
+    `● Сделать видео 🍓 с сюжетом и диалогами\n\n` +
     `<a href="https://telegra.ph/Primery-generacij-v-PeachBitch-09-28">🔗Открыть примеры работ</a>\n` +
     `<a href="https://t.me/offpeachbitch">⭐️ Наш официальный канал</a>\n\n` +
-    `Выбери, что тебя интересует по кнопкам ниже 👇`
+    `🔐Все фотографии шифруются, их никто не увидит, кроме тебя`
   );
 }
 
@@ -295,21 +301,21 @@ export async function sendFunnelV2Hub(
   );
 
   const text = await buildFunnelV2HubText(userId);
-  const markup = funnelV2HubKeyboard();
+  const markup = await funnelV2HubKeyboard(userId);
   const platformUserId = String(chatId);
   const { funnelV2ReplaceUi } = await import("@/lib/tg/funnel-v2/ui");
   const { sendCoverPhoto } = await import("@/lib/tg/funnel-v2/media");
 
-  // 1) reply keyboard  2) hub  3) one-time pinned immortal link
+  // 1) reply keyboard  2) one-time pinned immortal link  3) hub
   void opts;
   await attachV2ReplyKb(chatId);
-  await funnelV2ReplaceUi(platformUserId, chatId, () =>
-    sendCoverPhoto(chatId, "hub", text, markup),
-  );
   const { maybeSendBanBackupAfterOnboard } = await import(
     "@/lib/tg/ban-backup-notice"
   );
   await maybeSendBanBackupAfterOnboard(chatId, userId, locale);
+  await funnelV2ReplaceUi(platformUserId, chatId, () =>
+    sendCoverPhoto(chatId, "hub", text, markup),
+  );
 }
 
 export async function acceptFunnelV2Rules(

@@ -113,6 +113,13 @@ export async function handleFunnelV2Callback(opts: {
     return handleFunnelV2VideoCallback(opts);
   }
   if (opts.data === FV2.pro) {
+    const { userHasFunnelV2ProAccess } = await import(
+      "@/lib/tg/funnel-v2/pro-access"
+    );
+    if (!(await userHasFunnelV2ProAccess(opts.userId))) {
+      await sendFunnelV2Hub(opts.chatId, opts.userId, opts.locale);
+      return true;
+    }
     await sendFunnelV2Pro(opts.chatId, opts.locale);
     return true;
   }
@@ -124,6 +131,17 @@ export async function handleFunnelV2Callback(opts: {
       returnHubAfterTopup: opts.data === FV2.topupFromBlur,
     });
     await sendFunnelV2Topup(opts.chatId, opts.userId, opts.locale);
+    return true;
+  }
+  const tuBlur = /^fv2:tu:ba:(\d+)$/.exec(opts.data);
+  if (tuBlur) {
+    await handleFunnelV2TopupAmount(
+      opts.chatId,
+      opts.platformUserId,
+      opts.locale,
+      Number(tuBlur[1]),
+      { fromBlur: true },
+    );
     return true;
   }
   const tu = /^fv2:tu:a:(\d+)$/.exec(opts.data);

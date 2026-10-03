@@ -4,7 +4,8 @@
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
-import { peachesToUsdt, videoPeachesForSec } from "@/lib/tg-pricing";
+import { videoPeachesForSec } from "@/lib/tg-pricing";
+import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { setTgSession } from "@/lib/tg/session";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
@@ -24,7 +25,7 @@ import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 function priceLine(peaches: number): string {
-  return `${peaches}🍑 (${peaches} рублей / ${peachesToUsdt(peaches)}$)`;
+  return formatRubOnly(peaches);
 }
 
 async function resolveTemplateIdForItem(
@@ -160,7 +161,7 @@ export async function startFunnelV2Animate(opts: {
             inline_keyboard: [
               [
                 {
-                  text: "Пополнить баланс 🍑",
+                  text: "Пополнить баланс",
                   callback_data: FV2.topup,
                   style: "success",
                 },
@@ -192,7 +193,7 @@ export async function startFunnelV2Animate(opts: {
 
   const deb = await debitFunnelBalance(opts.userId, price);
   if (!deb.ok) {
-    await tgSendMessage(opts.chatId, "Недостаточно персиков.");
+    await tgSendMessage(opts.chatId, "Недостаточно средств на балансе.");
     return;
   }
 
@@ -307,7 +308,7 @@ export async function handleFunnelV2EditText(opts: {
             inline_keyboard: [
               [
                 {
-                  text: "Пополнить баланс 🍑",
+                  text: "Пополнить баланс",
                   callback_data: FV2.topup,
                   style: "success",
                 },
@@ -331,7 +332,7 @@ export async function handleFunnelV2EditText(opts: {
 
   const deb = await debitFunnelBalance(opts.userId, price);
   if (!deb.ok) {
-    await tgSendMessage(opts.chatId, "Недостаточно персиков.");
+    await tgSendMessage(opts.chatId, "Недостаточно средств на балансе.");
     return;
   }
 

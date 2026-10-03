@@ -60,27 +60,3 @@ export async function consumeLoraWelcomePhoto(
   return { used: false, left: 0 };
 }
 
-export async function scheduleWelcomePush(userId: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      tgWelcomePushSent: true,
-      tgWelcomePushDueAt: null,
-    },
-  });
-}
-
-export async function maybeSendWelcomePush(
-  _chatId: number,
-  userId: string,
-  _locale: "ru" | "en",
-  _send?: (body: string, extra?: Record<string, unknown>) => Promise<unknown>,
-): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.tgWelcomePushSent) return;
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { tgWelcomePushSent: true },
-  });
-}

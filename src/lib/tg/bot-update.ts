@@ -44,15 +44,12 @@ import {
 import {
   beginOnboardingWithoutLang,
   confirmRulesAndWelcome,
-  maybeSendAutoRules,
   onLanguagePicked,
   onOnboardBackToName,
   onOnboardKindPicked,
   onOnboardNameEntered,
   onOnboardPhotoReceived,
   sendGenerationKindPicker,
-  sendRulesStep,
-  sendWelcomeAfterRules,
   startOnboardCharacter,
 } from "@/lib/tg/onboarding-flow";
 import {
@@ -108,15 +105,6 @@ import {
   type TelegramBotUser,
 } from "@/lib/tg/user";
 import { isTgDevResetMessage, resetTgOnboarding } from "@/lib/tg/dev-reset";
-import { maybeSendWelcomePush } from "@/lib/tg/tg-promo";
-import {
-  maybeSendFunnelDrips,
-} from "@/lib/tg/funnel-drip";
-import {
-  handleFunnelNoteCommand,
-  isFunnelNoteCommand,
-  tryCaptureFunnelVideoNote,
-} from "@/lib/tg/funnel-note-capture";
 import { tryRedeemPromoMessage } from "@/lib/tg/promo-codes";
 import { goToMainMenu, routeMenuText, handleHubCallback } from "@/lib/tg/menu-routing";
 import { tgMiniAppUrl, tgLoraTrainMiniAppUrl } from "@/lib/tg/miniapp-url";
@@ -271,22 +259,10 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
     }
   }
 
-  if (user.ageConfirmed) {
-    await trackFunnelEvent({
-      userId: user.id,
-      platformUserId: String(chatId),
-      eventKey: "bot.start.returning",
-      meta: { payload: payload || "" },
-      critical: true,
-    });
-    await sendMainMenuHub(chatId, user.id, locale);
-    return;
-  }
-
   await trackFunnelEvent({
     userId: user.id,
     platformUserId: String(chatId),
-    eventKey: "bot.start",
+    eventKey: user.ageConfirmed ? "bot.start.returning" : "bot.start",
     meta: { payload: payload || "" },
     critical: true,
   });
@@ -1793,14 +1769,6 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   }
 
   // Don't interleave auto-rules while the user is tapping «agree».
-  // Funnel v2 owns its own rules screen — legacy auto-rules must not append.
-  if (!user.ageConfirmed && data !== CB.rulesAgree && data !== "rules:agree") {
-    const { userOnFunnelV2 } = await import("@/lib/tg/funnel-v2/mode");
-    if (!(await userOnFunnelV2(user))) {
-      await maybeSendAutoRules(chatId, user.id);
-    }
-  }
-
   const lang = parseLangCb(data);
   if (lang) {
     await tgAnswerCallbackQuery(cq.id);
@@ -1961,11 +1929,6 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
   }
 
   if (user.ageConfirmed) {
-    await maybeSendWelcomePush(chatId, user.id, locale, (body, extra) =>
-      tgSendMessage(chatId, body, extra),
-    );
-    await maybeSendFunnelDrips(chatId, user.id);
-
     const cqMsgId = cq.message?.message_id;
     const cqHasMedia = Boolean(
       cq.message?.photo || cq.message?.video || cq.message?.animation,
@@ -2138,20 +2101,6 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
     return;
   }
 
-  if (text && isFunnelNoteCommand(text)) {
-    const { reply } = await handleFunnelNoteCommand(text);
-    await tgSendMessage(chatId, reply);
-    return;
-  }
-
-  if (msg.video_note?.file_id) {
-    const captured = await tryCaptureFunnelVideoNote(msg.video_note.file_id);
-    if (captured.captured) {
-      await tgSendMessage(chatId, captured.reply || "✅ Saved.");
-      return;
-    }
-  }
-
   if (text) {
     const { tryFunnelV2Codeword } = await import("@/lib/tg/funnel-v2");
     if (
@@ -2243,31 +2192,8 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   }
 
   if (!onFunnelV2 && !user.ageConfirmed) {
-    await maybeSendAutoRules(chatId, user.id);
-    if (chatState === "awaiting_lang" || chatState === "awaiting_rules") {
-      // Legacy awaiting_lang: nudge into rules flow without language picker.
-      const session2 = await getTgSession(platformUserId);
-      const pending2 = parsePending(session2?.pendingJson || "{}");
-      if (!pending2.rulesAutoSent) {
-        await setTgSession(platformUserId, {
-          chatState: "awaiting_rules",
-          pending: { ...pending2, rulesAutoAt: Date.now(), rulesAutoSent: false },
-        });
-        await maybeSendAutoRules(chatId, user.id);
-      } else {
-        await sendRulesStep(chatId, locale, { userId: user.id });
-      }
-      return;
-    }
     await beginOnboardingWithoutLang(chatId, user.id);
     return;
-  }
-
-  if (!onFunnelV2) {
-    await maybeSendWelcomePush(chatId, user.id, locale, (body, extra) =>
-      tgSendMessage(chatId, body, extra),
-    );
-    await maybeSendFunnelDrips(chatId, user.id);
   }
 
   if (chatState === "funnel_v2_awaiting_partner_label" && text?.trim()) {

@@ -2,6 +2,7 @@ import type { TgLocale } from "@/lib/tg/i18n";
 import { t } from "@/lib/tg/i18n";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
 import { QC_CB } from "@/lib/tg/generation-flow";
+import { funnelV2TopupPackRows } from "@/lib/tg/funnel-v2/topup";
 
 export type FunnelV2PhotoKbOpts = {
   /** Paid undress / photo-template only — not blur, edit, video, animate. */
@@ -68,32 +69,15 @@ export function funnelV2PhotoReadyKeyboard(
   return { inline_keyboard: rows };
 }
 
+/** Blur trial: pack amounts + back to hub (TZ). */
 export function funnelV2PhotoBlurKeyboard(
   _locale: TgLocale,
-  opts?: { pricePeaches?: number; galleryItemId?: string },
+  _opts?: { pricePeaches?: number; galleryItemId?: string },
 ) {
-  const price = Math.max(0, Math.floor(opts?.pricePeaches || 0));
-  const itemId = opts?.galleryItemId?.trim();
-  const unblurRow = itemId
-    ? [
-        {
-          text: `Снять блюр за ${price || "?"} руб 🔑`,
-          callback_data: FV2.unblur(itemId),
-          style: "danger",
-        },
-      ]
-    : [];
   return {
     inline_keyboard: [
-      [
-        {
-          text: "Пополнить баланс 🍑",
-          callback_data: FV2.topupFromBlur,
-          style: "success",
-        },
-      ],
-      ...(unblurRow.length ? [unblurRow] : []),
-      [{ text: "⬅️ Открыть главное меню", callback_data: FV2.hub }],
+      ...funnelV2TopupPackRows({ fromBlur: true }),
+      [{ text: "⬅️ Назад", callback_data: FV2.hub }],
     ],
   };
 }

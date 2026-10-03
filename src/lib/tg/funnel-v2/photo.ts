@@ -3,7 +3,8 @@
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
-import { undressPeaches, peachesToUsdt } from "@/lib/tg-pricing";
+import { undressPeaches } from "@/lib/tg-pricing";
+import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
   tgAnswerCallbackQuery,
@@ -51,8 +52,7 @@ async function listPhotoTemplates(): Promise<PhotoTpl[]> {
 }
 
 function priceLine(peaches: number): string {
-  const usdt = peachesToUsdt(peaches);
-  return `${peaches}🍑 (${peaches} рублей / ${usdt}$)`;
+  return formatRubOnly(peaches);
 }
 
 async function activePhotoUrl(
@@ -126,10 +126,10 @@ export async function sendFunnelV2PhotoHub(
   const slice = tpls.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
 
   const header = photoUrl
-    ? "<b>Фотография загружена</b>, но ты можешь заменить её на другую"
-    : "<b>Фотография пока не загружена</b>";
+    ? ""
+    : "<b>Фотография пока не загружена</b>\n\n";
   const body =
-    `${header}\n\n` +
+    `${header}` +
     `Просто выбери шаблон и сделай с ней всё, что захочешь 😍`;
 
   const rows: Array<Array<Record<string, unknown>>> = [
@@ -440,12 +440,12 @@ export async function runFunnelV2PhotoGen(opts: {
         "needTopup",
         "Сейчас я не могу сгенерировать фото для тебя, пока ты не пополнишь баланс.\n\n" +
           "Достаточно один раз пополнить, чтобы генерировать фото и видео по 1 фото на любой вкус, без размытия и получать максимум удовольствия.\n\n" +
-          "Сейчас тебя ждёт много бонусных 🍑 за пополнение баланса. Нажми кнопку ниже, чтобы проверить",
+          "Сейчас тебя ждёт много бонусов за пополнение баланса. Нажми кнопку ниже, чтобы проверить",
         {
           inline_keyboard: [
             [
               {
-                text: "Пополнить баланс 🍑",
+                text: "Пополнить баланс",
                 callback_data: FV2.topup,
                 style: "success",
               },
@@ -510,7 +510,7 @@ export async function runFunnelV2PhotoGen(opts: {
   if (!useBlur) {
     const deb = await debitFunnelBalance(opts.userId, price);
     if (!deb.ok) {
-      await tgSendMessage(opts.chatId, "Недостаточно персиков.");
+      await tgSendMessage(opts.chatId, "Недостаточно средств на балансе.");
       return;
     }
   } else {
@@ -661,7 +661,8 @@ export async function runFunnelV2PhotoGen(opts: {
           const blurCaption = useBlur
             ? `Готово! Я сделал фото с ней в позе: «${poseTitle}»\n\n` +
               `Это пробное фото и оно заблюрено. Чтобы сделать фото без блюра, превратить его в видео или отредактировать — пополни баланс. ` +
-              `За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусных 🍑`
+              `За первое пополнение баланса в течение ближайших 30 минут тебе начислим много бонусов\n\n` +
+              `Пополните баланс на нужную сумму\n👇👇👇`
             : undefined;
           await enqueueFunnelV2Result({
             userId: opts.userId,

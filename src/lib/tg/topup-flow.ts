@@ -53,7 +53,7 @@ export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
   return { inline_keyboard: rows };
 }
 
-/** Funnel v2: same methods, but «другая сумма» returns to FV2 topup packs. */
+/** Funnel v2: methods + support + back to amount packs. */
 export function funnelV2TopupMethodKeyboard(locale: TgLocale, peaches: number) {
   const rows: Array<Array<Record<string, unknown>>> = TOPUP_PAYMENT_METHODS.map(
     (m) => [
@@ -64,13 +64,10 @@ export function funnelV2TopupMethodKeyboard(locale: TgLocale, peaches: number) {
       },
     ],
   );
-  rows.push([
-    {
-      text: locale === "en" ? "← Other amount" : "← Другая сумма",
-      callback_data: "fv2:tu",
-    },
-  ]);
+  rows.push([{ text: "❓Техподдержка", url: "https://t.me/peabit1" }]);
+  rows.push([{ text: "⬅️ Назад", callback_data: "fv2:tu" }]);
   void peaches;
+  void locale;
   return { inline_keyboard: rows };
 }
 
@@ -79,7 +76,35 @@ function payLinkKeyboard(opts: {
   paymentUrl: string;
   peaches: number;
   orderId: string;
+  funnelV2?: boolean;
 }) {
+  if (opts.funnelV2) {
+    return {
+      inline_keyboard: [
+        [
+          {
+            text: "Оплатить →",
+            url: opts.paymentUrl,
+            style: "success",
+          },
+        ],
+        [
+          {
+            text:
+              opts.locale === "en" ? "New payment link" : "Новая ссылка на оплату",
+            callback_data: TOPUP_CB.renew(opts.orderId),
+          },
+        ],
+        [{ text: "❓Техподдержка", url: "https://t.me/peabit1" }],
+        [
+          {
+            text: "⬅️ Назад",
+            callback_data: `fv2:tu:a:${opts.peaches}`,
+          },
+        ],
+      ],
+    };
+  }
   return {
     inline_keyboard: [
       [
@@ -105,6 +130,34 @@ function payLinkKeyboard(opts: {
       ],
     ],
   };
+}
+
+function funnelV2PayCaption(method: string, payAmountLine: string): string {
+  const vpnHint =
+    "Если страница не загружается — отключи VPN или попробуй открыть её через Wi-Fi.\n\n";
+  const feeNote = "⚠️ Сумма комиссии будет зачислена на твой баланс!";
+  if (method === "cryptobot") {
+    return (
+      `К оплате: <b>${payAmountLine}</b>\n\n` +
+      `Оплата через CryptoBot: открой форму → оплати в @CryptoBot.\n\n` +
+      vpnHint +
+      feeNote
+    );
+  }
+  if (method === "crypto") {
+    return (
+      `К оплате: <b>${payAmountLine}</b>\n\n` +
+      `Оплата USDT: открой форму → выбери сеть → переведи сумму.\n\n` +
+      vpnHint +
+      feeNote
+    );
+  }
+  return (
+    `К оплате: <b>${payAmountLine}</b>\n\n` +
+    `Оплата через СБП: открой форму → подтверди перевод в банковском приложении.\n\n` +
+    vpnHint +
+    feeNote
+  );
 }
 
 function payLinkCopyKey(
@@ -218,6 +271,9 @@ export async function handleTopupMethod(
     const sess = await getTgSession(platformUserId);
     const pend = parsePending(sess?.pendingJson || "{}");
     const bonus = Number(pend.topupBonusPeaches || pend.funnelV2TopupBonus || 0);
+    const isFunnelV2 = Boolean(
+      pend.funnelV2TopupPeaches || pend.funnelV2ReturnHubAfterTopup,
+    );
     const pay = await createTopupPayment({
       userId,
       peaches,
@@ -231,16 +287,28 @@ export async function handleTopupMethod(
     await setTgSession(platformUserId, {
       chatState: "idle",
       clearPending: true,
+      pending: {
+        funnelV2ReturnHubAfterTopup: Boolean(pend.funnelV2ReturnHubAfterTopup),
+        funnelV2Unblur: pend.funnelV2Unblur,
+        funnelV2TopupPeaches: peaches,
+        funnelV2TopupBonus: bonus,
+        topupPeaches: peaches,
+        topupBonusPeaches: bonus,
+      },
     });
 
-    const caption = tFormat(payLinkCopyKey(method), locale, {
-      price: pay.priceLine,
-    });
+    const { formatPayAmount } = await import("@/lib/tg/funnel-v2/money");
+    const caption = isFunnelV2
+      ? funnelV2PayCaption(method, formatPayAmount(peaches))
+      : tFormat(payLinkCopyKey(method), locale, {
+          price: pay.priceLine,
+        });
     const reply_markup = payLinkKeyboard({
       locale,
       paymentUrl: pay.paymentUrl,
       peaches,
       orderId: pay.orderId,
+      funnelV2: isFunnelV2,
     });
 
     try {
@@ -263,10 +331,18 @@ export async function handleTopupMethod(
         ? "Could not create payment. Try again in a minute."
         : "Не удалось создать платёж. Попробуй ещё раз через минуту.",
     );
+    const { getTgSession, parsePending } = await import("@/lib/tg/session");
+    const sess = await getTgSession(platformUserId);
+    const pend = parsePending(sess?.pendingJson || "{}");
+    const isFunnelV2 = Boolean(pend.funnelV2TopupPeaches);
     await tgSendMessage(
       chatId,
       tFormat("topup_pay_error", locale, { msg }),
-      { reply_markup: topupMethodKeyboard(locale, peaches) },
+      {
+        reply_markup: isFunnelV2
+          ? funnelV2TopupMethodKeyboard(locale, peaches)
+          : topupMethodKeyboard(locale, peaches),
+      },
     );
   }
 }

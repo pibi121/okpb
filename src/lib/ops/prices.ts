@@ -118,9 +118,9 @@ export function getOpsPrices(): OpsPrices {
 export const PRICE_FIELDS: { key: keyof OpsPrices; title: string }[] = [
   { key: "photo_actress", title: "1. Фото с актрисой (фикс)" },
   { key: "photo_lora", title: "2. Фото со своей LoRA (фикс)" },
-  { key: "video_sec_animate", title: "3. Оживление — 🍑 за 1 сек" },
-  { key: "video_sec_story", title: "4. Обычный шаблон — 🍑 за 1 сек" },
-  { key: "video_sec_premium", title: "5. Best / премиум — 🍑 за 1 сек" },
+  { key: "video_sec_animate", title: "3. Оживление — ₽ за 1 сек" },
+  { key: "video_sec_story", title: "4. Обычный шаблон — ₽ за 1 сек" },
+  { key: "video_sec_premium", title: "5. Best / премиум — ₽ за 1 сек" },
   { key: "video_min_sec", title: "Мин. секунд к оплате (видео)" },
   { key: "lora_train", title: "6. Обучение LoRA (фикс)" },
   { key: "topup_try", title: "Пакет Try" },

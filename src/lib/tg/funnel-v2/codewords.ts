@@ -102,7 +102,7 @@ export async function tryFunnelV2Codeword(opts: {
     const bal = await creditFunnelBalance(opts.userId, amount);
     await tgSendMessage(
       opts.chatId,
-      `🧪 Симуляция пополнения: <b>+${amount}🍑</b>\nБаланс preview: <b>${bal}🍑</b>`,
+      `🧪 Симуляция пополнения: <b>+${amount}₽</b>\nБаланс preview: <b>${bal}₽</b>`,
     );
     const { afterFunnelV2TopupCredited } = await import(
       "@/lib/tg/funnel-v2/faststart"

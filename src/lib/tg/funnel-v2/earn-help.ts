@@ -110,7 +110,7 @@ export async function sendFunnelV2EarnLinks(
     lines.push(
       `<b>${l.label || l.slug}</b>`,
       `Клики: ${l.clicks} · Запуски: ${l.signups} · Покупки: ${l.purchases ?? 0}`,
-      `Выручка: ${l.purchaseGrossPeaches ?? 0}🍑 · Прибыль: ${profit}🍑`,
+      `Выручка: ${l.purchaseGrossPeaches ?? 0}₽ · Прибыль: ${profit}₽`,
       `🤖 <code>${botUrl}</code>`,
       `🌐 <code>${bridge}</code>`,
       "",

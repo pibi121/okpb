@@ -667,7 +667,7 @@ export async function notifyOpsPayment(opts: {
     const text = [
       `💳 <b>Оплата прошла</b>`,
       `Кто: ${ident?.who || `<code>${escHtml(opts.userId)}</code>`}`,
-      `Сумма: <b>${opts.peaches} 🍑</b> = ${escHtml(rub)} ${escHtml(opts.currency || "₽")}`,
+      `Сумма: <b>${escHtml(rub)} ${escHtml(opts.currency || "₽")}</b>`,
       `Способ: ${escHtml(method)} (бот / мини-апп)`,
       `Партнёр: ${ident?.partnerLine || "—"}`,
       `Источник: ${ident?.sourceLine || "—"}`,

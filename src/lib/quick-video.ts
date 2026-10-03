@@ -527,7 +527,7 @@ async function runQuickVideoJob(runId: string, userId: string) {
 function friendlyQuickVideoError(msg: string) {
   return userFacingTgError(
     msg,
-    "Не получилось собрать видео. Попробуй ещё раз через минуту — если списание было, персики вернутся.",
+    "Не получилось собрать видео. Попробуй ещё раз через минуту — если списание было, средства вернутся.",
   );
 }
 

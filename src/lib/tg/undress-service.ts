@@ -73,7 +73,7 @@ export async function startTgUndressGeneration(opts: {
     const paid = await debitPeaches(opts.userId, price, "tg_undress", {});
     if (!paid.ok) {
       throw new Error(
-        `Недостаточно персиков (нужно ${price}, есть ${paid.balance})`,
+        `Недостаточно средств (нужно ${price}₽, есть ${paid.balance}₽)`,
       );
     }
     chargedPeaches = price;
@@ -285,8 +285,8 @@ export async function startTgUndressGeneration(opts: {
           payload: {
             text:
               locale === "en"
-                ? "Undress failed — peaches / free credit restored. Try again."
-                : "Раздевание не удалось — персики / бесплатный кредит возвращены. Попробуй ещё раз.",
+                ? "Undress failed — balance / free credit restored. Try again."
+                : "Раздевание не удалось — средства / бесплатный кредит возвращены. Попробуй ещё раз.",
             locale,
           },
         });

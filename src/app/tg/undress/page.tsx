@@ -7,7 +7,7 @@ import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 const UI = {
   ru: {
     title: "Раздеть",
-    price: "Стоимость: {n}🍑",
+    price: "Стоимость: {n}₽",
     free: "Тебе доступно 1 бесплатное раздевание",
     upload: "Загрузить фото",
     go: "Раздеть",
@@ -20,7 +20,7 @@ const UI = {
   },
   en: {
     title: "Undress",
-    price: "Price: {n}🍑",
+    price: "Price: {n}₽",
     free: "You have 1 free undress",
     upload: "Upload photo",
     go: "Undress",

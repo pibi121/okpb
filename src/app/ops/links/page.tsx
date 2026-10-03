@@ -90,7 +90,7 @@ export default function OpsLinksPage() {
               <td>{r.clicks}</td>
               <td>{r.signups}</td>
               <td>
-                {r.purchases} / {r.purchasePeaches}🍑
+                {r.purchases} / {r.purchasePeaches}₽
               </td>
             </tr>
           ))}

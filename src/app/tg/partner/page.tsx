@@ -183,11 +183,11 @@ export default function TgPartnerPage() {
           </div>
           <div className="tg-settings-row">
             <span>{ru ? "Сумма покупок" : "Purchase volume"}</span>
-            <strong>🍑 {data.purchaseGrossPeaches}</strong>
+            <strong>{data.purchaseGrossPeaches}₽</strong>
           </div>
           <div className="tg-settings-row">
             <span>{ru ? "Комиссия начислено" : "Commission earned"}</span>
-            <strong>🍑 {data.commissionPeaches}</strong>
+            <strong>{data.commissionPeaches}₽</strong>
           </div>
           <div className="tg-settings-row">
             <span>{ru ? "Ставка комиссии" : "Commission rate"}</span>
@@ -195,7 +195,7 @@ export default function TgPartnerPage() {
           </div>
           <div className="tg-settings-row">
             <span>{ru ? "Баланс партнёра" : "Partner balance"}</span>
-            <strong>🍑 {data.balancePeaches}</strong>
+            <strong>{data.balancePeaches}₽</strong>
           </div>
         </div>
       </div>
@@ -233,9 +233,9 @@ export default function TgPartnerPage() {
               <div>
                 <strong>{l.label}</strong>
                 <small>
-                  👆 {l.clicks} · 👤 {l.signups} · 🛒 {l.purchases} · 🍑{" "}
-                  {l.purchaseGrossPeaches} · {ru ? "комиссия" : "fee"} 🍑{" "}
-                  {l.commissionPeaches}
+                  👆 {l.clicks} · 👤 {l.signups} · 🛒 {l.purchases} ·{" "}
+                  {l.purchaseGrossPeaches}₽ · {ru ? "комиссия" : "fee"}{" "}
+                  {l.commissionPeaches}₽
                 </small>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -276,12 +276,12 @@ export default function TgPartnerPage() {
       <div className="tg-section">
         <h2>{ru ? "Вывод" : "Withdraw"}</h2>
         <p className="tg-muted tg-section-hint">
-          {ru ? "Мин. 500 🍑 · USDT TRC20 / реквизиты" : "Min 500 🍑 · USDT TRC20"}
+          {ru ? "Мин. 500₽ · USDT TRC20 / реквизиты" : "Min 500₽ · USDT TRC20"}
         </p>
         <input
           className="tg-input"
           style={{ width: "100%" }}
-          placeholder="🍑"
+          placeholder="₽"
           value={withdrawAmt}
           onChange={(e) => setWithdrawAmt(e.target.value)}
         />
@@ -310,7 +310,7 @@ export default function TgPartnerPage() {
             {data.commissions.slice(0, 15).map((c) => (
               <div key={c.id} className="tg-char-card">
                 <div>
-                  <strong>+{c.amountPeaches} 🍑</strong>
+                  <strong>+{c.amountPeaches}₽</strong>
                   <small>
                     {c.kind} · {new Date(c.createdAt).toLocaleDateString()}
                   </small>
@@ -333,7 +333,7 @@ export default function TgPartnerPage() {
             {data.withdrawals.map((w) => (
               <div key={w.id} className="tg-char-card">
                 <div>
-                  <strong>🍑 {w.amountPeaches}</strong>
+                  <strong>{w.amountPeaches}₽</strong>
                   <small>
                     {w.status} · {new Date(w.createdAt).toLocaleDateString()}
                   </small>

@@ -1011,7 +1011,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
             </div>
           </label>
           <div className="block text-xs text-zinc-500">
-            Цена 🍑
+            Цена ₽
             <p className="mt-1 rounded-lg border border-white/10 bg-zinc-900/80 px-2 py-2 text-sm text-zinc-300">
               Авто из /ops/prices (premium × ~{stitchedDurationSec || totalDurationHint}с).
             </p>
@@ -1473,7 +1473,7 @@ export function LoraI2vLabClient({ characters }: { characters: Char[] }) {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{t.title}</div>
                 <div className="text-[11px] text-zinc-500">
-                  {t.pricePeaches} 🍑 · {t.durationSec}с ·{" "}
+                  {t.pricePeaches}₽ · {t.durationSec}с ·{" "}
                   {t.requiresLora === false ? "1 фото" : "LoRA"} ·{" "}
                   {t.tgPublished ? "в TG" : "черновик"}
                 </div>

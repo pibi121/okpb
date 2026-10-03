@@ -5,7 +5,7 @@ import { setMediaOverlay, type TgMediaSlot } from "@/lib/tg/media-assets";
 /** Funnel + help texts that are safe to edit from the cabinet. */
 export const FUNNEL_SLOTS: { slot: TgI18nKey; title: string }[] = [
   { slot: "help_title", title: "Помощь" },
-  { slot: "gen_insufficient", title: "Не хватает персиков" },
+  { slot: "gen_insufficient", title: "Не хватает средств" },
   { slot: "generating", title: "Генерация запущена" },
   { slot: "gen_error", title: "Ошибка генерации (человеку)" },
 ];

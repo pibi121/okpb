@@ -10,11 +10,10 @@ const METHODS = [
   { id: "crypto", ru: "Крипта — USDT", en: "Crypto — USDT" },
 ] as const;
 
-function priceLine(peaches: number): string {
-  const rub = peaches; // 1🍑 = 1₽
+function priceLine(amount: number): string {
   const rubPerUsdt = 80;
-  const usd = Math.round((peaches / rubPerUsdt) * 100) / 100;
-  return `${peaches} 🍑 = ${rub} ₽ (≈ $${usd})`;
+  const usd = Math.round((amount / rubPerUsdt) * 100) / 100;
+  return `${amount}₽ (≈ $${usd})`;
 }
 
 export default function TgTopupPage() {
@@ -37,8 +36,8 @@ export default function TgTopupPage() {
     if (peaches < TG_MIN_TOPUP_PEACHES) {
       setErr(
         ru
-          ? `Минимум ${TG_MIN_TOPUP_PEACHES} 🍑`
-          : `Minimum ${TG_MIN_TOPUP_PEACHES} 🍑`,
+          ? `Минимум ${TG_MIN_TOPUP_PEACHES}₽`
+          : `Minimum ${TG_MIN_TOPUP_PEACHES}₽`,
       );
       return;
     }
@@ -83,7 +82,7 @@ export default function TgTopupPage() {
         <div className="tg-settings">
           <h2>{ru ? "Пополнение" : "Top up"}</h2>
           <p style={{ color: "var(--tg-muted)", fontSize: 13, marginTop: 4 }}>
-            {ru ? "Баланс" : "Balance"}: {profile?.balancePeaches ?? 0} 🍑
+            {ru ? "Баланс" : "Balance"}: {profile?.balancePeaches ?? 0}₽
           </p>
           <p style={{ color: "var(--tg-muted)", fontSize: 12, marginTop: 8 }}>
             {ru
@@ -108,7 +107,7 @@ export default function TgTopupPage() {
                   setErr("");
                 }}
               >
-                🍑 {n}
+                {n}₽
               </button>
             ))}
           </div>
@@ -172,8 +171,8 @@ export default function TgTopupPage() {
           ) : (
             <p style={{ marginTop: 16, color: "var(--tg-muted)", fontSize: 13 }}>
               {ru
-                ? `Выбери сумму от ${TG_MIN_TOPUP_PEACHES} 🍑`
-                : `Pick an amount from ${TG_MIN_TOPUP_PEACHES} 🍑`}
+                ? `Выбери сумму от ${TG_MIN_TOPUP_PEACHES}₽`
+                : `Pick an amount from ${TG_MIN_TOPUP_PEACHES}₽`}
             </p>
           )}
 

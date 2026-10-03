@@ -71,7 +71,7 @@ const CARDS: Card[] = [
   },
   {
     href: "/ops/prices",
-    title: "Цены 🍑 (ops)",
+    title: "Цены ₽ (ops)",
     blurb:
       "video_sec_animate и остальные тарифы. Оживление 4/7/12 сек = цена×секунды.",
     status: "ready",

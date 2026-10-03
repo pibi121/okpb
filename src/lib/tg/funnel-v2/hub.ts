@@ -252,7 +252,7 @@ export async function funnelV2HubKeyboard(userId: string) {
   if (showPro) {
     rows.push([{ text: "⭐️ PRO режим", callback_data: FV2.pro }]);
   }
-  rows.push([{ text: "🍑 Баланс и пополнение", callback_data: FV2.topup }]);
+  rows.push([{ text: "Баланс и пополнение", callback_data: FV2.topup }]);
   rows.push([
     { text: "🤑 Заработать", callback_data: FV2.earn },
     { text: "ℹ️ Помощь", callback_data: FV2.help },

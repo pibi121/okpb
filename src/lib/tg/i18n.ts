@@ -25,12 +25,12 @@ export const M: Dict = {
 
   /** Start pitch — always shown in Russian first (no language picker). Video kept. */
   start_pitch: {
-    ru: `🍑<b>С Peachbitch ты воплотишь все свои фантазии.</b> Если ты устал от размазанных пластиковых фото и видео в других ботах-раздеваторах, то добро пожаловать в настоящую порно-студию с самыми реалистичными кадрами, как будто смотришь вживую.
+    ru: `<b>С Peachbitch ты воплотишь все свои фантазии.</b> Если ты устал от размазанных пластиковых фото и видео в других ботах-раздеваторах, то добро пожаловать в настоящую порно-студию с самыми реалистичными кадрами, как будто смотришь вживую.
 
 Раздеть подругу, коллегу, блогершу, актрису? Изи!
 
 Здесь ты сможешь создавать настоящие порно фильмы, фотосессии и сцены с сюжетами, разговорами. Здесь есть всё, чтобы воплощать твои самые грязные фантазии без цензуры и ограничений`,
-    en: `🍑<b>With Peachbitch you can bring every fantasy to life.</b> Tired of blurry plastic shots from other undress bots? Welcome to a real porn studio with the most realistic frames — as if you're watching live.
+    en: `<b>With Peachbitch you can bring every fantasy to life.</b> Tired of blurry plastic shots from other undress bots? Welcome to a real porn studio with the most realistic frames — as if you're watching live.
 
 Undress a girlfriend, colleague, blogger, actress? Easy!
 
@@ -70,7 +70,7 @@ Please accept our <a href="{rulesUrl}">Terms of Service</a> and confirm you are 
 
 Что можно в этом боте?
 
-1. Сгенерировать фото на актрисах студии — на старте на балансе есть персики на одно фото
+1. Сгенерировать фото на актрисах студии — на старте на балансе хватает на одно фото
 2. Создать <b>реалистичные фото</b> со своей моделью (после обучения)
 3. <b>Оживить</b> фото или снять <b>видео</b> с сюжетами, позами и диалогами
 
@@ -81,7 +81,7 @@ Please accept our <a href="{rulesUrl}">Terms of Service</a> and confirm you are 
 
 What you can do:
 
-1. Photos with studio actresses — starter peaches cover one photo so you can check quality
+1. Photos with studio actresses — starter balance covers one photo so you can check quality
 2. <b>Realistic photos</b> with your own model (after training)
 3. <b>Animate</b> photos or shoot <b>videos</b> with plots, poses & dialogue
 
@@ -247,18 +247,18 @@ PeachBitch это не бот раздеватор, а полноценная И
   },
 
   onboard_lora_price: {
-    ru: `Стоимость обучения персонажа (от 5 фото, до 20): <b>{price}🍑</b>
+    ru: `Стоимость обучения персонажа (от 5 фото, до 20): <b>{price}₽</b>
 (обучается один раз — потом генерировать можно всегда)
 
 <b>Акция!</b> Оплати и запусти обучение в течение 30 минут — выгоднее успеть сейчас.
 
-На балансе должно быть от {price}🍑. У тебя сейчас: <b>{balance}🍑</b>.`,
-    en: `Character training (5–20 photos): <b>{price}🍑</b>
+На балансе должно быть от {price}₽. У тебя сейчас: <b>{balance}₽</b>.`,
+    en: `Character training (5–20 photos): <b>{price}₽</b>
 (one-time — then generate forever)
 
 <b>Promo!</b> Pay and start training within 30 minutes — better to catch it now.
 
-You need {price}🍑 on balance. Yours: <b>{balance}🍑</b>.`,
+You need {price}₽ on balance. Yours: <b>{balance}₽</b>.`,
   },
 
   onboard_lora_pay_train_btn: {
@@ -285,13 +285,13 @@ Tips:
 
   onboard_lora_started: {
     ru: `<b>✅ Обучение началось.</b>
-С баланса списано {price}🍑
+С баланса списано {price}₽
 
 В течение ~2 часов PeachBitch научится делать реалистичные фото с твоей моделью. Мы пришлём уведомление, когда всё будет готово.
 
 А пока можешь снять <b>видео</b> — обучение для этого не нужно.`,
     en: `<b>✅ Training started.</b>
-{price}🍑 charged.
+{price}₽ charged.
 
 In ~2 hours you'll get realistic photos with your model. We'll notify you when it's done.
 
@@ -323,8 +323,8 @@ Model «{name}» is selected. «Generation» → «Photo» → template — or t
   },
 
   studio_free_daily: {
-    ru: "0 🍑 (ежедневный кадр · актриса студии)",
-    en: "0 🍑 (daily studio shot)",
+    ru: "0₽ (ежедневный кадр · актриса студии)",
+    en: "0₽ (daily studio shot)",
   },
 
   studio_free_daily_note: {
@@ -340,10 +340,10 @@ Model «{name}» is selected. «Generation» → «Photo» → template — or t
   studio_free_not_ready: {
     ru: `Бесплатный кадр на актрисе студии обновляется раз в сутки.
 
-Загляни в 🍑 <b>Маркетплейс</b>, чтобы активировать следующий — или пополни баланс для платной генерации.`,
+Загляни в <b>Маркетплейс</b>, чтобы активировать следующий — или пополни баланс для платной генерации.`,
     en: `Your free studio shot refreshes once a day.
 
-Open 🍑 <b>Marketplace</b> to unlock the next one — or top up for a paid generation.`,
+Open <b>Marketplace</b> to unlock the next one — or top up for a paid generation.`,
   },
 
   photo_need_lora: {
@@ -429,7 +429,7 @@ Find her in "Characters" in the bottom menu — edit body settings, add more cha
     en: "Video by look · Max quality",
   },
 
-  marketplace_btn: { ru: "🍑 Маркетплейс", en: "🍑 Marketplace" },
+  marketplace_btn: { ru: "Маркетплейс", en: "Marketplace" },
   gen_page_prev: { ru: "◀️", en: "◀️" },
   gen_page_next: { ru: "▶️", en: "▶️" },
 
@@ -437,14 +437,14 @@ Find her in "Characters" in the bottom menu — edit body settings, add more cha
     ru: `Выбранная поза: <b>{title}</b>
 
 Стоимость генерации: {price}
-У вас на балансе: <b>{balance}</b>🍑
+У вас на балансе: <b>{balance}</b>₽
 
 Модель: <b>{name}</b>
 Выбери актрису ниже и нажми «Сгенерировать».`,
     en: `Selected pose: <b>{title}</b>
 
 Generation cost: {price}
-Your balance: <b>{balance}</b>🍑
+Your balance: <b>{balance}</b>₽
 
 Model: <b>{name}</b>
 Pick an actress below, then tap Generate.`,
@@ -454,13 +454,13 @@ Pick an actress below, then tap Generate.`,
     ru: `Выбранная поза: <b>{title}</b>
 
 Стоимость генерации: {price}
-У вас на балансе: <b>{balance}</b>🍑
+У вас на балансе: <b>{balance}</b>₽
 {notes}
 Дальше загрузи фото модели (или выбери сохранённую 🎬) — подготовка модели не нужна.`,
     en: `Selected pose: <b>{title}</b>
 
 Generation cost: {price}
-Your balance: <b>{balance}</b>🍑
+Your balance: <b>{balance}</b>₽
 {notes}
 Next upload model photos (or pick a saved 🎬) — no model setup needed.`,
   },
@@ -470,14 +470,14 @@ Next upload model photos (or pick a saved 🎬) — no model setup needed.`,
 
 Поза: <b>{title}</b>
 Стоимость генерации: {price}
-У вас на балансе: <b>{balance}</b>🍑
+У вас на балансе: <b>{balance}</b>₽
 {notes}
 Этот формат работает <b>только с обученной моделью</b> (твоя или актриса студии). Обычное фото «с телефона» здесь не подойдёт — лицо держится за счёт подготовки.`,
     en: `✨ <b>Max quality</b>
 
 Pose: <b>{title}</b>
 Generation cost: {price}
-Your balance: <b>{balance}</b>🍑
+Your balance: <b>{balance}</b>₽
 {notes}
 This format works <b>only with a trained model</b> (yours or a studio actress). A plain phone selfie isn't enough — identity comes from setup.`,
   },
@@ -589,18 +589,18 @@ When ready — tap «Done, start».`,
   },
 
   gen_confirm_free: {
-    ru: "0 🍑 (бесплатно)",
-    en: "0 🍑 (free)",
+    ru: "0₽ (бесплатно)",
+    en: "0₽ (free)",
   },
 
   gen_confirm_discount: {
-    ru: "{base} 🍑 → <b>{price} 🍑</b> (−30% на первое видео)",
-    en: "{base} 🍑 → <b>{price} 🍑</b> (−30% first video)",
+    ru: "{base}₽ → <b>{price}₽</b> (−30% на первое видео)",
+    en: "{base}₽ → <b>{price}₽</b> (−30% first video)",
   },
 
   gen_confirm_price: {
-    ru: "{price} 🍑",
-    en: "{price} 🍑",
+    ru: "{price}₽",
+    en: "{price}₽",
   },
 
   gen_confirm_btn: { ru: "✅ Сгенерировать", en: "✅ Generate" },
@@ -636,8 +636,8 @@ When ready — tap «Done, start».`,
     en: "Didn't like the video",
   },
   qc_confirm_prompt: {
-    ru: `Если результат не соответствует заявленному по вашему мнению, нажми «Подтвердить». Мы просмотрим работу и если действительно так, то вернём персики на баланс.`,
-    en: `If the result doesn't match what was promised in your view, tap Confirm. We'll review it and refund peaches if you're right.`,
+    ru: `Если результат не соответствует заявленному по вашему мнению, нажми «Подтвердить». Мы просмотрим работу и если действительно так, то вернём средства на баланс.`,
+    en: `If the result doesn't match what was promised in your view, tap Confirm. We'll review it and refund your balance if you're right.`,
   },
   qc_confirm_btn: { ru: "Подтвердить", en: "Confirm" },
   qc_submitted: {
@@ -648,8 +648,8 @@ When ready — tap «Done, start».`,
   qc_btn_approved: { ru: "Возврат одобрен", en: "Refund approved" },
   qc_btn_rejected: { ru: "Возврат отменён", en: "Refund declined" },
   qc_approved_notice: {
-    ru: "✅ Возврат одобрен. +{n} 🍑\nБаланс: {balance} 🍑",
-    en: "✅ Refund approved. +{n} 🍑\nBalance: {balance} 🍑",
+    ru: "✅ Возврат одобрен. +{n}₽\nБаланс: {balance}₽",
+    en: "✅ Refund approved. +{n}₽\nBalance: {balance}₽",
   },
   qc_approved_free_undress: {
     ru: "✅ Возврат одобрен. Бесплатное раздевание снова доступно.",
@@ -701,47 +701,47 @@ Forward this message to Saved Messages so you don't lose it!`,
   },
 
   gen_insufficient: {
-    ru: `Эх, PeachBitch такой битч, что без персиков не работает 😢
+    ru: `Эх, PeachBitch такой битч, что без баланса не работает 😢
 
-Генерация стоит {need}🍑
-У тебя на балансе: {balance}🍑
+Генерация стоит {need}₽
+У тебя на балансе: {balance}₽
 
 Чтобы пополнить баланс, нажми на кнопку ниже 👇`,
-    en: `PeachBitch is such a bitch — no peaches, no magic 😢
+    en: `PeachBitch is such a bitch — no balance, no magic 😢
 
-Generation costs {need}🍑
-Your balance: {balance}🍑
+Generation costs {need}₽
+Your balance: {balance}₽
 
 Tap below to top up 👇`,
   },
 
   topup_prompt: {
-    ru: `<b>Сколько персиков хочешь приобрести?</b>
+    ru: `<b>На какую сумму хочешь пополнить баланс?</b>
 
-🍑 1 персик = 1 рубль
-Минимум — <b>{min} 🍑</b> (≈ {usdt} USDT по курсу)
+1₽ на балансе = 1 рубль
+Минимум — <b>{min}₽</b> (≈ {usdt} USDT по курсу)
 
 Выбери по кнопке или введи число в чате 👇
 Дальше — оплата через <b>СБП</b> или <b>крипту (USDT)</b>.`,
-    en: `<b>How many peaches do you want?</b>
+    en: `<b>How much do you want to top up?</b>
 
-🍑 1 peach = 1 RUB
-Minimum — <b>{min} 🍑</b> (≈ {usdt} USDT at current rate)
+1₽ on balance = 1 RUB
+Minimum — <b>{min}₽</b> (≈ {usdt} USDT at current rate)
 
 Pick a button or type a number 👇
 Next: pay via <b>SBP</b> or <b>crypto (USDT)</b>.`,
   },
 
   topup_min_error: {
-    ru: "Минимальная сумма для пополнения — {min} 🍑 (≈ {usdt} USDT). Введи число от {min}.",
-    en: "Minimum top-up is {min} 🍑 (≈ {usdt} USDT). Enter {min} or more.",
+    ru: "Минимальная сумма для пополнения — {min}₽ (≈ {usdt} USDT). Введи число от {min}.",
+    en: "Minimum top-up is {min}₽ (≈ {usdt} USDT). Enter {min} or more.",
   },
 
   topup_btn: { ru: "Пополнить баланс 💳", en: "Top up balance 💳" },
 
   topup_stub: {
-    ru: "Оплата скоро будет подключена. Выбрано: {n} 🍑",
-    en: "Payments coming soon. Selected: {n} 🍑",
+    ru: "Оплата скоро будет подключена. Выбрано: {n}₽",
+    en: "Payments coming soon. Selected: {n}₽",
   },
 
   topup_choose_method: {
@@ -766,44 +766,44 @@ Payment gateway is not configured yet. Contact support — or try later.`,
     ru: `К оплате: <b>{price}</b>
 Способ: <b>{method}</b>
 
-Нажми кнопку ниже — откроется форма оплаты. После оплаты персики зачислятся автоматически.`,
+Нажми кнопку ниже — откроется форма оплаты. После оплаты баланс пополнится автоматически.`,
     en: `To pay: <b>{price}</b>
 Method: <b>{method}</b>
 
-Tap below to open the payment form. Peaches credit automatically after payment.`,
+Tap below to open the payment form. Balance credits automatically after payment.`,
   },
 
   topup_pay_link_sbp: {
     ru: `К оплате: <b>{price}</b>
 
 Оплата через <b>СБП</b>: открой форму → подтверди перевод в банковском приложении.
-Персики зачислятся сами после оплаты (включая возврат комиссии 13%).`,
+Баланс пополнится сам после оплаты (включая возврат комиссии 13%).`,
     en: `To pay: <b>{price}</b>
 
 Pay via <b>SBP</b>: open the form → confirm in your banking app.
-Peaches credit automatically after payment (incl. 13% fee rebate).`,
+Balance credits automatically after payment (incl. 13% fee rebate).`,
   },
 
   topup_pay_link_crypto: {
     ru: `К оплате: <b>{price}</b>
 
 Оплата <b>USDT</b>: открой форму → выбери сеть → переведи сумму.
-Персики зачислятся сами после оплаты (включая возврат комиссии 3%).`,
+Баланс пополнится сам после оплаты (включая возврат комиссии 3%).`,
     en: `To pay: <b>{price}</b>
 
 Pay with <b>USDT</b>: open the form → pick a network → send the amount.
-Peaches credit automatically after payment (incl. 3% fee rebate).`,
+Balance credits automatically after payment (incl. 3% fee rebate).`,
   },
 
   topup_pay_link_cryptobot: {
     ru: `К оплате: <b>{price}</b>
 
 Оплата через <b>CryptoBot</b> в Telegram: открой форму → оплати криптой в @CryptoBot.
-Персики зачислятся сами после оплаты (включая возврат комиссии 5%).`,
+Баланс пополнится сам после оплаты (включая возврат комиссии 5%).`,
     en: `To pay: <b>{price}</b>
 
 Pay via <b>CryptoBot</b> in Telegram: open the form → pay with crypto in @CryptoBot.
-Peaches credit automatically after payment (incl. 5% fee rebate).`,
+Balance credits automatically after payment (incl. 5% fee rebate).`,
   },
 
   topup_remind: {
@@ -827,8 +827,8 @@ Open the link again or request a new one 👇`,
   },
 
   topup_already_paid: {
-    ru: "Эта оплата уже прошла — персики на балансе ✅",
-    en: "This payment already went through — peaches are on your balance ✅",
+    ru: "Эта оплата уже прошла — средства на балансе ✅",
+    en: "This payment already went through — funds are on your balance ✅",
   },
 
   topup_pay_error: {
@@ -837,14 +837,14 @@ Open the link again or request a new one 👇`,
   },
 
   topup_paid: {
-    ru: "✅ Оплата получена!\n\nЗачислено: <b>{n}</b> 🍑\nБаланс: <b>{balance}</b> 🍑",
-    en: "✅ Payment received!\n\nCredited: <b>{n}</b> 🍑\nBalance: <b>{balance}</b> 🍑",
+    ru: "✅ Оплата получена!\n\nЗачислено: <b>{n}</b>₽\nБаланс: <b>{balance}</b>₽",
+    en: "✅ Payment received!\n\nCredited: <b>{n}</b>₽\nBalance: <b>{balance}</b>₽",
   },
 
   hub_main: {
     ru: `Ну что, пофантазируем? 😏💦
 
-У тебя на балансе: {balance} 🍑
+У тебя на балансе: {balance}₽
 
 Порно-студия готова к работе. Сейчас тебе доступно 4 режима:
 
@@ -867,7 +867,7 @@ Open the link again or request a new one 👇`,
 Примеры работы и шаблоны ты можешь посмотреть, выбрав нужный режим по кнопкам ниже или открыв «Студию».`,
     en: `Ready to fantasize? 😏💦
 
-Your balance: {balance} 🍑
+Your balance: {balance}₽
 
 The porn studio is ready. You have 4 modes:
 
@@ -897,8 +897,8 @@ Browse examples and templates via the buttons below or open the Studio.`,
 
   /** Short caption under welcome media (Telegram limit 1024). Full hub text is a follow-up message. */
   hub_media_caption: {
-    ru: `Ну что, пофантазируем? 😏💦\n\nБаланс: {balance} 🍑`,
-    en: `Ready to fantasize? 😏💦\n\nBalance: {balance} 🍑`,
+    ru: `Ну что, пофантазируем? 😏💦\n\nБаланс: {balance}₽`,
+    en: `Ready to fantasize? 😏💦\n\nBalance: {balance}₽`,
   },
 
   undress_disclaimer: {
@@ -920,8 +920,8 @@ To try undress from 1 photo, tap “Want to undress” — I’ll undress the gi
   },
 
   undress_price_line: {
-    ru: `Стоимость раздевания: {price}🍑`,
-    en: `Undress price: {price}🍑`,
+    ru: `Стоимость раздевания: {price}₽`,
+    en: `Undress price: {price}₽`,
   },
 
   undress_free_line: {
@@ -983,10 +983,10 @@ For free undresses: open the feed daily, scroll 20–30 seconds, and claim the b
   hub_main_free_offer: {
     ru: `
 
-🎁 На старте на баланс начислены персики на одно фото с актрисой студии — попробуй и оцени качество.`,
+🎁 На старте на баланс начислено на одно фото с актрисой студии — попробуй и оцени качество.`,
     en: `
 
-🎁 Starter peaches for one studio actress photo are on your balance — try it and check the quality.`,
+🎁 Starter credit for one studio actress photo is on your balance — try it and check the quality.`,
   },
 
   hub_btn_video_one: {
@@ -1045,7 +1045,7 @@ For free undresses: open the feed daily, scroll 20–30 seconds, and claim the b
   menu_community: { ru: "👥 Наше коммьюнити", en: "👥 Our community" },
   menu_help: { ru: "❓ Помощь", en: "❓ Help" },
   menu_main: { ru: "🏠 Главное меню", en: "🏠 Main menu" },
-  menu_open_studio: { ru: "🍑 Открыть студию", en: "🍑 Open studio" },
+  menu_open_studio: { ru: "Открыть студию", en: "Open studio" },
   open_studio_tap: {
     ru: "Открой студию кнопкой ниже 👇",
     en: "Open the studio with the button below 👇",
@@ -1107,13 +1107,13 @@ PlaVER`,
   },
 
   balance_fmt: {
-    ru: "Баланс: <b>{n}</b> 🍑",
-    en: "Balance: <b>{n}</b> 🍑",
+    ru: "Баланс: <b>{n}</b>₽",
+    en: "Balance: <b>{n}</b>₽",
   },
 
   balance_with_topup_hint: {
-    ru: "Баланс: <b>{n}</b> 🍑\n\nНажми «Пополнить баланс 💳» чтобы пополнить.",
-    en: "Balance: <b>{n}</b> 🍑\n\nTap «Top up balance 💳» to add peaches.",
+    ru: "Баланс: <b>{n}</b>₽\n\nНажми «Пополнить баланс 💳» чтобы пополнить.",
+    en: "Balance: <b>{n}</b>₽\n\nTap «Top up balance 💳» to top up.",
   },
 
   earn_text: {
@@ -1122,8 +1122,8 @@ PlaVER`,
   },
 
   earn_dash: {
-    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b> 🍑\n• Твоя доля ({pct}%): <b>{earned}</b> 🍑\n• Баланс к выводу: <b>{balance}</b> 🍑\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n❗️Вступай в чат партнёров бота для обмена опытом 👉 <a href=\"https://t.me/+WAQwgrFxbm85YmYx\">https://t.me/+WAQwgrFxbm85YmYx</a>\n\n📌 Подробная инструкция и способы, где брать трафик, чтобы зарабатывать: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>\n\nТвоя основная ссылка (Telegram):\n<code>{link}</code>\n\nПостоянная ссылка-переходник, чтобы трафик шёл в рабочий бот 👉 <code>{bridge}</code>",
-    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b> 🍑\n• Your share ({pct}%): <b>{earned}</b> 🍑\n• Withdrawal balance: <b>{balance}</b> 🍑\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n❗️Join the partner chat to share experience 👉 <a href=\"https://t.me/+WAQwgrFxbm85YmYx\">https://t.me/+WAQwgrFxbm85YmYx</a>\n\n📌 Full guide & traffic sources to earn: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>\n\nYour main Telegram link:\n<code>{link}</code>\n\nPermanent bridge link (always opens the live bot) 👉 <code>{bridge}</code>",
+    ru: "💰 <b>Партнёрская программа</b>\n\n• Рефералов: <b>{referrals}</b>\n• Покупок: <b>{purchases}</b>\n• Оборот пополнений: <b>{gross}</b>₽\n• Твоя доля ({pct}%): <b>{earned}</b>₽\n• Баланс к выводу: <b>{balance}</b>₽\n\nУсловия: <b>{pct}%</b> с пополнений приглашённых.\nВыплата USDT от 30.\n❗️Вступай в чат партнёров бота для обмена опытом 👉 <a href=\"https://t.me/+WAQwgrFxbm85YmYx\">https://t.me/+WAQwgrFxbm85YmYx</a>\n\n📌 Подробная инструкция и способы, где брать трафик, чтобы зарабатывать: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>\n\nТвоя основная ссылка (Telegram):\n<code>{link}</code>\n\nПостоянная ссылка-переходник, чтобы трафик шёл в рабочий бот 👉 <code>{bridge}</code>",
+    en: "💰 <b>Partner program</b>\n\n• Referrals: <b>{referrals}</b>\n• Purchases: <b>{purchases}</b>\n• Top-up volume: <b>{gross}</b>₽\n• Your share ({pct}%): <b>{earned}</b>₽\n• Withdrawal balance: <b>{balance}</b>₽\n\nTerms: <b>{pct}%</b> of referred users' top-ups.\nPayout from 30 USDT.\n❗️Join the partner chat to share experience 👉 <a href=\"https://t.me/+WAQwgrFxbm85YmYx\">https://t.me/+WAQwgrFxbm85YmYx</a>\n\n📌 Full guide & traffic sources to earn: <a href=\"https://telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24\">telegra.ph/BAZA-ZNANIJ-PARTNYORSKOJ-PROGRAMMY-09-24</a>\n\nYour main Telegram link:\n<code>{link}</code>\n\nPermanent bridge link (always opens the live bot) 👉 <code>{bridge}</code>",
   },
 
   earn_open_partner_btn: {
@@ -1132,8 +1132,8 @@ PlaVER`,
   },
 
   partner_commission_notice: {
-    ru: "Поздравляю! Тебе пришли комиссионные <b>+{n} 🍑</b> от пополнения реферала",
-    en: "Congrats! You earned <b>+{n} 🍑</b> commission from a referral top-up",
+    ru: "Поздравляю! Тебе пришли комиссионные <b>+{n}₽</b> от пополнения реферала",
+    en: "Congrats! You earned <b>+{n}₽</b> commission from a referral top-up",
   },
 
   gen_pick_kind: {

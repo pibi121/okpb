@@ -33,7 +33,7 @@ const UI = {
     create: "🚀 Создать модель",
     err: "Ошибка",
     topup: "Пополнить баланс",
-    needPeaches: "Недостаточно персиков",
+    needPeaches: "Недостаточно средств",
   },
   en: {
     title: "Make photo",
@@ -49,7 +49,7 @@ const UI = {
     create: "🚀 Create model",
     err: "Error",
     topup: "Top up balance",
-    needPeaches: "Not enough peaches",
+    needPeaches: "Not enough balance",
   },
 } as const;
 
@@ -183,7 +183,7 @@ function PhotoPageInner() {
                 </div>
                 <div className="tg-portrait-meta">
                   <strong>{t.title}</strong>
-                  <small>{t.pricePeaches} 🍑</small>
+                  <small>{t.pricePeaches}₽</small>
                 </div>
               </button>
             ))}

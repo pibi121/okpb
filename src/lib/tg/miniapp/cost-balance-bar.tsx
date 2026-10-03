@@ -26,13 +26,13 @@ export function TgCostBalanceBar({
       <div className="tg-cost-bar-row">
         <span>{ru ? "Стоимость генерации" : "Generation cost"}</span>
         <strong>
-          {cost} 🍑
+          {cost}₽
         </strong>
       </div>
       <div className="tg-cost-bar-row">
         <span>{ru ? "У вас на балансе" : "Your balance"}</span>
         <strong className={short ? "tg-cost-bar-warn" : ""}>
-          {balance} 🍑
+          {balance}₽
         </strong>
       </div>
       {short ? (

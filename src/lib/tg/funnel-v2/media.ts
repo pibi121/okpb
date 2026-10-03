@@ -50,19 +50,29 @@ export async function sendCoverPhoto(
   caption: string,
   reply_markup: Record<string, unknown>,
 ): Promise<FunnelSentMessage | undefined> {
-  const { tgSendPhoto, tgSendMessage, tgSendVideo } = await import(
-    "@/lib/tg/telegram-api"
+  // Upload local bytes (tgDeliver*) — Telegram URL fetch caches by URL and
+  // keeps serving the old hub cover after we replace funnel-hub-cover.mp4.
+  const { tgDeliverPhoto, tgDeliverVideo } = await import(
+    "@/lib/tg/deliver-media"
   );
+  const { tgSendMessage } = await import("@/lib/tg/telegram-api");
   const urls = funnelCoverFallbacks(slot);
+  const extra = { reply_markup };
   for (const url of urls) {
     try {
       if (/\.(mp4|webm)(\?|$)/i.test(url)) {
-        return (await tgSendVideo(chatId, url, caption, {
-          reply_markup,
+        return (await tgDeliverVideo({
+          chatId,
+          url,
+          caption,
+          extra,
         })) as FunnelSentMessage;
       }
-      return (await tgSendPhoto(chatId, url, caption, {
-        reply_markup,
+      return (await tgDeliverPhoto({
+        chatId,
+        url,
+        caption,
+        extra,
       })) as FunnelSentMessage;
     } catch {
       /* try next */

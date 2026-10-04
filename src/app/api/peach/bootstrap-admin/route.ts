@@ -313,6 +313,126 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  /** Rank photo-section button / template clicks (fv2). Default last 24h, exclude Viktor. */
+  if (action === "photo_button_rank") {
+    const hours = Math.min(
+      168,
+      Math.max(1, Number((body as { hours?: number }).hours) || 24),
+    );
+    const excludeCode = String(
+      (body as { excludePartnerCode?: string }).excludePartnerCode ?? "ccbf9519",
+    ).trim();
+    const since = new Date(Date.now() - hours * 3600_000);
+    let excluded: string[] = [];
+    if (excludeCode) {
+      const partner = await prisma.partnerProfile.findFirst({
+        where: { code: excludeCode },
+        select: { id: true },
+      });
+      if (partner) {
+        excluded = (
+          await prisma.partnerAttribution.findMany({
+            where: { partnerId: partner.id },
+            select: { userId: true },
+          })
+        ).map((x) => x.userId);
+      }
+    }
+
+    const events = await prisma.funnelEvent.findMany({
+      where: {
+        at: { gte: since },
+        eventKey: { in: ["bot.fv2.photo", "bot.fv2.gen_start"] },
+        ...(excluded.length ? { userId: { notIn: excluded } } : {}),
+      },
+      select: { eventKey: true, metaJson: true, userId: true },
+    });
+
+    type Agg = { clicks: number; users: Set<string> };
+    const buttons = new Map<string, Agg>();
+    const templates = new Map<string, Agg>();
+    const bump = (map: Map<string, Agg>, key: string, userId: string) => {
+      let a = map.get(key);
+      if (!a) {
+        a = { clicks: 0, users: new Set() };
+        map.set(key, a);
+      }
+      a.clicks += 1;
+      a.users.add(userId);
+    };
+
+    for (const e of events) {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(e.metaJson || "{}") as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+      const cb = String(meta.callback || "");
+      const templateId = String(meta.templateId || "");
+
+      if (e.eventKey === "bot.fv2.photo") {
+        if (cb === "fv2:ph" || cb === "fv2:ph:chg") bump(buttons, "open_photo_hub", e.userId);
+        else if (cb === "fv2:ph:ud") bump(buttons, "undress_full", e.userId);
+        else if (cb.startsWith("fv2:ph:p:")) bump(buttons, `page_${cb.slice(8)}`, e.userId);
+        else if (cb.startsWith("fv2:ph:t:")) {
+          const id = cb.slice("fv2:ph:t:".length);
+          bump(buttons, "pick_template", e.userId);
+          bump(templates, id, e.userId);
+        } else if (cb.startsWith("fv2:ph:ok:")) {
+          bump(buttons, "confirm_generate", e.userId);
+          const parts = cb.split(":");
+          const id = parts[parts.length - 1] || "";
+          if (id) bump(templates, id, e.userId);
+        } else if (cb === "fv2:ph:x") bump(buttons, "cancel", e.userId);
+        else if (cb.startsWith("fv2:ph:ed:")) bump(buttons, "edit_result", e.userId);
+        else if (cb.startsWith("fv2:ph:an:")) bump(buttons, "animate_result", e.userId);
+        else if (cb.startsWith("fv2:ub:")) bump(buttons, "unblur_cta", e.userId);
+        else bump(buttons, cb ? `other:${cb}` : "other_empty", e.userId);
+      }
+
+      if (e.eventKey === "bot.fv2.gen_start" && templateId) {
+        bump(templates, templateId, e.userId);
+        bump(buttons, meta.blur === true ? "gen_start_blur" : "gen_start_paid", e.userId);
+      }
+    }
+
+    const tplIds = [...templates.keys()].filter((id) => id.length > 8);
+    const tplRows = tplIds.length
+      ? await prisma.peachPhotoTemplate.findMany({
+          where: { id: { in: tplIds } },
+          select: { id: true, title: true, tgDisplayTitle: true },
+        })
+      : [];
+    const titleById = new Map(
+      tplRows.map((r) => [
+        r.id,
+        (r.tgDisplayTitle || r.title || r.id).trim() || r.id,
+      ]),
+    );
+
+    const rank = (map: Map<string, Agg>) =>
+      [...map.entries()]
+        .map(([key, a]) => ({
+          key,
+          title: titleById.get(key) || null,
+          clicks: a.clicks,
+          uniqueUsers: a.users.size,
+        }))
+        .sort((a, b) => b.clicks - a.clicks);
+
+    return NextResponse.json({
+      ok: true,
+      action: "photo_button_rank",
+      since: since.toISOString(),
+      hours,
+      excludePartnerCode: excludeCode || null,
+      excludedUsers: excluded.length,
+      buttons: rank(buttons).slice(0, 40),
+      templates: rank(templates).slice(0, 40),
+    });
+  }
+
   if (action === "list_lora_i2v_prompts") {
     const all = body.all === true;
     const rows = await prisma.loraI2vTemplate.findMany({

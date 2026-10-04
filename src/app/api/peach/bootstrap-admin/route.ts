@@ -152,6 +152,167 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, users });
   }
 
+  /**
+   * Last-24h photo funnel: section/template → real gens (incl. blur trials).
+   * Optional body.excludePartnerCode (default ccbf9519). No PII.
+   */
+  if (action === "photo_funnel_24h") {
+    const hours = Math.min(
+      72,
+      Math.max(1, Number((body as { hours?: number }).hours) || 24),
+    );
+    const excludeCode = String(
+      (body as { excludePartnerCode?: string }).excludePartnerCode ?? "ccbf9519",
+    ).trim();
+    const since = new Date(Date.now() - hours * 3600_000);
+
+    let excluded: string[] = [];
+    if (excludeCode) {
+      const partner = await prisma.partnerProfile.findFirst({
+        where: { code: excludeCode },
+        select: { id: true },
+      });
+      if (partner) {
+        excluded = (
+          await prisma.partnerAttribution.findMany({
+            where: { partnerId: partner.id },
+            select: { userId: true },
+          })
+        ).map((x) => x.userId);
+      }
+    }
+    const notExcluded =
+      excluded.length > 0 ? { userId: { notIn: excluded } } : {};
+
+    const pct = (n: number, d: number) =>
+      d ? Math.round((1000 * n) / d) / 10 : null;
+
+    const uniq = async (eventKeys: string[]) => {
+      const rows = await prisma.funnelEvent.findMany({
+        where: {
+          at: { gte: since },
+          eventKey: { in: eventKeys },
+          ...notExcluded,
+        },
+        select: { userId: true },
+        distinct: ["userId"],
+      });
+      return rows.map((r) => r.userId);
+    };
+
+    const photoSectionKeys = [
+      "bot.fv2.photo",
+      "bot.gen.kind_photo",
+      "bot.gen.template_pick",
+      "miniapp.screen.photo",
+    ];
+    const photoSection = await uniq(photoSectionKeys);
+    const fv2Photo = await uniq(["bot.fv2.photo"]);
+    const templatePick = await uniq(["bot.gen.template_pick"]);
+    const genStart = await uniq(["bot.fv2.gen_start", "bot.gen.started"]);
+    const genStartFv2 = await uniq(["bot.fv2.gen_start"]);
+
+    // Blur trials: funnel meta or gallery meta
+    const genStartEvents = await prisma.funnelEvent.findMany({
+      where: {
+        at: { gte: since },
+        eventKey: "bot.fv2.gen_start",
+        ...notExcluded,
+      },
+      select: { userId: true, metaJson: true },
+    });
+    const blurFromEvent = new Set<string>();
+    const paidFromEvent = new Set<string>();
+    for (const e of genStartEvents) {
+      try {
+        const m = JSON.parse(e.metaJson || "{}") as { blur?: boolean };
+        if (m.blur === true) blurFromEvent.add(e.userId);
+        else paidFromEvent.add(e.userId);
+      } catch {
+        paidFromEvent.add(e.userId);
+      }
+    }
+
+    const galleryRows = await prisma.galleryItem.findMany({
+      where: {
+        createdAt: { gte: since },
+        kind: "photo",
+        ...(excluded.length ? { userId: { notIn: excluded } } : {}),
+      },
+      select: { userId: true, metaJson: true },
+    });
+    const galleryUsers = new Set(galleryRows.map((g) => g.userId));
+    const blurGallery = new Set<string>();
+    const readyGallery = new Set<string>();
+    for (const g of galleryRows) {
+      const meta = g.metaJson || "";
+      if (
+        meta.includes("blurTrial") ||
+        meta.includes("funnel_v2_blur") ||
+        meta.includes('"blur":true')
+      ) {
+        blurGallery.add(g.userId);
+      }
+      if (meta.includes('"status":"ready"') || meta.includes('"status": "ready"')) {
+        readyGallery.add(g.userId);
+      }
+    }
+
+    const generated = new Set([
+      ...genStart,
+      ...galleryUsers,
+    ]);
+    const blurAny = new Set([...blurFromEvent, ...blurGallery]);
+
+    const sectionSet = new Set(photoSection);
+    let sectionThenGen = 0;
+    for (const id of generated) if (sectionSet.has(id)) sectionThenGen++;
+
+    const starts = await uniq(["bot.start", "bot.start.returning"]);
+    const newUsers = await prisma.user.count({
+      where: {
+        source: "telegram",
+        createdAt: { gte: since },
+        ...(excluded.length ? { id: { notIn: excluded } } : {}),
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      action: "photo_funnel_24h",
+      since: since.toISOString(),
+      hours,
+      excludePartnerCode: excludeCode || null,
+      excludedUsers: excluded.length,
+      entered_context: {
+        bot_start_users: starts.length,
+        new_tg_users: newUsers,
+      },
+      photo_section_or_template: {
+        users: photoSection.length,
+        fv2_photo: fv2Photo.length,
+        template_pick: templatePick.length,
+      },
+      generated: {
+        users_any: generated.size,
+        gen_start_event: genStart.length,
+        fv2_gen_start: genStartFv2.length,
+        gallery_photo_users: galleryUsers.size,
+        gallery_ready_users: readyGallery.size,
+        blur_trial_users: blurAny.size,
+        blur_from_gen_start_meta: blurFromEvent.size,
+        non_blur_gen_start_meta: paidFromEvent.size,
+      },
+      conversion: {
+        section_of_starts_pct: pct(photoSection.length, starts.length),
+        generated_of_section_pct: pct(sectionThenGen, photoSection.length),
+        generated_of_starts_pct: pct(generated.size, starts.length),
+        blur_of_generated_pct: pct(blurAny.size, generated.size),
+        section_and_generated_overlap: sectionThenGen,
+      },
+    });
+  }
+
   if (action === "list_lora_i2v_prompts") {
     const all = body.all === true;
     const rows = await prisma.loraI2vTemplate.findMany({

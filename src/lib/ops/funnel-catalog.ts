@@ -459,7 +459,7 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "bot",
     "monetization",
     "Пополнение: выбрал сумму",
-    "Выбрал пакет персиков (fv2:tu:a:N или tu:N). Сумма в meta.amount.",
+    "Выбрал пакет (fv2:tu:a:N, fv2:tu:ba:N под пробным фото, или tu:N). Сумма в meta.amount.",
   ),
   S(
     "bot.topup.method",
@@ -907,11 +907,15 @@ export function resolveBotCallback(data: string): {
     return { key: "bot.topup.open", meta: { callback: data } };
   }
   {
-    const tuAmt = /^fv2:tu:a:(\d+)$/.exec(data);
+    const tuAmt = /^fv2:tu:(?:ba|a):(\d+)$/.exec(data);
     if (tuAmt) {
       return {
         key: "bot.topup.amount",
-        meta: { amount: Number(tuAmt[1]), callback: data },
+        meta: {
+          amount: Number(tuAmt[1]),
+          callback: data,
+          ...(data.includes(":ba:") ? { fromBlur: true } : {}),
+        },
       };
     }
   }

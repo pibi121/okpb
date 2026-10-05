@@ -130,6 +130,25 @@ export function trackBotCallback(
   data: string,
 ): void {
   if (!data) return;
+  const blurAmount = /^fv2:tu:ba:(\d+)$/.exec(data);
+  if (blurAmount) {
+    const amount = Number(blurAmount[1]) || 0;
+    trackFunnelEventBg({
+      userId,
+      platformUserId,
+      eventKey: "bot.topup.open",
+      surface: "bot",
+      meta: { callback: data, fromBlur: true },
+    });
+    trackFunnelEventBg({
+      userId,
+      platformUserId,
+      eventKey: "bot.topup.amount",
+      surface: "bot",
+      meta: { amount, callback: data, fromBlur: true },
+    });
+    return;
+  }
   const resolved = resolveBotCallback(data);
   trackFunnelEventBg({
     userId,

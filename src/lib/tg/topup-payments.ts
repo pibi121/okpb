@@ -1,6 +1,6 @@
 /**
- * Peach top-ups via Cashera (SBP / crypto / CryptoBot).
- * Card is not offered in product UI — Cashera merchant has card disabled.
+ * Peach top-ups via Cashera (SBP / crypto) and XPay cards (KZ / UZ).
+ * Cashera card is not offered — that merchant has card disabled.
  */
 import { prisma } from "@/lib/db";
 import {
@@ -10,6 +10,7 @@ import {
   type CasheraPaymentMethod,
   type CasheraTransaction,
 } from "@/lib/cashera";
+import { xpayCabinetConfigured } from "@/lib/xpay";
 import {
   TG_MAX_TOPUP_PEACHES,
   TG_MIN_TOPUP_PEACHES,
@@ -18,9 +19,14 @@ import {
 } from "@/lib/tg-pricing";
 import { creditPeaches } from "@/lib/tg/wallet";
 
-/** Methods shown in bot + Mini App. CryptoBot hidden until Cashera path works. */
+export type TopupMethodId =
+  | Exclude<CasheraPaymentMethod, "card">
+  | "kz_card"
+  | "uz_card";
+
+/** Methods known to the product. CryptoBot stays hidden until Cashera path works. */
 export const TOPUP_PAYMENT_METHODS: Array<{
-  id: Exclude<CasheraPaymentMethod, "card">;
+  id: TopupMethodId;
   labelRu: string;
   labelEn: string;
   /** Telegram Bot API inline button style (primary/success/danger). */
@@ -38,23 +44,44 @@ export const TOPUP_PAYMENT_METHODS: Array<{
     labelEn: "🪙 Crypto (USDT, BTC, ETH…)",
     style: "danger",
   },
+  {
+    id: "kz_card",
+    labelRu: "Картой (Казахстан)",
+    labelEn: "Card (Kazakhstan)",
+    style: "primary",
+  },
+  {
+    id: "uz_card",
+    labelRu: "Картой (Узбекистан)",
+    labelEn: "Card (Uzbekistan)",
+    style: "primary",
+  },
   // Hidden: CryptoBot not working in Cashera yet — re-add when ready:
   // { id: "cryptobot", labelRu: "💎 CryptoBot…", labelEn: "💎 CryptoBot…", style: "primary" },
 ];
 
+/** Buttons actually rendered. KZ/UZ stay hidden until that cabinet key is set. */
+export function visibleTopupMethods() {
+  return TOPUP_PAYMENT_METHODS.filter((m) => {
+    if (m.id === "kz_card") return xpayCabinetConfigured("kz");
+    if (m.id === "uz_card") return xpayCabinetConfigured("uz");
+    return true;
+  });
+}
+
 export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
 
 /**
- * Fee rebate %: user pays Cashera fee (fee_payer=customer), we return it as 🍑.
- * Rates match merchant cabinet (SBP / crypto / CryptoBot).
+ * Fee rebate % credited back to the balance.
+ * Cashera adds its fee on the form (fee_payer=customer).
+ * XPay has no such switch: we gross up the form amount and rebate 10% here.
  */
-export const TOPUP_FEE_REBATE_PCT: Record<
-  Exclude<CasheraPaymentMethod, "card">,
-  number
-> = {
+export const TOPUP_FEE_REBATE_PCT: Record<TopupMethodId, number> = {
   sbp: 13,
   crypto: 3,
   cryptobot: 5,
+  kz_card: 10,
+  uz_card: 10,
 };
 
 /**
@@ -69,9 +96,7 @@ export function topupFeeRebatePeaches(
   return Math.max(0, Math.ceil((Math.floor(peaches) * pct) / 100));
 }
 
-export function isActiveTopupMethod(
-  method: string,
-): method is Exclude<CasheraPaymentMethod, "card"> {
+export function isActiveTopupMethod(method: string): method is TopupMethodId {
   return (TOPUP_ACTIVE_METHOD_IDS as string[]).includes(method);
 }
 

@@ -153,7 +153,7 @@ export const SALES_FUNNEL_PAY_STEPS: SalesFunnelStepDef[] = [
     key: "bot.topup.amount",
     title: "Выбрал сумму",
     eventKeys: ["bot.topup.amount"],
-    metaContains: ["fv2:tu:a:"],
+    metaContains: ["fv2:tu:a:", "fv2:tu:ba:"],
     kind: "event",
   },
   {
@@ -387,6 +387,12 @@ const LIVE_TOPUP_BASE: Prisma.LedgerEntryWhereInput = {
 function isLiveTopupReason(reason: string) {
   const r = reason.toLowerCase();
   return r.includes("topup") && !r.includes("stub") && !r.includes("preview");
+}
+
+/** Blur pack buttons were stored as bot.topup.open with callback fv2:tu:ba:. */
+function metaChoosesTopupAmount(stepKey: string, meta: string, needles?: string[]) {
+  if (stepKey !== "bot.topup.amount" || !needles?.length) return false;
+  return needles.some((needle) => meta.includes(needle));
 }
 
 const START_EVENT_KEYS = [
@@ -870,9 +876,13 @@ export async function collectSalesAnalytics(
       byStep.set(step.key, new Set());
     }
     for (const h of eventHits) {
+      const meta = h.metaJson || "";
       for (const step of steps) {
         if (step.kind !== "event" || !step.eventKeys) continue;
-        if (step.eventKeys.includes(h.eventKey)) {
+        if (
+          step.eventKeys.includes(h.eventKey) ||
+          metaChoosesTopupAmount(step.key, meta, step.metaContains)
+        ) {
           byStep.get(step.key)!.add(h.userId);
         }
       }
@@ -970,9 +980,13 @@ export async function collectSalesAnalytics(
     factUsersByStep.set(step.key, new Set());
   }
   for (const h of factEventHits) {
+    const meta = h.metaJson || "";
     for (const step of SALES_FUNNEL_PAY_STEPS) {
       if (step.kind !== "event" || !step.eventKeys) continue;
-      if (step.eventKeys.includes(h.eventKey)) {
+      if (
+        step.eventKeys.includes(h.eventKey) ||
+        metaChoosesTopupAmount(step.key, meta, step.metaContains)
+      ) {
         factUsersByStep.get(step.key)!.add(h.userId);
       }
     }
@@ -1379,6 +1393,20 @@ async function cohortReachedSet(
     for (const h of eventHits) reached.add(h.userId);
     for (const h of legacyHits) reached.add(h.userId);
   }
+  if (stepDef.key === "bot.topup.amount") {
+    const blurHits = await mapChunks(cohortIds, (chunk) =>
+      prisma.funnelEvent.findMany({
+        where: {
+          userId: { in: chunk },
+          eventKey: "bot.topup.open",
+          metaJson: { contains: "fv2:tu:ba:" },
+        },
+        select: { userId: true },
+        distinct: ["userId"],
+      }),
+    );
+    for (const h of blurHits) reached.add(h.userId);
+  }
   return reached;
 }
 
@@ -1499,6 +1527,19 @@ async function factReachedDetailed(
   ]);
   for (const h of eventHits) reached.add(h.userId);
   for (const h of legacyHits) reached.add(h.userId);
+  if (stepDef.key === "bot.topup.amount") {
+    const blurHits = await prisma.funnelEvent.findMany({
+      where: {
+        at,
+        eventKey: "bot.topup.open",
+        metaJson: { contains: "fv2:tu:ba:" },
+        ...(partnerRel ? { user: partnerRel } : {}),
+      },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    for (const h of blurHits) reached.add(h.userId);
+  }
   return { users: reached };
 }
 

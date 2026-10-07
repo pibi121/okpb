@@ -31,9 +31,8 @@ export default function OpsPricesPage() {
     >
       <h1 className="font-display text-3xl">Цены</h1>
       <p className="text-sm text-zinc-500">
-        Фото и LoRA — фикс. Видео — цена за секунду × длительность шаблона
-        (минимум секунд тоже настраивается). У шаблона со своей ценой она
-        важнее формулы.
+        Фото (раздевание, позы, актриса, LoRA) — фикс. Видео — цена за секунду
+        × длительность шаблона (минимум секунд тоже настраивается).
       </p>
       {fields.map((f, i) => (
         <label key={f.key} className="flex items-center justify-between gap-3 text-sm">

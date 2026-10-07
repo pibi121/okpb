@@ -10,10 +10,10 @@ export const TG_PHOTO_PEACHES = {
   actress: 61,
   /** User-trained LoRA */
   lora: 79,
+  /** Photo poses / templates */
+  pose: 79,
   /** @deprecated alias — kept for old overlays */
   basic: 61,
-  /** @deprecated alias */
-  pose: 79,
 } as const;
 
 /**
@@ -87,7 +87,7 @@ export const TG_PROMO = {
 export const TG_UNDRESS_PEACHES = 25;
 
 export function undressPeaches(): number {
-  return ov("undress", TG_UNDRESS_PEACHES);
+  return ovAny(["photo_undress", "undress"], TG_UNDRESS_PEACHES);
 }
 
 export type TgVideoTier = keyof typeof TG_VIDEO_PEACHES;
@@ -177,7 +177,10 @@ export function tgPhotoPeaches(tier: TgPhotoTier): number {
   if (tier === "actress" || tier === "basic") {
     return ovAny(["photo_actress", "photo_basic"], TG_PHOTO_PEACHES.actress);
   }
-  if (tier === "lora" || tier === "pose") {
+  if (tier === "pose") {
+    return ovAny(["photo_pose", "photo_lora"], TG_PHOTO_PEACHES.pose);
+  }
+  if (tier === "lora") {
     return ovAny(["photo_lora", "photo_pose"], TG_PHOTO_PEACHES.lora);
   }
   return ov(`photo_${tier}`, TG_PHOTO_PEACHES[tier]);
@@ -189,6 +192,10 @@ export function photoActressPeaches(): number {
 
 export function photoLoraPeaches(): number {
   return tgPhotoPeaches("lora");
+}
+
+export function photoPosePeaches(): number {
+  return tgPhotoPeaches("pose");
 }
 
 /** Оживление фото — ставка за секунду × длительность. */

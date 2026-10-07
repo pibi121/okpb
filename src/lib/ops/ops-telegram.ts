@@ -650,8 +650,6 @@ const METHOD_RU: Record<string, string> = {
   sbp: "СБП",
   card: "карта",
   crypto: "крипта",
-  kz_card: "карта KZ",
-  uz_card: "карта UZ",
 };
 
 export async function notifyOpsPayment(opts: {

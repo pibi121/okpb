@@ -18,12 +18,7 @@ export function userFacingTgError(
     return "Платёжный сервис временно не ответил. Выбери способ оплаты ещё раз через пару минут.";
   }
 
-  if (
-    /Cashera\s*[45]\d\d/i.test(trimmed) ||
-    /payment_url|cashera|xpayconnect|client-api-key|\bXPAY_[A-Z0-9_]+\b|\b[a-f0-9]{32,64}\b/i.test(
-      trimmed,
-    )
-  ) {
+  if (/Cashera\s*[45]\d\d/i.test(trimmed) || /payment_url|cashera/i.test(trimmed)) {
     return "Не удалось создать ссылку на оплату. Попробуй другой способ или повтори через минуту.";
   }
 

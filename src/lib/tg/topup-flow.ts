@@ -14,13 +14,13 @@ import { setTgSession } from "@/lib/tg/session";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { tgAbsoluteUrl, tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { casheraConfigured } from "@/lib/cashera";
+import type { CasheraPaymentMethod } from "@/lib/cashera";
 import {
   createTopupPayment,
   formatTopupPriceLine,
   isActiveTopupMethod,
   topupFeeRebatePeaches,
-  visibleTopupMethods,
-  type TopupMethodId,
+  TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
 import { prisma } from "@/lib/db";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
@@ -34,7 +34,7 @@ export function topupInlineKeyboard(locale: TgLocale) {
 }
 
 export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
-  const rows: Array<Array<Record<string, unknown>>> = visibleTopupMethods().map(
+  const rows: Array<Array<Record<string, unknown>>> = TOPUP_PAYMENT_METHODS.map(
     (m) => [
       {
         text: locale === "en" ? m.labelEn : m.labelRu,
@@ -55,7 +55,7 @@ export function topupMethodKeyboard(locale: TgLocale, peaches: number) {
 
 /** Funnel v2: methods + support + back to amount packs. */
 export function funnelV2TopupMethodKeyboard(locale: TgLocale, peaches: number) {
-  const rows: Array<Array<Record<string, unknown>>> = visibleTopupMethods().map(
+  const rows: Array<Array<Record<string, unknown>>> = TOPUP_PAYMENT_METHODS.map(
     (m) => [
       {
         text: locale === "en" ? m.labelEn : m.labelRu,
@@ -249,7 +249,7 @@ export async function handleTopupMethod(
   chatId: number,
   platformUserId: string,
   locale: TgLocale,
-  method: TopupMethodId,
+  method: CasheraPaymentMethod,
   userId: string,
   peaches: number,
 ) {
@@ -274,24 +274,13 @@ export async function handleTopupMethod(
     const isFunnelV2 = Boolean(
       pend.funnelV2TopupPeaches || pend.funnelV2ReturnHubAfterTopup,
     );
-    const xpay = method === "kz_card" || method === "uz_card";
-    const pay = xpay
-      ? await (
-          await import("@/lib/tg/xpay-topup")
-        ).createXpayTopupPayment({
-          userId,
-          peaches,
-          bonusPeaches: bonus > 0 ? bonus : undefined,
-          method,
-          locale,
-        })
-      : await createTopupPayment({
-          userId,
-          peaches,
-          bonusPeaches: bonus > 0 ? bonus : undefined,
-          method,
-          locale,
-        });
+    const pay = await createTopupPayment({
+      userId,
+      peaches,
+      bonusPeaches: bonus > 0 ? bonus : undefined,
+      method,
+      locale,
+    });
     if (!pay.paymentUrl || !/^https?:\/\//i.test(pay.paymentUrl)) {
       throw new Error("Платёжная ссылка не создана");
     }
@@ -309,37 +298,30 @@ export async function handleTopupMethod(
     });
 
     const { formatPayAmount } = await import("@/lib/tg/funnel-v2/money");
-    const caption =
-      "captionHtml" in pay && pay.captionHtml
-        ? pay.captionHtml
-        : isFunnelV2
-          ? funnelV2PayCaption(method, formatPayAmount(peaches))
-          : tFormat(payLinkCopyKey(method), locale, {
-              price: pay.priceLine,
-            });
+    const caption = isFunnelV2
+      ? funnelV2PayCaption(method, formatPayAmount(peaches))
+      : tFormat(payLinkCopyKey(method), locale, {
+          price: pay.priceLine,
+        });
     const reply_markup = payLinkKeyboard({
       locale,
       paymentUrl: pay.paymentUrl,
-      peaches: "selectedRub" in pay && pay.selectedRub ? pay.selectedRub : peaches,
+      peaches,
       orderId: pay.orderId,
       funnelV2: isFunnelV2,
     });
 
-    if (xpay) {
+    try {
+      const { tgDeliverPhoto } = await import("@/lib/tg/deliver-media");
+      await tgDeliverPhoto({
+        chatId,
+        url: tgAbsoluteUrl(payGuidePath(method)),
+        caption,
+        extra: { reply_markup },
+      });
+    } catch (mediaErr) {
+      console.warn("[topup] guide photo failed, fallback text:", mediaErr);
       await tgSendMessage(chatId, caption, { reply_markup });
-    } else {
-      try {
-        const { tgDeliverPhoto } = await import("@/lib/tg/deliver-media");
-        await tgDeliverPhoto({
-          chatId,
-          url: tgAbsoluteUrl(payGuidePath(method)),
-          caption,
-          extra: { reply_markup },
-        });
-      } catch (mediaErr) {
-        console.warn("[topup] guide photo failed, fallback text:", mediaErr);
-        await tgSendMessage(chatId, caption, { reply_markup });
-      }
     }
   } catch (e) {
     console.error("[topup] create payment failed:", e);
@@ -393,22 +375,19 @@ export async function handleTopupRenew(
     });
   }
 
-  // order.peaches is credit total (face + pack bonus + fee rebate).
-  // amountMinor is the ruble face. XPay also stores the pack the user picked.
-  const { parseXpayOrderMeta } = await import("@/lib/tg/xpay-topup");
-  const meta = parseXpayOrderMeta(order.rawStatusJson);
-  const faceRub = Math.max(1, Math.round(order.amountMinor / 100));
-  const feeWas = topupFeeRebatePeaches(faceRub, order.paymentMethod);
-  const packBonus = Math.max(0, order.peaches - faceRub - feeWas);
-  const selectedRub =
-    meta?.selectedRub && meta.selectedRub >= TG_MIN_TOPUP_PEACHES
-      ? meta.selectedRub
-      : Math.max(TG_MIN_TOPUP_PEACHES, faceRub);
+  // order.peaches is credit total (base + pack bonus + fee rebate).
+  // Paid amount = amountMinor (1🍑=1₽ → base peaches).
+  const basePeaches = Math.max(
+    TG_MIN_TOPUP_PEACHES,
+    Math.round(order.amountMinor / 100),
+  );
+  const feeWas = topupFeeRebatePeaches(basePeaches, order.paymentMethod);
+  const packBonus = Math.max(0, order.peaches - basePeaches - feeWas);
 
   await setTgSession(platformUserId, {
     chatState: "awaiting_topup_method",
     pending: {
-      topupPeaches: selectedRub,
+      topupPeaches: basePeaches,
       topupBonusPeaches: packBonus,
     },
   });
@@ -417,9 +396,9 @@ export async function handleTopupRenew(
     chatId,
     platformUserId,
     locale,
-    order.paymentMethod,
+    order.paymentMethod as CasheraPaymentMethod,
     userId,
-    selectedRub,
+    basePeaches,
   );
 }
 

@@ -1914,7 +1914,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       chatId,
       platformUserId,
       locale,
-      method,
+      method as "sbp" | "crypto",
       user.id,
       peaches,
     );

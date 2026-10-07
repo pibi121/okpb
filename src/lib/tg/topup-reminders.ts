@@ -10,7 +10,6 @@ import {
   isActiveTopupMethod,
   TOPUP_PAYMENT_METHODS,
 } from "@/lib/tg/topup-payments";
-import { parseXpayOrderMeta } from "@/lib/tg/xpay-topup";
 
 const TICK_MS = 60_000;
 /** First nudge after this age. */
@@ -41,7 +40,7 @@ export async function tickTopupReminders(): Promise<number> {
       paymentUrl: { not: "" },
       remindCount: { lt: MAX_REMINDS },
       createdAt: { gte: oldest, lte: firstCutoff },
-      paymentMethod: { in: ["sbp", "crypto", "cryptobot", "kz_card", "uz_card"] },
+      paymentMethod: { in: ["sbp", "crypto", "cryptobot"] },
     },
     orderBy: { createdAt: "asc" },
     take: 40,
@@ -75,16 +74,8 @@ export async function tickTopupReminders(): Promise<number> {
       select: { locale: true },
     });
     const locale = (user?.locale === "en" ? "en" : "ru") as TgLocale;
-    const xpayMeta = parseXpayOrderMeta(order.rawStatusJson);
-    const price = xpayMeta?.payLine
-      ? xpayMeta.payLine
-      : formatTopupPriceLine(order.peaches, locale);
+    const price = formatTopupPriceLine(order.peaches, locale);
     const method = methodLabel(order.paymentMethod, locale);
-    const againAmount =
-      xpayMeta?.selectedRub ||
-      (xpayMeta
-        ? Math.max(1, Math.round(order.amountMinor / 100))
-        : order.peaches);
 
     const { resolveUserTelegramDelivery } = await import(
       "@/lib/tg/notify-user"
@@ -119,7 +110,7 @@ export async function tickTopupReminders(): Promise<number> {
               [
                 {
                   text: locale === "en" ? "← Change method" : "← Другой способ",
-                  callback_data: TOPUP_CB.amount(againAmount),
+                  callback_data: TOPUP_CB.amount(order.peaches),
                 },
               ],
             ],

@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { TG_MIN_TOPUP_PEACHES, TG_QUICK_TOPUP_AMOUNTS } from "@/lib/tg-pricing";
 
-type PayMethod = { id: string; labelRu: string; labelEn: string };
-
-const FALLBACK_METHODS: PayMethod[] = [
-  { id: "sbp", labelRu: "СБП — перевод из банка", labelEn: "SBP — bank transfer" },
-  { id: "crypto", labelRu: "Крипта — USDT", labelEn: "Crypto — USDT" },
-];
+const METHODS = [
+  { id: "sbp", ru: "СБП — перевод из банка", en: "SBP — bank transfer" },
+  { id: "crypto", ru: "Крипта — USDT", en: "Crypto — USDT" },
+] as const;
 
 function priceLine(amount: number): string {
   const rubPerUsdt = 80;
@@ -25,8 +23,6 @@ export default function TgTopupPage() {
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
-  const [note, setNote] = useState("");
-  const [methods, setMethods] = useState<PayMethod[]>(FALLBACK_METHODS);
 
   const peaches = useMemo(() => {
     if (amount && amount > 0) return amount;
@@ -35,27 +31,6 @@ export default function TgTopupPage() {
   }, [amount, custom]);
 
   const ru = locale === "ru";
-
-  useEffect(() => {
-    if (status !== "ready") return;
-    let cancelled = false;
-    void apiFetch("/api/tg/topup")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { methods?: PayMethod[] } | null) => {
-        if (cancelled || !data?.methods?.length) return;
-        setMethods(
-          data.methods.map((m) => ({
-            id: m.id,
-            labelRu: m.labelRu,
-            labelEn: m.labelEn,
-          })),
-        );
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [status, apiFetch]);
 
   async function pay(method: string) {
     if (peaches < TG_MIN_TOPUP_PEACHES) {
@@ -78,14 +53,10 @@ export default function TgTopupPage() {
         paymentUrl?: string;
         error?: string;
         message?: string;
-        notice?: string | null;
-        priceLine?: string;
       };
       if (!res.ok || !data.paymentUrl) {
         throw new Error(data.message || data.error || `HTTP ${res.status}`);
       }
-      if (data.notice) setNote(data.notice);
-      else if (data.priceLine) setNote(data.priceLine);
       const url = data.paymentUrl;
       const tg = window.Telegram?.WebApp as
         | { openLink?: (u: string) => void }
@@ -115,8 +86,8 @@ export default function TgTopupPage() {
           </p>
           <p style={{ color: "var(--tg-muted)", fontSize: 12, marginTop: 8 }}>
             {ru
-              ? "СБП, крипта или карта Казахстана / Узбекистана. Комиссия вернётся на баланс."
-              : "SBP, crypto, or a Kazakhstan / Uzbekistan card. The fee is credited back."}
+              ? "СБП из банка или USDT. Карты пока нет."
+              : "Bank SBP or USDT. Cards unavailable for now."}
           </p>
 
           <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
@@ -177,7 +148,7 @@ export default function TgTopupPage() {
                 {priceLine(peaches)}
               </p>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                {methods.map((m) => (
+                {METHODS.map((m) => (
                   <button
                     key={m.id}
                     type="button"
@@ -192,7 +163,7 @@ export default function TgTopupPage() {
                       fontWeight: 600,
                     }}
                   >
-                    {busy === m.id ? "…" : ru ? m.labelRu : m.labelEn}
+                    {busy === m.id ? "…" : ru ? m.ru : m.en}
                   </button>
                 ))}
               </div>
@@ -205,9 +176,6 @@ export default function TgTopupPage() {
             </p>
           )}
 
-          {note ? (
-            <p style={{ marginTop: 12, fontSize: 13, color: "inherit" }}>{note}</p>
-          ) : null}
           {err ? (
             <p className="tg-error" style={{ marginTop: 12 }}>
               {err}

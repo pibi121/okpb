@@ -20,6 +20,11 @@ export async function POST(req: Request) {
   return withOps("prices", async (actor) => {
     const body = (await req.json()) as { prices?: Record<string, number> };
     const next = { ...getOpsPrices(), ...(body.prices || {}) };
+    if (typeof next.photo_undress === "number") {
+      next.undress = next.photo_undress;
+    } else if (typeof next.undress === "number") {
+      next.photo_undress = next.undress;
+    }
     const json = JSON.stringify(next);
     await saveOpsSettings({ pricesJson: json });
     setPriceOverlay(json);

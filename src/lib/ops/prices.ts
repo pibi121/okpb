@@ -1,5 +1,6 @@
 import {
   TG_PHOTO_PEACHES,
+  TG_UNDRESS_PEACHES,
   TG_VIDEO_SEC_PEACHES,
   TG_VIDEO_MIN_SEC,
   TG_TOP_UP_PACKS,
@@ -9,6 +10,8 @@ import {
 } from "@/lib/tg-pricing";
 
 export type OpsPrices = {
+  photo_undress: number;
+  photo_pose: number;
   photo_actress: number;
   photo_lora: number;
   /** 🍑 per second — animate / story / premium */
@@ -24,8 +27,8 @@ export type OpsPrices = {
   topup_pro: number;
   first_video_discount_pct: number;
   /** Legacy keys kept so old overlays still merge cleanly */
+  undress?: number;
   photo_basic?: number;
-  photo_pose?: number;
   video_animate?: number;
   video_story_5?: number;
   video_story_10?: number;
@@ -40,6 +43,8 @@ export type OpsPrices = {
 };
 
 const DEFAULTS: OpsPrices = {
+  photo_undress: TG_UNDRESS_PEACHES,
+  photo_pose: TG_PHOTO_PEACHES.pose,
   photo_actress: TG_PHOTO_PEACHES.actress,
   photo_lora: TG_PHOTO_PEACHES.lora,
   video_sec_animate: TG_VIDEO_SEC_PEACHES.animate,
@@ -68,7 +73,6 @@ export function setPriceOverlay(json: string) {
   // Drop stale flat/bucket defaults so per-second rates apply.
   const STALE_DEFAULTS: Record<string, number> = {
     photo_basic: 54,
-    photo_pose: 87,
     video_basic5: 142,
     video_popular: 197,
     video_premium: 274,
@@ -84,6 +88,11 @@ export function setPriceOverlay(json: string) {
   };
   for (const [k, v] of Object.entries(STALE_DEFAULTS)) {
     if (parsed[k] === v) delete parsed[k];
+  }
+  if (typeof parsed.photo_undress === "number" && parsed.undress === undefined) {
+    parsed.undress = parsed.photo_undress;
+  } else if (typeof parsed.undress === "number" && parsed.photo_undress === undefined) {
+    parsed.photo_undress = parsed.undress;
   }
   setPricingOverlay(parsed);
   overlay = parsed as Partial<OpsPrices>;
@@ -112,17 +121,26 @@ export async function ensurePriceOverlay(force = false): Promise<void> {
 }
 
 export function getOpsPrices(): OpsPrices {
-  return { ...DEFAULTS, ...overlay };
+  const merged: OpsPrices = { ...DEFAULTS, ...overlay };
+  if (overlay.photo_undress === undefined && typeof overlay.undress === "number") {
+    merged.photo_undress = overlay.undress;
+  }
+  if (overlay.photo_pose === undefined && typeof overlay.photo_lora === "number") {
+    merged.photo_pose = overlay.photo_lora;
+  }
+  return merged;
 }
 
 export const PRICE_FIELDS: { key: keyof OpsPrices; title: string }[] = [
-  { key: "photo_actress", title: "1. Фото с актрисой (фикс)" },
-  { key: "photo_lora", title: "2. Фото со своей LoRA (фикс)" },
-  { key: "video_sec_animate", title: "3. Оживление — ₽ за 1 сек" },
-  { key: "video_sec_story", title: "4. Обычный шаблон — ₽ за 1 сек" },
-  { key: "video_sec_premium", title: "5. Best / премиум — ₽ за 1 сек" },
+  { key: "photo_undress", title: "1. Раздевание фото (фикс)" },
+  { key: "photo_pose", title: "2. Фото по позам / шаблоны (фикс)" },
+  { key: "photo_actress", title: "3. Фото с актрисой (фикс)" },
+  { key: "photo_lora", title: "4. Фото со своей LoRA (фикс)" },
+  { key: "video_sec_animate", title: "5. Оживление — ₽ за 1 сек" },
+  { key: "video_sec_story", title: "6. Обычный шаблон видео — ₽ за 1 сек" },
+  { key: "video_sec_premium", title: "7. Best / премиум видео — ₽ за 1 сек" },
   { key: "video_min_sec", title: "Мин. секунд к оплате (видео)" },
-  { key: "lora_train", title: "6. Обучение LoRA (фикс)" },
+  { key: "lora_train", title: "8. Обучение LoRA (фикс)" },
   { key: "topup_try", title: "Пакет Try" },
   { key: "topup_hot", title: "Пакет Hot" },
   { key: "topup_fire", title: "Пакет Fire" },

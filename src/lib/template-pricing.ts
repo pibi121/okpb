@@ -7,6 +7,7 @@ import { billableDurationSecForLoraI2v } from "@/lib/lora-i2v-shots";
 import {
   photoActressPeaches,
   photoLoraPeaches,
+  photoPosePeaches,
   premiumVideoPeaches,
   storyH3Peaches,
 } from "@/lib/tg-pricing";
@@ -14,9 +15,11 @@ import {
 export function priceForPhotoTemplateTier(
   tier: string | null | undefined,
 ): number {
-  const t = (tier || "basic").toLowerCase();
-  if (t === "pose" || t === "lora") return Math.max(1, photoLoraPeaches());
-  return Math.max(1, photoActressPeaches());
+  const t = (tier || "pose").toLowerCase();
+  if (t === "pose" || t === "basic") return Math.max(1, photoPosePeaches());
+  if (t === "lora") return Math.max(1, photoLoraPeaches());
+  if (t === "actress") return Math.max(1, photoActressPeaches());
+  return Math.max(1, photoPosePeaches());
 }
 
 /** Photo charge: studio cast → actress rate; own LoRA → lora rate. */

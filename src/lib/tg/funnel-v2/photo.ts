@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
 import { undressPeaches } from "@/lib/tg-pricing";
+import { priceForPhotoTemplateTier } from "@/lib/template-pricing";
 import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
 import { tgAbsoluteUrl } from "@/lib/tg/media-assets";
 import {
@@ -44,7 +45,7 @@ async function listPhotoTemplates(): Promise<PhotoTpl[]> {
     id: r.id,
     title: r.tgDisplayTitle || r.title,
     tgDisplayTitle: r.tgDisplayTitle,
-    pricePeaches: r.pricePeaches,
+    pricePeaches: priceForPhotoTemplateTier(r.tier) || r.pricePeaches,
     previewImageUrl: r.previewImageUrl,
     previewVideoUrl: r.previewVideoUrl,
     notes: r.notes || "",
@@ -343,7 +344,7 @@ export async function handleFunnelV2PhotoCallback(opts: {
       id: row.id,
       title: row.tgDisplayTitle || row.title,
       notes: row.notes || "",
-      price: row.pricePeaches,
+      price: priceForPhotoTemplateTier(row.tier) || row.pricePeaches,
       previewImageUrl: row.previewImageUrl,
       previewVideoUrl: row.previewVideoUrl,
       hasPhoto: Boolean(await activePhotoUrl(platformUserId)),
@@ -423,7 +424,9 @@ export async function runFunnelV2PhotoGen(opts: {
         })
       : null;
   const price =
-    opts.kind === "ud" ? undressPeaches() : tplRow?.pricePeaches || 0;
+    opts.kind === "ud"
+      ? undressPeaches()
+      : priceForPhotoTemplateTier(tplRow?.tier) || tplRow?.pricePeaches || 0;
   const poseTitle =
     opts.kind === "ud"
       ? "Раздеть полностью"

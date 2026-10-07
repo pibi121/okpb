@@ -23,6 +23,9 @@ export async function GET(req: Request) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await import("@/lib/ops/prices")
+    .then(({ ensurePriceOverlay }) => ensurePriceOverlay())
+    .catch(() => undefined);
   const status = await undressStatus(userId);
   return NextResponse.json({
     pricePeaches: undressPeaches(),

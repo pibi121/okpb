@@ -15,10 +15,14 @@ const TICK_MS = Math.max(
   20_000,
   Number(process.env.PEACH_TUNNEL_HEALER_MS || 45_000) || 45_000,
 );
-/** Video/clip jobs stuck this long with idle Comfy → fail + alert */
+/**
+ * Video/clip jobs stuck this long with idle Comfy → recover / requeue / fail.
+ * Must sit past comfyI2V hardCap (~29 min) so a live waiter can finish or
+ * self-timeout before the healer orphans the ledger row.
+ */
 const STUCK_VIDEO_MS = Math.max(
-  12 * 60_000,
-  Number(process.env.PEACH_STUCK_VIDEO_MS || 22 * 60_000) || 22 * 60_000,
+  20 * 60_000,
+  Number(process.env.PEACH_STUCK_VIDEO_MS || 36 * 60_000) || 36 * 60_000,
 );
 const STUCK_PHOTO_MS = Math.max(
   5 * 60_000,
@@ -181,11 +185,18 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
 
     // Prefer pulling finished Comfy output over failing the user (deploy /
     // hung Node while GPU already finished). No re-render.
+    let jobMeta: Record<string, unknown> = {};
+    try {
+      jobMeta = JSON.parse(job.metaJson || "{}") as Record<string, unknown>;
+    } catch {
+      jobMeta = {};
+    }
     if (comfyUp && job.refType === "quickVideoRun" && job.refId) {
       try {
-        const { tryRecoverQuickVideoRunById } = await import(
-          "@/lib/quick-video"
-        );
+        const {
+          tryRecoverQuickVideoRunById,
+          requeueQuickVideoAfterHeal,
+        } = await import("@/lib/quick-video");
         const recovered = await tryRecoverQuickVideoRunById(
           job.refId,
           job.userId,
@@ -215,6 +226,51 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
             `[peach] tunnel-healer: recovered stuck quick-video ${job.refId} (job ${job.id})`,
           );
           continue;
+        }
+
+        // Recover miss + idle Comfy: one safe full re-render (no extra charge).
+        const healRequeue = Number(jobMeta.healRequeue || 0) || 0;
+        let userId = job.userId;
+        if (!userId) {
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { userId: true },
+          });
+          userId = run?.userId ?? null;
+        }
+        if (healRequeue < 1 && userId) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "error",
+              stage: "error",
+              error: `healer requeue after idle ${mins} min`,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+              metaJson: JSON.stringify({
+                ...jobMeta,
+                healRequeue: healRequeue + 1,
+                healRequeuedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          const requeued = await requeueQuickVideoAfterHeal(job.refId, userId);
+          if (requeued) {
+            console.warn(
+              `[peach] tunnel-healer: requeued quick-video ${job.refId} (old job ${job.id})`,
+            );
+            continue;
+          }
         }
       } catch {
         /* fall through to fail */

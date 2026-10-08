@@ -62,6 +62,30 @@ export async function noteGpuJobStage(stage: GpuJobStage | string, detail?: stri
   await appendTimeline(id, stage, detail).catch(() => undefined);
 }
 
+/** Merge fields into GpuJob.metaJson (promptId / comfyBase for post-restart recover). */
+export async function noteGpuJobMeta(patch: Record<string, unknown>) {
+  const id = currentGpuJobId();
+  if (!id || !patch || !Object.keys(patch).length) return;
+  try {
+    const job = await prisma.gpuJob.findUnique({
+      where: { id },
+      select: { metaJson: true },
+    });
+    if (!job) return;
+    await prisma.gpuJob.update({
+      where: { id },
+      data: {
+        metaJson: JSON.stringify({
+          ...safeJson(job.metaJson),
+          ...patch,
+        }),
+      },
+    });
+  } catch {
+    /* ignore — recover still has filename fallback */
+  }
+}
+
 export async function noteGpuJobError(
   message: string,
   meta?: Record<string, unknown>,

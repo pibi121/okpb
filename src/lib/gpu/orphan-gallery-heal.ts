@@ -228,16 +228,27 @@ export async function recoverOrphanedGpuWork(opts?: {
     take: 80,
   });
 
+  /** Video MiniMax can still be rendering long after a Railway redeploy. */
+  const VIDEO_ORPHAN_FAIL_MS = Math.max(
+    20 * 60_000,
+    Number(process.env.PEACH_STUCK_VIDEO_MS || 36 * 60_000) || 36 * 60_000,
+  );
+
   for (const job of orphans) {
     const reason =
       "orphaned after process restart — check recover / retry";
+    const isVideo =
+      job.pool === "video" ||
+      /video|clip|film|i2v|quick|animate/i.test(`${job.kind} ${job.pool}`);
+    const ageMs = Date.now() - (job.startedAt || job.queuedAt).getTime();
 
     // Safe recover first: if Comfy already finished, deliver instead of fail.
     if (job.refType === "quickVideoRun" && job.refId) {
       try {
-        const { tryRecoverQuickVideoRunById } = await import(
-          "@/lib/quick-video"
-        );
+        const {
+          tryRecoverQuickVideoRunById,
+          requeueQuickVideoAfterHeal,
+        } = await import("@/lib/quick-video");
         const recovered = await tryRecoverQuickVideoRunById(
           job.refId,
           job.userId,
@@ -267,11 +278,91 @@ export async function recoverOrphanedGpuWork(opts?: {
           jobsHealed += 1;
           continue;
         }
+
+        // Still rendering on Metalnode after redeploy — do NOT refund yet.
+        const { anyComfyQueueBusy } = await import("@/lib/comfy-client");
+        const busy = await anyComfyQueueBusy();
+        if (busy === true) {
+          console.log(
+            `[peach] orphan skip quick-video ${job.refId} — Comfy still busy`,
+          );
+          continue;
+        }
+
+        // Idle + young: leave for tunnel-healer (may finish history lag / recover).
+        if (ageMs < VIDEO_ORPHAN_FAIL_MS) {
+          console.log(
+            `[peach] orphan defer quick-video ${job.refId} — age ${Math.round(ageMs / 60_000)}m < video budget`,
+          );
+          continue;
+        }
+
+        let jobMeta: Record<string, unknown> = {};
+        try {
+          jobMeta = JSON.parse(job.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          jobMeta = {};
+        }
+        const healRequeue = Number(jobMeta.healRequeue || 0) || 0;
+        let userId = job.userId;
+        if (!userId) {
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { userId: true },
+          });
+          userId = run?.userId ?? null;
+        }
+        if (healRequeue < 1 && userId) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "error",
+              stage: "error",
+              error: "orphan heal requeue — Comfy idle, no output",
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, Date.now() - job.startedAt.getTime())
+                : null,
+              metaJson: JSON.stringify({
+                ...jobMeta,
+                healRequeue: healRequeue + 1,
+                healRequeuedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          const requeued = await requeueQuickVideoAfterHeal(job.refId, userId);
+          if (requeued) {
+            jobsHealed += 1;
+            continue;
+          }
+        }
       } catch (e) {
         console.error(
           "[peach] orphan quick-video recover:",
           e instanceof Error ? e.message : e,
         );
+      }
+    } else if (isVideo) {
+      // Other video ledger rows: never kill while Comfy still has work / under budget.
+      try {
+        const { anyComfyQueueBusy } = await import("@/lib/comfy-client");
+        const busy = await anyComfyQueueBusy();
+        if (busy === true || ageMs < VIDEO_ORPHAN_FAIL_MS) {
+          console.log(
+            `[peach] orphan defer video job ${job.id} busy=${busy} age=${Math.round(ageMs / 60_000)}m`,
+          );
+          continue;
+        }
+      } catch {
+        if (ageMs < VIDEO_ORPHAN_FAIL_MS) continue;
       }
     }
 

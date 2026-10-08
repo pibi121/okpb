@@ -531,9 +531,40 @@ function friendlyQuickVideoError(msg: string) {
   );
 }
 
+function parseJobMeta(raw: string | null | undefined): Record<string, unknown> {
+  try {
+    return JSON.parse(raw || "{}") as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function quickVideoFilenameCandidates(runId: string): Array<{
+  filename: string;
+  subfolder: string;
+}> {
+  const names: string[] = [];
+  for (let i = 20; i >= 1; i--) {
+    const n = String(i).padStart(5, "0");
+    names.push(`quick_${runId}_${n}_.mp4`);
+    names.push(`quick_${runId}_bgm_${n}_.mp4`);
+  }
+  names.push(`quick_${runId}.mp4`, `quick_${runId}_bgm.mp4`);
+  const out: Array<{ filename: string; subfolder: string }> = [];
+  for (const filename of names) {
+    out.push({ filename, subfolder: "peach" });
+    out.push({ filename, subfolder: "" });
+    // Some SaveVideo builds keep the whole prefix in the filename.
+    out.push({ filename: `peach/${filename}`, subfolder: "" });
+  }
+  return out;
+}
+
 /**
  * If Comfy already finished (output on disk) but Railway lost the in-memory job,
- * pull the latest quick_<runId>_*.mp4 and mark ready — no full re-render.
+ * pull the finished mp4 and mark ready — no full re-render.
+ *
+ * Order: history(promptId) on known bases → filename guess across all Comfy tunnels.
  */
 export async function tryRecoverQuickVideoFromComfy(
   runId: string,
@@ -545,39 +576,84 @@ export async function tryRecoverQuickVideoFromComfy(
   });
   if (!run || (run.status === "ready" && !opts?.force)) return false;
 
-  const { ensureComfyReady, comfyDownloadImage } = await import(
-    "@/lib/comfy-client"
-  );
+  const {
+    ensureComfyReady,
+    listComfyBases,
+    comfyDownloadFromBase,
+    comfyHistoryOutputFiles,
+  } = await import("@/lib/comfy-client");
   try {
     await ensureComfyReady(8, 1000);
   } catch {
     return false;
   }
 
-  const candidates = [
-    `quick_${runId}_00005_.mp4`,
-    `quick_${runId}_00004_.mp4`,
-    `quick_${runId}_00003_.mp4`,
-    `quick_${runId}_00002_.mp4`,
-    `quick_${runId}_00001_.mp4`,
-  ];
+  const job = await prisma.gpuJob.findFirst({
+    where: { refType: "quickVideoRun", refId: runId },
+    orderBy: { queuedAt: "desc" },
+    include: { worker: { select: { comfyUrl: true } } },
+  });
+  const jobMeta = parseJobMeta(job?.metaJson);
+  const promptId =
+    typeof jobMeta.comfyPromptId === "string" ? jobMeta.comfyPromptId : "";
+
+  const bases: string[] = [];
+  const pushBase = (u: unknown) => {
+    const s = typeof u === "string" ? u.trim().replace(/\/$/, "") : "";
+    if (s && !bases.includes(s)) bases.push(s);
+  };
+  pushBase(jobMeta.comfyBase);
+  pushBase(job?.worker?.comfyUrl);
+  for (const b of listComfyBases()) pushBase(b);
 
   let bytes: Buffer | null = null;
   let filename = "";
-  for (const name of candidates) {
-    try {
-      const buf = await comfyDownloadImage({
-        filename: name,
-        subfolder: "peach",
-        type: "output",
-      });
-      if (buf?.length && buf.length > 10_000) {
-        bytes = buf;
-        filename = name;
-        break;
+
+  // 1) Exact history lookup (survives redeploy when promptId was persisted).
+  if (promptId) {
+    for (const base of bases) {
+      const files = await comfyHistoryOutputFiles(base, promptId);
+      const video =
+        files.find((f) => /\.(mp4|webm|mkv)$/i.test(f.filename)) || files[0];
+      if (!video) continue;
+      try {
+        const buf = await comfyDownloadFromBase(base, video);
+        if (buf?.length && buf.length > 10_000) {
+          bytes = buf;
+          filename = `${video.subfolder || ""}/${video.filename}`.replace(
+            /^\//,
+            "",
+          );
+          break;
+        }
+      } catch {
+        /* try next base */
       }
-    } catch {
-      /* try older index */
+    }
+  }
+
+  // 2) Filename fallback across every reachable Comfy (fleet-aware).
+  if (!bytes?.length) {
+    const candidates = quickVideoFilenameCandidates(runId);
+    outer: for (const base of bases) {
+      for (const c of candidates) {
+        try {
+          const buf = await comfyDownloadFromBase(base, {
+            filename: c.filename,
+            subfolder: c.subfolder,
+            type: "output",
+          });
+          if (buf?.length && buf.length > 10_000) {
+            bytes = buf;
+            filename = c.subfolder
+              ? `${c.subfolder}/${c.filename}`
+              : c.filename;
+            break outer;
+          }
+        } catch {
+          /* try next */
+        }
+      }
     }
   }
   if (!bytes?.length) return false;
@@ -684,6 +760,57 @@ export async function tryRecoverQuickVideoRunById(
     );
     return false;
   }
+}
+
+/**
+ * Safe one-shot re-render after healer recover miss (no extra charge).
+ * Caller must close the old GpuJob first and gate on healRequeue < 1.
+ */
+export async function requeueQuickVideoAfterHeal(
+  runId: string,
+  userId: string,
+): Promise<boolean> {
+  const run = await prisma.quickVideoRun.findFirst({
+    where: { id: runId, userId },
+  });
+  if (!run || run.status === "ready") return false;
+
+  await prisma.quickVideoRun.update({
+    where: { id: runId },
+    data: { status: "busy", error: null, updatedAt: new Date() },
+  });
+
+  if (run.galleryItemId) {
+    let meta: Record<string, unknown> = {};
+    try {
+      const item = await prisma.galleryItem.findUnique({
+        where: { id: run.galleryItemId },
+        select: { metaJson: true },
+      });
+      meta = JSON.parse(item?.metaJson || "{}") as Record<string, unknown>;
+    } catch {
+      meta = {};
+    }
+    await prisma.galleryItem.update({
+      where: { id: run.galleryItemId },
+      data: {
+        resultUrl: GALLERY_PLACEHOLDER_URL,
+        metaJson: JSON.stringify({
+          ...meta,
+          status: "pending",
+          error: undefined,
+          orphanHealedAt: undefined,
+          orphanReason: undefined,
+          healRequeuedAt: new Date().toISOString(),
+          quickVideoRunId: runId,
+        }),
+      },
+    });
+  }
+
+  enqueueQuickVideoJob(runId, userId);
+  console.log(`[peach] healer requeued quick-video ${runId}`);
+  return true;
 }
 
 /** Fail busy/error quick-video run: gallery error + refund + optional TG notify. */

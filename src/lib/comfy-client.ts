@@ -396,7 +396,123 @@ export async function comfyQueuePrompt(
     throw new Error(`Comfy queue failed: ${JSON.stringify(data).slice(0, 800)}`);
   }
   if (!data.prompt_id) throw new Error("Comfy: no prompt_id");
+  // Persist for tunnel-healer recover after Railway redeploy kills the waiter.
+  try {
+    const { noteGpuJobMeta } = await import("@/lib/gpu/orchestrator");
+    await noteGpuJobMeta({
+      comfyPromptId: data.prompt_id,
+      comfyBase: activeComfyBase(),
+      comfyQueuedAt: new Date().toISOString(),
+    });
+  } catch {
+    /* ignore */
+  }
   return data.prompt_id;
+}
+
+/** All known Comfy bases (primary + configured fleet tunnels). */
+export function listComfyBases(): string[] {
+  const bases = new Set<string>();
+  const primary = (comfyBaseUrl() || "http://127.0.0.1:8188").replace(/\/$/, "");
+  bases.add(primary);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { FLEET_EXTRA_GPUS, fleetComfyUrl, fleetConfigured } =
+      require("@/lib/gpu/fleet") as {
+        FLEET_EXTRA_GPUS: Array<{ key: string }>;
+        fleetComfyUrl: (g: { key: string }) => string;
+        fleetConfigured: (g: { key: string }) => boolean;
+      };
+    for (const g of FLEET_EXTRA_GPUS) {
+      if (!fleetConfigured(g)) continue;
+      bases.add(fleetComfyUrl(g).replace(/\/$/, ""));
+    }
+  } catch {
+    /* fleet optional */
+  }
+  return [...bases];
+}
+
+export async function comfyDownloadFromBase(
+  base: string,
+  ref: ComfyImageRef,
+): Promise<Buffer> {
+  const root = (base || "").replace(/\/$/, "");
+  if (!root) throw new Error("Comfy base missing");
+  const q = new URLSearchParams({
+    filename: ref.filename,
+    subfolder: ref.subfolder || "",
+    type: ref.type || "output",
+  });
+  const res = await httpRequest(`${root}/view?${q}`, {
+    timeoutMs: 300_000,
+  });
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`Comfy view failed: ${res.status}`);
+  }
+  return res.body;
+}
+
+/**
+ * Fleet-aware queue probe for orphan/healer paths.
+ * - true  → at least one reachable queue has work
+ * - false → every reachable queue is empty
+ * - null  → no queue could be read
+ */
+export async function anyComfyQueueBusy(): Promise<boolean | null> {
+  const bases = listComfyBases();
+  const results = await Promise.all(
+    bases.map(async (base) => {
+      try {
+        const res = await httpRequest(`${base}/queue`, { timeoutMs: 5_000 });
+        if (res.status < 200 || res.status >= 300) return null;
+        const body = JSON.parse(res.body.toString("utf8") || "{}") as {
+          queue_running?: unknown[];
+          queue_pending?: unknown[];
+        };
+        const n =
+          (body.queue_running?.length || 0) + (body.queue_pending?.length || 0);
+        return n > 0;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const known = results.filter((v): v is boolean => v !== null);
+  if (!known.length) return null;
+  if (known.some(Boolean)) return true;
+  return false;
+}
+
+/** Finished outputs for a prompt on a specific Comfy base (post-restart recover). */
+export async function comfyHistoryOutputFiles(
+  base: string,
+  promptId: string,
+): Promise<ComfyFileRef[]> {
+  const root = (base || "").replace(/\/$/, "");
+  const id = (promptId || "").trim();
+  if (!root || !id) return [];
+  try {
+    const res = await httpRequest(`${root}/history/${encodeURIComponent(id)}`, {
+      timeoutMs: 60_000,
+    });
+    if (res.status < 200 || res.status >= 300) return [];
+    const hist = JSON.parse(res.body.toString("utf8") || "{}") as Record<
+      string,
+      {
+        status?: { status_str?: string; completed?: boolean };
+        outputs?: Record<string, Record<string, unknown>>;
+      }
+    >;
+    const entry = hist[id];
+    if (!entry) return [];
+    const st = entry.status?.status_str;
+    if (st === "error") return [];
+    if (!(entry.status?.completed || st === "success")) return [];
+    return collectComfyFiles(entry.outputs);
+  } catch {
+    return [];
+  }
 }
 
 function collectComfyFiles(

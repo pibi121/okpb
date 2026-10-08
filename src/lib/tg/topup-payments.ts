@@ -1,6 +1,5 @@
 /**
- * Peach top-ups via Cashera (SBP / crypto / CryptoBot).
- * Card is not offered in product UI — Cashera merchant has card disabled.
+ * Peach top-ups via Cashera (SBP / crypto) and StreamPay (SBP reserve + KZ/BY/UA).
  */
 import { prisma } from "@/lib/db";
 import {
@@ -18,43 +17,88 @@ import {
 } from "@/lib/tg-pricing";
 import { creditPeaches } from "@/lib/tg/wallet";
 
-/** Methods shown in bot + Mini App. CryptoBot hidden until Cashera path works. */
+/** Cashera methods still offered in UI. */
+export type CasheraTopupMethod = "sbp" | "crypto" | "cryptobot";
+
+export type StreampayTopupMethodId =
+  | "sp_sbp"
+  | "sp_kz"
+  | "sp_by"
+  | "sp_ua";
+
+export type TopupPaymentMethodId = CasheraTopupMethod | StreampayTopupMethodId;
+
+/** Methods shown in bot + Mini App — order matches TZ. */
 export const TOPUP_PAYMENT_METHODS: Array<{
-  id: Exclude<CasheraPaymentMethod, "card">;
+  id: TopupPaymentMethodId;
   labelRu: string;
   labelEn: string;
   /** Telegram Bot API inline button style (primary/success/danger). */
   style: "primary" | "success" | "danger";
+  provider: "cashera" | "streampay";
 }> = [
+  // Cashera — rename only
   {
     id: "sbp",
-    labelRu: "📲 СБП (для жителей РФ)",
-    labelEn: "📲 SBP (for Russia)",
+    labelRu: "🇷🇺 Оплатить по СБП (рублями)",
+    labelEn: "🇷🇺 Pay via SBP (RUB)",
     style: "success",
+    provider: "cashera",
   },
+  // StreamPay — new
+  {
+    id: "sp_sbp",
+    labelRu: "🛟 Оплата СБП (резерв)",
+    labelEn: "🛟 SBP (backup)",
+    style: "primary",
+    provider: "streampay",
+  },
+  // Cashera — rename only
   {
     id: "crypto",
-    labelRu: "🪙 Криптовалюта (USDT, BTC, ETH и т.д)",
-    labelEn: "🪙 Crypto (USDT, BTC, ETH…)",
+    labelRu: "₿ Криптой (USDT, BTC, ETH и т.д)",
+    labelEn: "₿ Crypto (USDT, BTC, ETH…)",
     style: "danger",
+    provider: "cashera",
   },
-  // Hidden: CryptoBot not working in Cashera yet — re-add when ready:
-  // { id: "cryptobot", labelRu: "💎 CryptoBot…", labelEn: "💎 CryptoBot…", style: "primary" },
+  // StreamPay — new
+  {
+    id: "sp_kz",
+    labelRu: "🇰🇿 Картой КЗ",
+    labelEn: "🇰🇿 Kazakhstan card",
+    style: "primary",
+    provider: "streampay",
+  },
+  {
+    id: "sp_by",
+    labelRu: "🇧🇾 Картой Беларуси",
+    labelEn: "🇧🇾 Belarus card",
+    style: "primary",
+    provider: "streampay",
+  },
+  {
+    id: "sp_ua",
+    labelRu: "🇺🇦 Картой Украины",
+    labelEn: "🇺🇦 Ukraine card",
+    style: "primary",
+    provider: "streampay",
+  },
 ];
 
 export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
 
 /**
- * Fee rebate %: user pays Cashera fee (fee_payer=customer), we return it as 🍑.
- * Rates match merchant cabinet (SBP / crypto / CryptoBot).
+ * Fee rebate %: user pays provider fee on the checkout page; we return it as 🍑.
+ * Cashera: cabinet rates. StreamPay: store fee 4.5% (client pays 100%).
  */
-export const TOPUP_FEE_REBATE_PCT: Record<
-  Exclude<CasheraPaymentMethod, "card">,
-  number
-> = {
+export const TOPUP_FEE_REBATE_PCT: Record<string, number> = {
   sbp: 13,
   crypto: 3,
   cryptobot: 5,
+  sp_sbp: 4.5,
+  sp_kz: 4.5,
+  sp_by: 4.5,
+  sp_ua: 4.5,
 };
 
 /**
@@ -64,15 +108,32 @@ export function topupFeeRebatePeaches(
   peaches: number,
   method: string,
 ): number {
-  const pct = TOPUP_FEE_REBATE_PCT[method as keyof typeof TOPUP_FEE_REBATE_PCT];
+  const pct = TOPUP_FEE_REBATE_PCT[method];
   if (!Number.isFinite(pct) || pct <= 0) return 0;
   return Math.max(0, Math.ceil((Math.floor(peaches) * pct) / 100));
 }
 
 export function isActiveTopupMethod(
   method: string,
-): method is Exclude<CasheraPaymentMethod, "card"> {
+): method is TopupPaymentMethodId {
   return (TOPUP_ACTIVE_METHOD_IDS as string[]).includes(method);
+}
+
+export function isCasheraTopupMethod(
+  method: string,
+): method is CasheraTopupMethod {
+  return method === "sbp" || method === "crypto" || method === "cryptobot";
+}
+
+export function isStreampayMethodId(
+  method: string,
+): method is StreampayTopupMethodId {
+  return (
+    method === "sp_sbp" ||
+    method === "sp_kz" ||
+    method === "sp_by" ||
+    method === "sp_ua"
+  );
 }
 
 export function formatTopupPriceLine(
@@ -90,7 +151,7 @@ export async function createTopupPayment(opts: {
   peaches: number;
   /** Extra peaches credited on fulfill (pack bonus). Paid amount stays `peaches`. */
   bonusPeaches?: number;
-  method: CasheraPaymentMethod;
+  method: CasheraPaymentMethod | TopupPaymentMethodId;
   locale?: "ru" | "en";
 }): Promise<{
   orderId: string;
@@ -102,13 +163,14 @@ export async function createTopupPayment(opts: {
   feeRebate: number;
   priceLine: string;
 }> {
+  if (!isCasheraTopupMethod(opts.method)) {
+    throw new Error("Use createStreampayTopupPayment for StreamPay methods");
+  }
   if (!casheraConfigured()) {
     throw new Error("Платежи ещё не настроены (нет ключей Cashera)");
   }
   if (!isActiveTopupMethod(opts.method)) {
-    throw new Error(
-      "Этот способ оплаты недоступен. Выбери СБП или крипту.",
-    );
+    throw new Error("Этот способ оплаты недоступен.");
   }
   const peaches = Math.floor(opts.peaches);
   const packBonus = Math.max(0, Math.floor(opts.bonusPeaches || 0));
@@ -177,6 +239,7 @@ export async function createTopupPayment(opts: {
         peaches,
         packBonus,
         amountMinor,
+        provider: "cashera",
       },
     });
 
@@ -209,6 +272,7 @@ export async function createTopupPayment(opts: {
         method: opts.method,
         peaches,
         error: e instanceof Error ? e.message : String(e),
+        provider: "cashera",
       },
     });
     throw e;

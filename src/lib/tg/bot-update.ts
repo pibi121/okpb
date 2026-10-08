@@ -1898,8 +1898,8 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       await tgSendMessage(
         chatId,
         locale === "en"
-          ? "This method is unavailable. Choose SBP or crypto."
-          : "Этот способ недоступен. Выбери СБП или крипту.",
+          ? "This method is unavailable. Choose another payment method."
+          : "Этот способ недоступен. Выбери другой способ оплаты.",
       );
       return;
     }
@@ -1914,7 +1914,7 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       chatId,
       platformUserId,
       locale,
-      method as "sbp" | "crypto",
+      method,
       user.id,
       peaches,
     );

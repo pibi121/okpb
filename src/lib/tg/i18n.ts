@@ -722,7 +722,7 @@ Tap below to top up 👇`,
 Минимум — <b>{min}₽</b> (≈ {usdt} USDT по курсу)
 
 Выбери по кнопке или введи число в чате 👇
-Дальше — оплата через <b>СБП</b> или <b>крипту (USDT)</b>.`,
+Дальше — оплата через <b>СБП</b>, <b>крипту (USDT)</b> или <b>карты</b>.`,
     en: `<b>How much do you want to top up?</b>
 
 1₽ on balance = 1 RUB
@@ -822,8 +822,8 @@ Open the link again or request a new one 👇`,
   },
 
   topup_method_unavailable: {
-    ru: "Этот способ временно недоступен. Выбери СБП или крипту.",
-    en: "This method is unavailable. Choose SBP or crypto.",
+    ru: "Этот способ временно недоступен. Выбери другой способ оплаты.",
+    en: "This method is unavailable. Choose another payment method.",
   },
 
   topup_already_paid: {

@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { prisma } from "@/lib/db";
+import { paymentMethodLabelRu } from "@/lib/ops/payment-method-labels";
 import { dataRoot, ensureDataDirs } from "@/lib/paths";
 import {
   tgApiWithToken,
@@ -646,12 +647,6 @@ export async function loadOpsUserIdentity(
   };
 }
 
-const METHOD_RU: Record<string, string> = {
-  sbp: "СБП",
-  card: "карта",
-  crypto: "крипта",
-};
-
 export async function notifyOpsPayment(opts: {
   userId: string;
   peaches: number;
@@ -663,7 +658,7 @@ export async function notifyOpsPayment(opts: {
   try {
     const ident = await loadOpsUserIdentity(opts.userId);
     const rub = (opts.amountMinor / 100).toFixed(0);
-    const method = METHOD_RU[opts.method] || opts.method || "—";
+    const method = paymentMethodLabelRu(opts.method);
     const text = [
       `💳 <b>Оплата прошла</b>`,
       `Кто: ${ident?.who || `<code>${escHtml(opts.userId)}</code>`}`,

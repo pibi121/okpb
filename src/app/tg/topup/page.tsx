@@ -6,8 +6,12 @@ import { TgShell, useTgMiniApp } from "@/lib/tg/miniapp/client";
 import { TG_MIN_TOPUP_PEACHES, TG_QUICK_TOPUP_AMOUNTS } from "@/lib/tg-pricing";
 
 const METHODS = [
-  { id: "sbp", ru: "СБП — перевод из банка", en: "SBP — bank transfer" },
-  { id: "crypto", ru: "Крипта — USDT", en: "Crypto — USDT" },
+  { id: "sbp", ru: "🇷🇺 Оплатить по СБП (рублями)", en: "🇷🇺 Pay via SBP (RUB)" },
+  { id: "sp_sbp", ru: "🛟 Оплата СБП (резерв)", en: "🛟 SBP (backup)" },
+  { id: "crypto", ru: "₿ Криптой (USDT, BTC, ETH и т.д)", en: "₿ Crypto (USDT, BTC…)" },
+  { id: "sp_kz", ru: "🇰🇿 Картой КЗ", en: "🇰🇿 Kazakhstan card" },
+  { id: "sp_by", ru: "🇧🇾 Картой Беларуси", en: "🇧🇾 Belarus card" },
+  { id: "sp_ua", ru: "🇺🇦 Картой Украины", en: "🇺🇦 Ukraine card" },
 ] as const;
 
 function priceLine(amount: number): string {
@@ -86,8 +90,8 @@ export default function TgTopupPage() {
           </p>
           <p style={{ color: "var(--tg-muted)", fontSize: 12, marginTop: 8 }}>
             {ru
-              ? "СБП из банка или USDT. Карты пока нет."
-              : "Bank SBP or USDT. Cards unavailable for now."}
+              ? "СБП, крипта или карты КЗ / Беларуси / Украины."
+              : "SBP, crypto, or KZ / Belarus / Ukraine cards."}
           </p>
 
           <div style={{ display: "grid", gap: 8, marginTop: 16 }}>

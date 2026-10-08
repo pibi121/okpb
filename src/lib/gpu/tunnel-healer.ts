@@ -191,6 +191,16 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
     } catch {
       jobMeta = {};
     }
+
+    // Live waiter still heartbeating — do not kill on idle-queue alone
+    // (history lag / between Comfy steps). Hard ceiling still applies.
+    const beatRaw = jobMeta.lastBeatAt;
+    const beatAt =
+      typeof beatRaw === "string" ? Date.parse(beatRaw) : Number.NaN;
+    const beatFresh =
+      Number.isFinite(beatAt) && now - beatAt < 90_000;
+    const hardCapMs = isVideo ? 50 * 60_000 : 22 * 60_000;
+
     if (comfyUp && job.refType === "quickVideoRun" && job.refId) {
       try {
         const {
@@ -224,6 +234,13 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
           }
           console.log(
             `[peach] tunnel-healer: recovered stuck quick-video ${job.refId} (job ${job.id})`,
+          );
+          continue;
+        }
+
+        if (beatFresh && age < hardCapMs) {
+          console.log(
+            `[peach] tunnel-healer: defer ${job.id} — live beat, age ${mins}m`,
           );
           continue;
         }
@@ -275,6 +292,11 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
       } catch {
         /* fall through to fail */
       }
+    } else if (beatFresh && age < hardCapMs) {
+      console.log(
+        `[peach] tunnel-healer: defer ${job.id} — live beat, age ${mins}m`,
+      );
+      continue;
     }
 
     await prisma.gpuJob.update({

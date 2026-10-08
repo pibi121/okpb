@@ -266,6 +266,18 @@ export async function runTrackedGpuJob(
     };
 
     await als.run(store, async () => {
+      // Independent of hung Comfy HTTP awaits — healer uses lastBeatAt to
+      // avoid killing a live waiter when the queue looks idle.
+      const beatMs = Math.max(
+        30_000,
+        Number(process.env.PEACH_GPU_HEARTBEAT_MS || 45_000) || 45_000,
+      );
+      const writeBeat = () =>
+        noteGpuJobMeta({ lastBeatAt: new Date().toISOString() });
+      void writeBeat();
+      const beatTimer = setInterval(() => {
+        void writeBeat();
+      }, beatMs);
       try {
         await fn();
         if (!store.failed) {
@@ -300,6 +312,7 @@ export async function runTrackedGpuJob(
         }
         throw e;
       } finally {
+        clearInterval(beatTimer);
         await prisma.gpuWorker
           .update({
             where: { id: worker.id },

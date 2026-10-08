@@ -14,6 +14,7 @@ import { resolveConceptLorasByIds } from "@/lib/krea-concept-loras";
 import {
   comfyFreeMemory,
   comfyUploadImage,
+  isRetryableComfyFlake,
   runComfyAndDownload,
   COMFY_PHOTO_TIMEOUT_MS,
 } from "@/lib/comfy-client";
@@ -70,11 +71,37 @@ export async function runPhotoEditLabBytes(opts: {
   });
 
   await comfyFreeMemory();
-  const bytes = await runComfyAndDownload(
-    graph,
-    "peach-photo-edit-lab",
-    COMFY_PHOTO_TIMEOUT_MS,
-  );
+  let bytes: Buffer;
+  try {
+    bytes = await runComfyAndDownload(
+      graph,
+      "peach-photo-edit-lab",
+      COMFY_PHOTO_TIMEOUT_MS,
+    );
+  } catch (first) {
+    if (!isRetryableComfyFlake(first)) throw first;
+    const msg = first instanceof Error ? first.message : String(first);
+    console.warn(
+      "[peach] photo-edit-lab retry once after:",
+      msg.slice(0, 160),
+    );
+    await comfyFreeMemory();
+    await new Promise((r) => setTimeout(r, 2500));
+    await comfyFreeMemory();
+    bytes = await runComfyAndDownload(
+      buildKreaEditGraph({
+        imageName: uploaded,
+        editPrompt: prompt,
+        width,
+        height,
+        seed: Math.floor(Math.random() * 1e15),
+        extraModelLoras: extras,
+        filenamePrefix: "peach/photo_edit_lab",
+      }),
+      "peach-photo-edit-lab-retry",
+      COMFY_PHOTO_TIMEOUT_MS,
+    );
+  }
   if (!bytes?.length || bytes.length < 100) {
     throw new Error("Comfy вернул пустой файл");
   }

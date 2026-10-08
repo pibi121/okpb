@@ -985,8 +985,48 @@ export async function runComfyJob(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-/** Soft VRAM unload — not a Comfy restart. Use between video ↔ still undress. */
-export async function comfyFreeMemory(): Promise<void> {
+/**
+ * Transient GPU/tunnel flakes worth one outer retry (photo/video).
+ * Not for missing models / bad prompts / validation errors.
+ */
+export function isRetryableComfyFlake(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  if (isMissingNodeTypeError(msg)) return false;
+  if (/missing_node|not in list|lora_name|validation_failed|undress_black_frame/i.test(msg)) {
+    return false;
+  }
+  return (
+    isHeavyComfyFailure(err) ||
+    isTransientComfyError(err) ||
+    /Comfy wait timeout|wait timeout|Bad Gateway|EAI_AGAIN|недоступен|tunnel|socket hang/i.test(
+      msg,
+    )
+  );
+}
+
+/**
+ * Soft VRAM unload — not a Comfy restart.
+ * Skips when another prompt is in the queue (shared Metalnode), unless force.
+ * @returns true if /free was sent, false if skipped to protect neighbors.
+ */
+export async function comfyFreeMemory(opts?: {
+  force?: boolean;
+  /** When set, only that promptId is treated as "ours" for the foreign check. */
+  ourPromptId?: string | null;
+}): Promise<boolean> {
+  if (!opts?.force) {
+    try {
+      const foreign = await comfyHasForeignWork(opts?.ourPromptId ?? null);
+      if (foreign) {
+        console.warn("[peach] skip comfy /free — queue has other work");
+        return false;
+      }
+    } catch {
+      // Unknown queue — do not risk neighbors.
+      console.warn("[peach] skip comfy /free — queue state unknown");
+      return false;
+    }
+  }
   try {
     await comfyRequest(
       "/free",
@@ -997,11 +1037,13 @@ export async function comfyFreeMemory(): Promise<void> {
       },
       60_000,
     );
+    return true;
   } catch (e) {
     console.warn(
       "[peach] comfy /free failed:",
       e instanceof Error ? e.message.slice(0, 160) : e,
     );
+    return false;
   }
 }
 

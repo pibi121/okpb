@@ -387,21 +387,20 @@ async function runQuickVideoJob(runId: string, userId: string) {
       });
     } catch (first) {
       const msg = first instanceof Error ? first.message : String(first);
-      if (
-        !/OutOfMemory|CUDA out of memory|ran out of memory|Comfy job error/i.test(
-          msg,
-        )
-      ) {
-        throw first;
-      }
+      const { isRetryableComfyFlake, comfyFreeMemory } = await import(
+        "@/lib/comfy-client"
+      );
+      if (!isRetryableComfyFlake(first)) throw first;
+      const isOom = /OutOfMemory|CUDA out of memory|ran out of memory/i.test(
+        msg,
+      );
       console.warn(
-        `[peach] quick-video OOM/comfy retry once for ${runId}:`,
+        `[peach] quick-video retry once for ${runId}:`,
         msg.slice(0, 180),
       );
       try {
-        const { comfyFreeMemory } = await import("@/lib/comfy-client");
         await comfyFreeMemory();
-        await new Promise((r) => setTimeout(r, 12_000));
+        await new Promise((r) => setTimeout(r, isOom ? 12_000 : 2500));
         await comfyFreeMemory();
       } catch (freeErr) {
         console.warn("[peach] comfyFreeMemory before retry:", freeErr);

@@ -32,6 +32,8 @@ export async function runPhotoEditLabBytes(opts: {
   conceptLoraIds?: string[];
   /** Keep Projector+Realism undress stack (default true). */
   useUndressStack?: boolean;
+  /** Unique Comfy output prefix for post-restart recover (include gallery item id). */
+  filenamePrefix?: string;
 }): Promise<Buffer> {
   const prompt = opts.editPrompt.trim();
   if (prompt.length < 2) throw new Error("Нужен промпт");
@@ -59,6 +61,8 @@ export async function runPhotoEditLabBytes(opts: {
     ...(opts.useUndressStack === false ? [] : KREA_UNDRESS_EXTRA_LORAS),
     ...resolveConceptLorasByIds(opts.conceptLoraIds || []),
   ];
+  const filenamePrefix =
+    (opts.filenamePrefix || "").trim() || "peach/photo_edit_lab";
 
   const graph = buildKreaEditGraph({
     imageName: uploaded,
@@ -67,7 +71,7 @@ export async function runPhotoEditLabBytes(opts: {
     height,
     seed: Math.floor(Math.random() * 1e15),
     extraModelLoras: extras,
-    filenamePrefix: "peach/photo_edit_lab",
+    filenamePrefix,
   });
 
   await comfyFreeMemory();
@@ -96,7 +100,7 @@ export async function runPhotoEditLabBytes(opts: {
         height,
         seed: Math.floor(Math.random() * 1e15),
         extraModelLoras: extras,
-        filenamePrefix: "peach/photo_edit_lab",
+        filenamePrefix,
       }),
       "peach-photo-edit-lab-retry",
       COMFY_PHOTO_TIMEOUT_MS,

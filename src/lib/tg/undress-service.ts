@@ -4,7 +4,6 @@
 import { prisma } from "@/lib/db";
 import { enqueueGpuJob } from "@/lib/gallery-jobs";
 import { GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
-import { saveGalleryBinary } from "@/lib/local-store";
 import { undressPeaches } from "@/lib/tg-pricing";
 import {
   consumeUndressFree,
@@ -79,6 +78,15 @@ export async function startTgUndressGeneration(opts: {
     chargedPeaches = price;
   }
 
+  // Persist source so healer can requeue after redeploy (bytes otherwise die with the process).
+  const srcExt =
+    opts.photoBytes.length >= 3 &&
+    opts.photoBytes[0] === 0xff &&
+    opts.photoBytes[1] === 0xd8
+      ? "jpg"
+      : "png";
+  const { saveGalleryBinary } = await import("@/lib/local-store");
+  // item id needed for unique Comfy prefix — create row first with placeholder meta, then patch.
   const item = await prisma.galleryItem.create({
     data: {
       userId: opts.userId,
@@ -91,9 +99,38 @@ export async function startTgUndressGeneration(opts: {
         engine: "krea2_undress",
         chargedPeaches,
         undressFreeUsed: usedFree,
+        undress: true,
         source: opts.funnelV2 || opts.funnelV2Blur ? "funnel_v2" : "tg_undress",
         funnelV2: Boolean(opts.funnelV2 || opts.funnelV2Blur),
         blurTrial: Boolean(opts.funnelV2Blur),
+        ...(opts.funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
+        ...(opts.unblurRecipe ? { unblurRecipe: opts.unblurRecipe } : {}),
+      }),
+    },
+  });
+  const srcSaved = saveGalleryBinary(
+    opts.userId,
+    srcExt,
+    opts.photoBytes,
+    `undress_src_${item.id}`,
+  );
+  const comfyFilenamePrefix = `peach/undress_${item.id}`;
+  await prisma.galleryItem.update({
+    where: { id: item.id },
+    data: {
+      sourceUrl: srcSaved.publicUrl,
+      metaJson: JSON.stringify({
+        status: "pending",
+        engine: "krea2_undress",
+        chargedPeaches,
+        undressFreeUsed: usedFree,
+        undress: true,
+        source: opts.funnelV2 || opts.funnelV2Blur ? "funnel_v2" : "tg_undress",
+        funnelV2: Boolean(opts.funnelV2 || opts.funnelV2Blur),
+        blurTrial: Boolean(opts.funnelV2Blur),
+        sourceLocalKey: srcSaved.relKey,
+        sourceUrl: srcSaved.publicUrl,
+        comfyFilenamePrefix,
         ...(opts.funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
         ...(opts.unblurRecipe ? { unblurRecipe: opts.unblurRecipe } : {}),
       }),
@@ -117,7 +154,9 @@ export async function startTgUndressGeneration(opts: {
           bytes = photoBytes;
         } else {
           try {
-            bytes = await runUndressBytes(photoBytes);
+            bytes = await runUndressBytes(photoBytes, {
+              filenamePrefix: comfyFilenamePrefix,
+            });
           } catch (first) {
             const msg = first instanceof Error ? first.message : String(first);
             const isOom = /OutOfMemory|CUDA out of memory|ran out of memory/i.test(
@@ -130,7 +169,9 @@ export async function startTgUndressGeneration(opts: {
               await comfyFreeMemory();
               await new Promise((r) => setTimeout(r, isOom ? 12_000 : 2500));
               await comfyFreeMemory();
-              bytes = await runUndressBytes(photoBytes);
+              bytes = await runUndressBytes(photoBytes, {
+                filenamePrefix: comfyFilenamePrefix,
+              });
             } else {
               throw first;
             }
@@ -146,7 +187,8 @@ export async function startTgUndressGeneration(opts: {
             console.warn("[undress] funnel blur failed:", blurErr);
           }
         }
-        const saved = saveGalleryBinary(
+        const { saveGalleryBinary: saveOut } = await import("@/lib/local-store");
+        const saved = saveOut(
           opts.userId,
           "png",
           bytes,
@@ -161,9 +203,14 @@ export async function startTgUndressGeneration(opts: {
               engine: "krea2_undress",
               chargedPeaches,
               undressFreeUsed: usedFree,
+              undress: true,
               source: funnelV2 || funnelV2Blur ? "funnel_v2" : "tg_undress",
               funnelV2: funnelV2 || funnelV2Blur,
               blurTrial: funnelV2Blur,
+              sourceLocalKey: srcSaved.relKey,
+              sourceUrl: srcSaved.publicUrl,
+              comfyFilenamePrefix,
+              localKey: saved.relKey,
               ...(funnelV2Blur ? { hiddenFromTgGallery: true } : {}),
               ...(unblurRecipe ? { unblurRecipe } : {}),
             }),
@@ -297,7 +344,11 @@ export async function startTgUndressGeneration(opts: {
       pool: "photo",
       // Projector + Realism v3.1 are on Metalnode only (not on RunPod volume yet).
       providers: ["metalnode"],
-      meta: { undress: true, engine: "krea2_undress" },
+      meta: {
+        undress: true,
+        engine: "krea2_undress",
+        comfyFilenamePrefix,
+      },
     },
   );
 

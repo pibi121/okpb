@@ -350,6 +350,98 @@ export async function recoverOrphanedGpuWork(opts?: {
           e instanceof Error ? e.message : e,
         );
       }
+    } else if (job.refType === "galleryItem" && job.refId) {
+      try {
+        const {
+          tryRecoverGalleryItemFromComfy,
+          requeueGalleryPhotoAfterHeal,
+        } = await import("@/lib/gpu/gallery-photo-heal");
+        const recovered = await tryRecoverGalleryItemFromComfy(job.refId);
+        if (recovered) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              error: null,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, Date.now() - job.startedAt.getTime())
+                : null,
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          galleryHealed += 1;
+          jobsHealed += 1;
+          continue;
+        }
+        const { anyComfyQueueBusy } = await import("@/lib/comfy-client");
+        const busy = await anyComfyQueueBusy();
+        if (busy === true) {
+          console.log(
+            `[peach] orphan skip gallery photo ${job.refId} — Comfy still busy`,
+          );
+          continue;
+        }
+        // Photos finish faster — defer only briefly for history lag.
+        if (ageMs < 12 * 60_000) {
+          console.log(
+            `[peach] orphan defer gallery photo ${job.refId} — age ${Math.round(ageMs / 60_000)}m`,
+          );
+          continue;
+        }
+        let jobMeta: Record<string, unknown> = {};
+        try {
+          jobMeta = JSON.parse(job.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          jobMeta = {};
+        }
+        const healRequeue = Number(jobMeta.healRequeue || 0) || 0;
+        if (healRequeue < 1) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "error",
+              stage: "error",
+              error: "orphan heal requeue photo — Comfy idle, no output",
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, Date.now() - job.startedAt.getTime())
+                : null,
+              metaJson: JSON.stringify({
+                ...jobMeta,
+                healRequeue: healRequeue + 1,
+                healRequeuedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          const requeued = await requeueGalleryPhotoAfterHeal(job.refId);
+          if (requeued) {
+            jobsHealed += 1;
+            continue;
+          }
+        }
+      } catch (e) {
+        console.error(
+          "[peach] orphan gallery photo recover:",
+          e instanceof Error ? e.message : e,
+        );
+      }
     } else if (isVideo) {
       // Other video ledger rows: never kill while Comfy still has work / under budget.
       try {

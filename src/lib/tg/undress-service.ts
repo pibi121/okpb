@@ -12,7 +12,7 @@ import {
   restoreUndressFree,
 } from "@/lib/tg/undress-entitlement";
 import { runUndressBytes } from "@/lib/tg/undress-comfy";
-import { comfyFreeMemory } from "@/lib/comfy-client";
+import { comfyFreeMemory, isRetryableComfyFlake } from "@/lib/comfy-client";
 import { debitPeaches, creditPeaches } from "@/lib/tg/wallet";
 import { enqueueTgOutbox } from "@/lib/tg/session";
 import { useComfy } from "@/lib/metalnode-config";
@@ -124,13 +124,8 @@ export async function startTgUndressGeneration(opts: {
               msg,
             );
             // Soft recover: transient Comfy flakes / brief VRAM pressure.
-            // Keep Funnel v2 hooks above; owner OOM path frees VRAM before retry.
-            if (
-              isOom ||
-              /Comfy job error|Comfy wait timeout|wait timeout|ECONN|ETIMEDOUT|socket hang|tunnel|Bad Gateway|EAI_AGAIN/i.test(
-                msg,
-              )
-            ) {
+            // comfyFreeMemory skips when another prompt is on the shared GPU.
+            if (isRetryableComfyFlake(first)) {
               console.warn("[undress] retry once after:", msg.slice(0, 160));
               await comfyFreeMemory();
               await new Promise((r) => setTimeout(r, isOom ? 12_000 : 2500));

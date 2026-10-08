@@ -299,6 +299,83 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
       continue;
     }
 
+    // Gallery photo (undress / edit): recover finished Comfy output, else one requeue.
+    if (comfyUp && job.refType === "galleryItem" && job.refId) {
+      try {
+        const {
+          tryRecoverGalleryItemFromComfy,
+          requeueGalleryPhotoAfterHeal,
+        } = await import("@/lib/gpu/gallery-photo-heal");
+        const recovered = await tryRecoverGalleryItemFromComfy(job.refId);
+        if (recovered) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              error: null,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          console.log(
+            `[peach] tunnel-healer: recovered gallery photo ${job.refId} (job ${job.id})`,
+          );
+          continue;
+        }
+        if (beatFresh && age < hardCapMs) {
+          continue;
+        }
+        const healRequeue = Number(jobMeta.healRequeue || 0) || 0;
+        if (healRequeue < 1) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "error",
+              stage: "error",
+              error: `healer requeue photo after idle ${mins} min`,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+              metaJson: JSON.stringify({
+                ...jobMeta,
+                healRequeue: healRequeue + 1,
+                healRequeuedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          const requeued = await requeueGalleryPhotoAfterHeal(job.refId);
+          if (requeued) {
+            console.warn(
+              `[peach] tunnel-healer: requeued gallery photo ${job.refId} (old job ${job.id})`,
+            );
+            continue;
+          }
+        }
+      } catch {
+        /* fall through to fail */
+      }
+    }
+
     await prisma.gpuJob.update({
       where: { id: job.id },
       data: {

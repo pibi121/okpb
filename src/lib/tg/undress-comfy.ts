@@ -79,7 +79,10 @@ export function undressLatentSize(
   return { width: round8(w0), height: round8(h0) };
 }
 
-export async function runUndressBytes(input: Buffer): Promise<Buffer> {
+export async function runUndressBytes(
+  input: Buffer,
+  opts?: { filenamePrefix?: string },
+): Promise<Buffer> {
   const isJpeg = input.length >= 3 && input[0] === 0xff && input[1] === 0xd8;
   const isPng =
     input.length >= 8 &&
@@ -97,6 +100,8 @@ export async function runUndressBytes(input: Buffer): Promise<Buffer> {
 
   const raw = undressImageSize(input);
   const { width, height } = undressLatentSize(raw.width, raw.height);
+  const filenamePrefix =
+    (opts?.filenamePrefix || "").trim() || "peach/undress_krea";
 
   const buildGraph = () =>
     buildKreaEditGraph({
@@ -106,7 +111,7 @@ export async function runUndressBytes(input: Buffer): Promise<Buffer> {
       height,
       seed: Math.floor(Math.random() * 1e15),
       extraModelLoras: KREA_UNDRESS_EXTRA_LORAS,
-      filenamePrefix: "peach/undress_krea",
+      filenamePrefix,
     });
 
   await comfyFreeMemory();

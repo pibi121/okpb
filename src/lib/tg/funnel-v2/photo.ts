@@ -609,12 +609,45 @@ export async function runFunnelV2PhotoGen(opts: {
         kind: "photo",
         title: tpl.tgDisplayTitle || tpl.title,
         prompt: tpl.editPrompt.slice(0, 500),
+        editPrompt: tpl.editPrompt.slice(0, 2000),
         resultUrl: GALLERY_PLACEHOLDER_URL,
         metaJson: JSON.stringify({
           status: "pending",
           engine: "funnel_v2_photo_edit",
           source: "funnel_v2",
+          funnelV2: true,
           blurTrial: useBlur,
+          ...(useBlur ? { hiddenFromTgGallery: true } : {}),
+          templateId: tpl.id,
+          ...(useBlur ? { unblurRecipe } : {}),
+          ...(!useBlur && price > 0 ? { chargedPeaches: price } : {}),
+        }),
+      },
+    });
+    const srcExt =
+      bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8
+        ? "jpg"
+        : "png";
+    const srcSaved = saveGalleryBinary(
+      opts.userId,
+      srcExt,
+      bytes,
+      `fv2_src_${item.id}`,
+    );
+    const comfyFilenamePrefix = `peach/photo_edit_${item.id}`;
+    await prisma.galleryItem.update({
+      where: { id: item.id },
+      data: {
+        sourceUrl: srcSaved.publicUrl,
+        metaJson: JSON.stringify({
+          status: "pending",
+          engine: "funnel_v2_photo_edit",
+          source: "funnel_v2",
+          funnelV2: true,
+          blurTrial: useBlur,
+          sourceLocalKey: srcSaved.relKey,
+          sourceUrl: srcSaved.publicUrl,
+          comfyFilenamePrefix,
           ...(useBlur ? { hiddenFromTgGallery: true } : {}),
           templateId: tpl.id,
           ...(useBlur ? { unblurRecipe } : {}),
@@ -632,6 +665,7 @@ export async function runFunnelV2PhotoGen(opts: {
           let out = await runPhotoEditLabBytes({
             photoBytes: bytes,
             editPrompt: tpl.editPrompt,
+            filenamePrefix: comfyFilenamePrefix,
           });
           if (useBlur) {
             try {
@@ -649,7 +683,11 @@ export async function runFunnelV2PhotoGen(opts: {
                 status: "ready",
                 engine: "funnel_v2_photo_edit",
                 source: "funnel_v2",
+                funnelV2: true,
                 blurTrial: useBlur,
+                sourceLocalKey: srcSaved.relKey,
+                sourceUrl: srcSaved.publicUrl,
+                comfyFilenamePrefix,
                 ...(useBlur ? { hiddenFromTgGallery: true } : {}),
                 templateId: tpl.id,
                 localKey: saved.relKey,
@@ -746,6 +784,7 @@ export async function runFunnelV2PhotoGen(opts: {
           templateId: tpl.id,
           blurTrial: useBlur,
           chargedPeaches,
+          comfyFilenamePrefix,
         },
       },
     );

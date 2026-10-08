@@ -226,6 +226,73 @@ export async function sweepStaleGpuJobs(): Promise<number> {
       } catch {
         /* fall through to fail */
       }
+    } else if (job.refType === "galleryItem" && job.refId) {
+      try {
+        const {
+          tryRecoverGalleryItemFromComfy,
+          requeueGalleryPhotoAfterHeal,
+        } = await import("@/lib/gpu/gallery-photo-heal");
+        const recovered = await tryRecoverGalleryItemFromComfy(job.refId);
+        if (recovered) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "done",
+              stage: "done",
+              error: null,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          continue;
+        }
+        let jobMeta: Record<string, unknown> = {};
+        try {
+          jobMeta = JSON.parse(job.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          jobMeta = {};
+        }
+        if ((Number(jobMeta.healRequeue || 0) || 0) < 1) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "error",
+              stage: "error",
+              error: `stale requeue photo after ${mins} min`,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+              metaJson: JSON.stringify({
+                ...jobMeta,
+                healRequeue: 1,
+                healRequeuedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          if (await requeueGalleryPhotoAfterHeal(job.refId)) continue;
+        }
+      } catch {
+        /* fall through to fail */
+      }
     }
 
     await prisma.gpuJob.update({

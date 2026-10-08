@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtMs, opsFetch } from "@/lib/ops/ops-fetch";
+import { paymentMethodLabelRu } from "@/lib/ops/payment-method-labels";
 
 type Currency = "rub" | "peaches" | "both";
 type Grain = "day" | "week" | "period";
@@ -123,9 +124,13 @@ type SalesPayload = {
 
 const METHOD_COLOR: Record<string, string> = {
   sbp: "bg-sky-500",
+  sp_sbp: "bg-cyan-500",
   crypto: "bg-violet-500",
   cryptobot: "bg-amber-500",
   card: "bg-zinc-400",
+  sp_kz: "bg-emerald-500",
+  sp_by: "bg-lime-600",
+  sp_ua: "bg-yellow-500",
   other: "bg-rose-400",
 };
 
@@ -150,11 +155,7 @@ function addDaysYmd(ymd: string, delta: number) {
 }
 
 function methodLabel(m: string) {
-  if (m === "sbp") return "СБП";
-  if (m === "crypto") return "Crypto";
-  if (m === "cryptobot") return "CryptoBot";
-  if (m === "card") return "Карта";
-  return m;
+  return paymentMethodLabelRu(m);
 }
 
 function methodColor(m: string) {

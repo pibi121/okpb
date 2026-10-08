@@ -1,5 +1,5 @@
 /**
- * Bot + shared top-up UX (amount → method → Cashera payment_url).
+ * Bot + shared top-up UX (amount → method → Cashera / StreamPay payment_url).
  */
 import {
   TG_MAX_TOPUP_PEACHES,
@@ -14,14 +14,18 @@ import { setTgSession } from "@/lib/tg/session";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
 import { tgAbsoluteUrl, tgSendMediaMessage } from "@/lib/tg/media-assets";
 import { casheraConfigured } from "@/lib/cashera";
-import type { CasheraPaymentMethod } from "@/lib/cashera";
+import { streampayConfigured } from "@/lib/streampay";
 import {
   createTopupPayment,
   formatTopupPriceLine,
   isActiveTopupMethod,
+  isCasheraTopupMethod,
+  isStreampayMethodId,
   topupFeeRebatePeaches,
   TOPUP_PAYMENT_METHODS,
+  type TopupPaymentMethodId,
 } from "@/lib/tg/topup-payments";
+import { createStreampayTopupPayment } from "@/lib/tg/streampay-topup";
 import { prisma } from "@/lib/db";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
@@ -152,6 +156,38 @@ function funnelV2PayCaption(method: string, payAmountLine: string): string {
       feeNote
     );
   }
+  if (method === "sp_sbp") {
+    return (
+      `К оплате: <b>${payAmountLine}</b>\n\n` +
+      `Оплата через СБП (резерв): открой форму → подтверди перевод в банковском приложении.\n\n` +
+      vpnHint +
+      feeNote
+    );
+  }
+  if (method === "sp_kz") {
+    return (
+      `К оплате: <b>${payAmountLine}</b>\n\n` +
+      `Оплата картой Казахстана: открой форму → переведи указанную сумму.\n\n` +
+      vpnHint +
+      feeNote
+    );
+  }
+  if (method === "sp_by") {
+    return (
+      `К оплате: <b>${payAmountLine}</b>\n\n` +
+      `Оплата картой Беларуси: открой форму → переведи указанную сумму.\n\n` +
+      vpnHint +
+      feeNote
+    );
+  }
+  if (method === "sp_ua") {
+    return (
+      `К оплате: <b>${payAmountLine}</b>\n\n` +
+      `Оплата картой Украины: открой форму → переведи указанную сумму.\n\n` +
+      vpnHint +
+      feeNote
+    );
+  }
   return (
     `К оплате: <b>${payAmountLine}</b>\n\n` +
     `Оплата через СБП: открой форму → подтверди перевод в банковском приложении.\n\n` +
@@ -221,7 +257,7 @@ export async function handleTopupAmount(
   });
 
   const priceLine = formatTopupPriceLine(amount, locale);
-  if (!casheraConfigured()) {
+  if (!casheraConfigured() && !streampayConfigured()) {
     await tgSendMessage(
       chatId,
       tFormat("topup_payments_offline", locale, { price: priceLine }),
@@ -249,7 +285,7 @@ export async function handleTopupMethod(
   chatId: number,
   platformUserId: string,
   locale: TgLocale,
-  method: CasheraPaymentMethod,
+  method: TopupPaymentMethodId,
   userId: string,
   peaches: number,
 ) {
@@ -266,6 +302,27 @@ export async function handleTopupMethod(
     return;
   }
 
+  if (isStreampayMethodId(method) && !streampayConfigured()) {
+    await tgSendMessage(
+      chatId,
+      locale === "en"
+        ? "This method is temporarily unavailable. Try SBP or crypto."
+        : "Этот способ временно недоступен. Выбери СБП или крипту.",
+      { reply_markup: topupMethodKeyboard(locale, peaches) },
+    );
+    return;
+  }
+  if (isCasheraTopupMethod(method) && !casheraConfigured()) {
+    await tgSendMessage(
+      chatId,
+      locale === "en"
+        ? "This method is temporarily unavailable."
+        : "Этот способ временно недоступен.",
+      { reply_markup: topupMethodKeyboard(locale, peaches) },
+    );
+    return;
+  }
+
   try {
     const { getTgSession, parsePending } = await import("@/lib/tg/session");
     const sess = await getTgSession(platformUserId);
@@ -274,13 +331,23 @@ export async function handleTopupMethod(
     const isFunnelV2 = Boolean(
       pend.funnelV2TopupPeaches || pend.funnelV2ReturnHubAfterTopup,
     );
-    const pay = await createTopupPayment({
-      userId,
-      peaches,
-      bonusPeaches: bonus > 0 ? bonus : undefined,
-      method,
-      locale,
-    });
+
+    const pay = isStreampayMethodId(method)
+      ? await createStreampayTopupPayment({
+          userId,
+          peaches,
+          bonusPeaches: bonus > 0 ? bonus : undefined,
+          method,
+          locale,
+        })
+      : await createTopupPayment({
+          userId,
+          peaches,
+          bonusPeaches: bonus > 0 ? bonus : undefined,
+          method,
+          locale,
+        });
+
     if (!pay.paymentUrl || !/^https?:\/\//i.test(pay.paymentUrl)) {
       throw new Error("Платёжная ссылка не создана");
     }
@@ -298,11 +365,18 @@ export async function handleTopupMethod(
     });
 
     const { formatPayAmount } = await import("@/lib/tg/funnel-v2/money");
-    const caption = isFunnelV2
-      ? funnelV2PayCaption(method, formatPayAmount(peaches))
-      : tFormat(payLinkCopyKey(method), locale, {
-          price: pay.priceLine,
-        });
+    let caption: string;
+    if (isStreampayMethodId(method) && "captionHtml" in pay && pay.captionHtml) {
+      caption = isFunnelV2
+        ? funnelV2PayCaption(method, pay.priceLine)
+        : pay.captionHtml;
+    } else if (isFunnelV2) {
+      caption = funnelV2PayCaption(method, formatPayAmount(peaches));
+    } else {
+      caption = tFormat(payLinkCopyKey(method), locale, {
+        price: pay.priceLine,
+      });
+    }
     const reply_markup = payLinkKeyboard({
       locale,
       paymentUrl: pay.paymentUrl,
@@ -396,7 +470,7 @@ export async function handleTopupRenew(
     chatId,
     platformUserId,
     locale,
-    order.paymentMethod as CasheraPaymentMethod,
+    order.paymentMethod as TopupPaymentMethodId,
     userId,
     basePeaches,
   );

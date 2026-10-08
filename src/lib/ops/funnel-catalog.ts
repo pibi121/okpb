@@ -3,6 +3,8 @@
  * Keys are stable; titles/details are RU and describe the user action plainly.
  */
 
+import { paymentMethodLabelRu } from "@/lib/ops/payment-method-labels";
+
 export type FunnelSurface = "bot" | "miniapp" | "system";
 
 export type FunnelStepDef = {
@@ -466,21 +468,21 @@ export const FUNNEL_CATALOG: FunnelStepDef[] = [
     "bot",
     "monetization",
     "Пополнение: выбрал способ оплаты",
-    "Выбрал СБП / крипту / CryptoBot (tu:pay:…). Метод в meta.method.",
+    "Выбрал способ (tu:pay:…). meta.method: sbp=РФ СБП, sp_sbp=РФ СБП резерв, crypto=крипта, sp_kz/sp_by/sp_ua=страны. meta.methodLabel — человекочитаемо.",
   ),
   S(
     "bot.topup.order_created",
     "bot",
     "monetization",
     "Пополнение: счёт создан, ссылка готова",
-    "PaymentOrder + ссылка Cashera успешно созданы. Дошёл до кнопки «Оплатить».",
+    "PaymentOrder + ссылка Cashera/StreamPay созданы. Дошёл до кнопки «Оплатить».",
   ),
   S(
     "bot.topup.order_failed",
     "bot",
     "monetization",
     "Пополнение: не удалось создать счёт",
-    "Ошибка Cashera/создания ордера — техсбой, не отказ пользователя.",
+    "Ошибка платёжки/создания ордера — техсбой, не отказ пользователя.",
   ),
   S(
     "bot.topup.renew",
@@ -875,9 +877,14 @@ export function resolveBotCallback(data: string): {
     };
   }
   if (data.startsWith("tu:pay:")) {
+    const method = data.slice("tu:pay:".length);
     return {
       key: "bot.topup.method",
-      meta: { method: data.slice("tu:pay:".length), callback: data },
+      meta: {
+        method,
+        methodLabel: paymentMethodLabelRu(method),
+        callback: data,
+      },
     };
   }
   if (/^tu:\d+$/.test(data)) {

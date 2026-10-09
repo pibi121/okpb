@@ -69,15 +69,20 @@ export async function POST(req: Request) {
     }
   } catch (e) {
     console.error("[tg/webhook]", e);
-    void import("@/lib/ops/errors")
-      .then(({ reportOpsError }) =>
-        reportOpsError({
+    const msg = e instanceof Error ? e.message : String(e);
+    void Promise.all([
+      import("@/lib/ops/errors"),
+      import("@/lib/tg/telegram-api"),
+    ])
+      .then(([{ isExpectedClientError, reportOpsError }, { isTransientTgNetworkError }]) => {
+        if (isExpectedClientError(msg) || isTransientTgNetworkError(e)) return;
+        return reportOpsError({
           kind: "bot",
-          message: e instanceof Error ? e.message : String(e),
+          message: msg,
           stack: e instanceof Error ? e.stack : undefined,
           stage: "webhook",
-        }),
-      )
+        });
+      })
       .catch(() => undefined);
   }
 

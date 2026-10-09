@@ -75,23 +75,70 @@ async function withTgDownloadRetry<T>(
   throw last;
 }
 
+/**
+ * Call Telegram Bot API with short retries on network / 5xx / 429.
+ * Logical API errors (bad request, not found, …) are not retried.
+ * Rare duplicate send* is preferred over empty UI on "fetch failed".
+ */
 export async function tgApiWithToken<T = unknown>(
   token: string,
   method: string,
   body?: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(`${API}${token}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const json = (await res.json()) as {
-    ok: boolean;
-    result?: T;
-    description?: string;
-  };
-  if (!json.ok) throw new Error(json.description || method);
-  return json.result as T;
+  const attempts = 3;
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(`${API}${token}/${method}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (res.status === 429 || res.status >= 500) {
+        throw new Error(`Telegram HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as {
+        ok: boolean;
+        result?: T;
+        description?: string;
+        parameters?: { retry_after?: number };
+      };
+      if (!json.ok) {
+        const desc = json.description || method;
+        const retryAfter = Number(json.parameters?.retry_after || 0);
+        if (
+          retryAfter > 0 &&
+          retryAfter <= 10 &&
+          i < attempts - 1 &&
+          /too many requests|retry after/i.test(desc)
+        ) {
+          await sleep(retryAfter * 1000);
+          continue;
+        }
+        throw new Error(desc);
+      }
+      return json.result as T;
+    } catch (e) {
+      last = e;
+      const detail = transientTgNetworkDetail(e);
+      const httpTransient =
+        e instanceof Error && /Telegram HTTP (429|5\d\d)/i.test(e.message);
+      if ((!detail && !httpTransient) || i === attempts - 1) {
+        if (detail || httpTransient) {
+          throw new Error(
+            `tg_api_transient: ${(detail || (e instanceof Error ? e.message : "network")).slice(0, 80)}`,
+          );
+        }
+        throw e;
+      }
+      console.warn(
+        `[tg] api ${method} transient retry ${i + 1}/${attempts - 1}:`,
+        detail || (e instanceof Error ? e.message : e),
+      );
+      await sleep(300 * 2 ** i);
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
 }
 
 export async function tgApi<T = unknown>(

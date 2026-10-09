@@ -45,6 +45,14 @@ export function isStaleCallbackQuery(message: string): boolean {
 export function isExpectedClientError(message: string): boolean {
   if (isDeadTelegramRecipient(message || "")) return true;
   if (isStaleCallbackQuery(message || "")) return true;
+  // Brief Telegram CDN / network flaps — retried in tgApiWithToken; not an incident.
+  if (
+    /tg_api_transient|tg_download_transient|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|socket hang up|UND_ERR_|Telegram HTTP (429|5\d\d)/i.test(
+      message || "",
+    )
+  ) {
+    return true;
+  }
   return /age_gate|возраст|несовершеннолетн|minor|18\+|завершить обучение|finish training|шаблон не найден|max photos|already_training|недостаточно (средств|кредит)|insufficient|баланс|оплат|payment required|need_photos|нужно фото/i.test(
     message || "",
   );

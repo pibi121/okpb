@@ -841,6 +841,11 @@ Open the link again or request a new one 👇`,
     en: "✅ Payment received!\n\nCredited: <b>{n}</b>₽\nBalance: <b>{balance}</b>₽",
   },
 
+  topup_refunded: {
+    ru: "↩️ Платёж возвращён на ваш счёт.\n\nС баланса списано: <b>{n}</b>₽\nБаланс: <b>{balance}</b>₽",
+    en: "↩️ The payment was refunded to your payment account.\n\nDeducted from balance: <b>{n}</b>₽\nBalance: <b>{balance}</b>₽",
+  },
+
   hub_main: {
     ru: `Ну что, пофантазируем? 😏💦
 

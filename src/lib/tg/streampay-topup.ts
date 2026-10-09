@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { rubToMinor } from "@/lib/cashera";
 import { getCbrRates } from "@/lib/fx/cbr";
 import { peachesToUsdt } from "@/lib/tg-pricing";
-import { creditPeaches } from "@/lib/tg/wallet";
+import { creditPeaches, debitPeaches } from "@/lib/tg/wallet";
 import { topupFeeRebatePeaches } from "@/lib/tg/topup-payments";
 import {
   formatLocalAmount,
@@ -371,9 +371,12 @@ export async function fulfillStreampayTopup(opts: {
   raw: Record<string, string>;
 }): Promise<{
   credited: boolean;
+  /** True when we clawed back a previously credited topup (StreamPay refund). */
+  refunded?: boolean;
   peaches?: number;
   userId?: string;
   status: string;
+  balanceAfter?: number;
 }> {
   const order = await prisma.paymentOrder.findUnique({
     where: { externalId: opts.externalId },
@@ -384,6 +387,13 @@ export async function fulfillStreampayTopup(opts: {
   }
 
   const status = String(opts.status || "").toLowerCase();
+  const metaRaw = (() => {
+    try {
+      return JSON.parse(order.rawStatusJson || "{}") as Record<string, unknown>;
+    } catch {
+      return {} as Record<string, unknown>;
+    }
+  })();
   const meta = parseStreampayOrderMeta(order.rawStatusJson) || null;
 
   // After success — ignore cancel (StreamPay recreate race).
@@ -401,6 +411,132 @@ export async function fulfillStreampayTopup(opts: {
     };
   }
 
+  // Refund after credit: claw back peaches (balance may go negative).
+  if (status === "refund") {
+    if (metaRaw.streampayRefundedAt) {
+      return {
+        credited: false,
+        refunded: false,
+        peaches: order.peaches,
+        userId: order.userId,
+        status: "refund",
+      };
+    }
+
+    if (!order.creditedAt || order.peaches <= 0) {
+      await prisma.paymentOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "refund",
+          casheraUuid: opts.invoiceId || order.casheraUuid,
+          rawStatusJson: JSON.stringify({
+            ...metaRaw,
+            ...(meta || {}),
+            callback: opts.raw,
+            at: new Date().toISOString(),
+          }).slice(0, 8000),
+        },
+      });
+      return {
+        credited: false,
+        refunded: false,
+        peaches: order.peaches,
+        userId: order.userId,
+        status: "refund",
+      };
+    }
+
+    // Lock: only one clawback (idempotent on repeated refund callbacks).
+    const locked = await prisma.paymentOrder.updateMany({
+      where: {
+        id: order.id,
+        creditedAt: { not: null },
+        NOT: { rawStatusJson: { contains: '"streampayRefundedAt"' } },
+      },
+      data: {
+        status: "refund",
+        casheraUuid: opts.invoiceId || order.casheraUuid,
+        rawStatusJson: JSON.stringify({
+          ...metaRaw,
+          ...(meta || {}),
+          callback: opts.raw,
+          streampayRefundedAt: new Date().toISOString(),
+          streampayRefundPeaches: order.peaches,
+          at: new Date().toISOString(),
+        }).slice(0, 8000),
+      },
+    });
+    if (locked.count === 0) {
+      return {
+        credited: false,
+        refunded: false,
+        peaches: order.peaches,
+        userId: order.userId,
+        status: "refund",
+      };
+    }
+
+    const claw = await debitPeaches(
+      order.userId,
+      order.peaches,
+      "tg_topup_streampay_refund",
+      {
+        orderId: order.id,
+        externalId: order.externalId,
+        invoiceId: opts.invoiceId || order.casheraUuid,
+        paymentMethod: order.paymentMethod,
+      },
+      { allowNegative: true },
+    );
+    const balanceAfter = claw.balance;
+
+    let partnerClawback = 0;
+    try {
+      const { clawbackPartnerCommission } = await import(
+        "@/lib/tg/partner-program"
+      );
+      const pc = await clawbackPartnerCommission({
+        referredUserId: order.userId,
+        grossPeaches: order.peaches,
+        kind: "topup",
+      });
+      partnerClawback = pc?.amount ?? 0;
+    } catch (e) {
+      console.error("[streampay] partner commission clawback:", e);
+    }
+
+    void import("@/lib/ops/ops-telegram")
+      .then(({ notifyOpsPaymentRefund }) =>
+        notifyOpsPaymentRefund({
+          userId: order.userId,
+          peaches: order.peaches,
+          amountMinor: order.amountMinor,
+          method: order.paymentMethod,
+          balanceAfter,
+          currency: "RUB",
+          provider: "StreamPay",
+          partnerClawback,
+        }),
+      )
+      .catch(() => undefined);
+
+    console.info("[streampay] refund clawback", {
+      externalId: order.externalId,
+      peaches: order.peaches,
+      balanceAfter,
+      partnerClawback,
+    });
+
+    return {
+      credited: false,
+      refunded: true,
+      peaches: order.peaches,
+      userId: order.userId,
+      status: "refund",
+      balanceAfter,
+    };
+  }
+
   await prisma.paymentOrder.update({
     where: { id: order.id },
     data: {
@@ -411,6 +547,7 @@ export async function fulfillStreampayTopup(opts: {
           ? order.paidAt || new Date()
           : order.paidAt,
       rawStatusJson: JSON.stringify({
+        ...metaRaw,
         ...(meta || {}),
         callback: opts.raw,
         at: new Date().toISOString(),

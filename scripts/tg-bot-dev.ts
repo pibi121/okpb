@@ -60,10 +60,13 @@ async function pollOneBot(bot: LiveBot) {
                 const { isExpectedClientError, reportOpsError } = await import(
                   "../src/lib/ops/errors"
                 );
-                if (isExpectedClientError(msg)) {
+                const { isTransientTgNetworkError } = await import(
+                  "../src/lib/tg/telegram-api"
+                );
+                if (isExpectedClientError(msg) || isTransientTgNetworkError(e)) {
                   console.warn(
-                    `[tg-bot @${bot.username}] callback skipped (expected):`,
-                    msg,
+                    `[tg-bot @${bot.username}] callback skipped (transient/expected):`,
+                    msg.slice(0, 160),
                   );
                 } else {
                   console.error(`[tg-bot @${bot.username}] callback error:`, e);
@@ -85,10 +88,13 @@ async function pollOneBot(bot: LiveBot) {
                 const { isExpectedClientError, reportOpsError } = await import(
                   "../src/lib/ops/errors"
                 );
-                if (isExpectedClientError(msg)) {
+                const { isTransientTgNetworkError } = await import(
+                  "../src/lib/tg/telegram-api"
+                );
+                if (isExpectedClientError(msg) || isTransientTgNetworkError(e)) {
                   console.warn(
-                    `[tg-bot @${bot.username}] message skipped (expected):`,
-                    msg,
+                    `[tg-bot @${bot.username}] message skipped (transient/expected):`,
+                    msg.slice(0, 160),
                   );
                 } else {
                   console.error(`[tg-bot @${bot.username}] message error:`, e);

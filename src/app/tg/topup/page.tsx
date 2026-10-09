@@ -7,7 +7,6 @@ import { TG_MIN_TOPUP_PEACHES, TG_QUICK_TOPUP_AMOUNTS } from "@/lib/tg-pricing";
 
 const METHODS = [
   { id: "sbp", ru: "🇷🇺 Оплатить по СБП (рублями)", en: "🇷🇺 Pay via SBP (RUB)" },
-  { id: "sp_sbp", ru: "🛟 Оплата СБП (резерв)", en: "🛟 SBP (backup)" },
   { id: "crypto", ru: "₿ Криптой (USDT, BTC, ETH и т.д)", en: "₿ Crypto (USDT, BTC…)" },
   { id: "sp_kz", ru: "🇰🇿 Картой КЗ", en: "🇰🇿 Kazakhstan card" },
   { id: "sp_by", ru: "🇧🇾 Картой Беларуси", en: "🇧🇾 Belarus card" },

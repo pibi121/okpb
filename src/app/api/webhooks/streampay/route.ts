@@ -98,10 +98,31 @@ export async function GET(req: NextRequest) {
         )
         .catch(() => undefined);
     }
+  } else if (result.refunded && result.userId && result.peaches) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: result.userId },
+        select: { locale: true, balancePeaches: true },
+      });
+      const locale = (user?.locale === "en" ? "en" : "ru") as TgLocale;
+      const text = tFormat("topup_refunded", locale, {
+        n: result.peaches,
+        balance:
+          result.balanceAfter ?? user?.balancePeaches ?? 0,
+      });
+      await tgNotifyUserOnLiveBots({
+        userId: result.userId,
+        text,
+        allLive: true,
+      });
+    } catch (e) {
+      console.error("[streampay] refund notify user failed:", e);
+    }
   } else if (
     result.userId &&
     /^(cancel|overdue|refund)$/.test(status) &&
-    !result.credited
+    !result.credited &&
+    !result.refunded
   ) {
     // Only notify fail if never credited (cancel-after-success already ignored).
     const order = await prisma.paymentOrder.findUnique({

@@ -35,7 +35,8 @@ export async function creditPeaches(
     .catch(() => undefined);
 
   if (/topup|payment|начисл/i.test(reason)) {
-    void creditPartnerCommission({
+    // Await so StreamPay refund can claw back the same commission row.
+    await creditPartnerCommission({
       referredUserId: userId,
       grossPeaches: amount,
       kind: "topup",
@@ -53,18 +54,24 @@ export async function debitPeaches(
   amount: number,
   reason: string,
   meta?: Record<string, unknown>,
-): Promise<{ ok: true } | { ok: false; balance: number }> {
-  if (amount <= 0) return { ok: true };
-
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.balancePeaches < amount) {
-    return { ok: false, balance: user?.balancePeaches ?? 0 };
+  opts?: { allowNegative?: boolean },
+): Promise<{ ok: true; balance: number } | { ok: false; balance: number }> {
+  if (amount <= 0) {
+    const bal = await getBalancePeaches(userId);
+    return { ok: true, balance: bal };
   }
 
-  await prisma.$transaction([
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return { ok: false, balance: 0 };
+  if (!opts?.allowNegative && user.balancePeaches < amount) {
+    return { ok: false, balance: user.balancePeaches };
+  }
+
+  const rows = await prisma.$transaction([
     prisma.user.update({
       where: { id: userId },
       data: { balancePeaches: { decrement: amount } },
+      select: { balancePeaches: true },
     }),
     prisma.ledgerEntry.create({
       data: {
@@ -87,5 +94,5 @@ export async function debitPeaches(
     )
     .catch(() => undefined);
 
-  return { ok: true };
+  return { ok: true, balance: rows[0].balancePeaches };
 }

@@ -175,21 +175,21 @@ export async function creditPartnerCommission(opts: {
   referredUserId: string;
   grossPeaches: number;
   kind?: string;
-}) {
-  if (opts.grossPeaches <= 0) return;
+}): Promise<{ id: string; amount: number } | null> {
+  if (opts.grossPeaches <= 0) return null;
   const attr = await prisma.partnerAttribution.findUnique({
     where: { userId: opts.referredUserId },
     include: { partner: true },
   });
-  if (!attr || attr.partner.status !== "active") return;
+  if (!attr || attr.partner.status !== "active") return null;
 
   const pct =
     clampPartnerCommissionPct(attr.partner.commissionPct) ??
     50;
   const amount = Math.floor((opts.grossPeaches * pct) / 100);
-  if (amount <= 0) return;
+  if (amount <= 0) return null;
 
-  await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     await tx.partnerProfile.update({
       where: { id: attr.partnerId },
       data: {
@@ -197,7 +197,7 @@ export async function creditPartnerCommission(opts: {
         totalEarnedPeaches: { increment: amount },
       },
     });
-    await tx.partnerCommission.create({
+    const row = await tx.partnerCommission.create({
       data: {
         partnerId: attr.partnerId,
         referredUserId: opts.referredUserId,
@@ -217,6 +217,7 @@ export async function creditPartnerCommission(opts: {
         },
       });
     }
+    return row;
   });
 
   // Don't spam on historical backfill; live top-ups use kind "topup".
@@ -230,6 +231,94 @@ export async function creditPartnerCommission(opts: {
       )
       .catch((e) => console.error("[partner] notify commission:", e));
   }
+
+  return { id: created.id, amount };
+}
+
+/**
+ * Reverse a topup commission after StreamPay (etc.) refund.
+ * Partner balance may go negative if they already withdrew.
+ */
+export async function clawbackPartnerCommission(opts: {
+  referredUserId: string;
+  grossPeaches: number;
+  kind?: string;
+}): Promise<{ amount: number } | null> {
+  if (opts.grossPeaches <= 0) return null;
+  const kind = opts.kind || "topup";
+
+  const commission = await prisma.partnerCommission.findFirst({
+    where: {
+      referredUserId: opts.referredUserId,
+      kind,
+      grossPeaches: opts.grossPeaches,
+      amountPeaches: { gt: 0 },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!commission) return null;
+
+  // Already reversed for this commission row?
+  const already = await prisma.partnerCommission.findFirst({
+    where: {
+      partnerId: commission.partnerId,
+      referredUserId: opts.referredUserId,
+      kind: `${kind}_refund`,
+      grossPeaches: -opts.grossPeaches,
+      amountPeaches: -commission.amountPeaches,
+      createdAt: { gte: commission.createdAt },
+    },
+  });
+  if (already) return { amount: 0 };
+
+  const amount = commission.amountPeaches;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.partnerProfile.update({
+      where: { id: commission.partnerId },
+      data: {
+        balancePeaches: { decrement: amount },
+        totalEarnedPeaches: { decrement: amount },
+      },
+    });
+    await tx.partnerCommission.create({
+      data: {
+        partnerId: commission.partnerId,
+        referredUserId: opts.referredUserId,
+        linkId: commission.linkId,
+        // Negative so partner dashboard _sum(gross/amount) stays correct.
+        grossPeaches: -opts.grossPeaches,
+        amountPeaches: -amount,
+        kind: `${kind}_refund`,
+      },
+    });
+    if (commission.linkId) {
+      const link = await tx.partnerLink.findUnique({
+        where: { id: commission.linkId },
+      });
+      if (link) {
+        await tx.partnerLink.update({
+          where: { id: commission.linkId },
+          data: {
+            purchases: Math.max(0, link.purchases - 1),
+            purchaseGrossPeaches: Math.max(
+              0,
+              link.purchaseGrossPeaches - opts.grossPeaches,
+            ),
+            commissionPeaches: Math.max(0, link.commissionPeaches - amount),
+          },
+        });
+      }
+    }
+  });
+
+  console.info("[partner] commission clawback", {
+    referredUserId: opts.referredUserId,
+    amount,
+    grossPeaches: opts.grossPeaches,
+  });
+
+  return { amount };
 }
 
 export async function getPartnerDashboard(userId: string) {
@@ -253,11 +342,15 @@ export async function getPartnerDashboard(userId: string) {
     where: { partnerId: profile.id },
   });
 
-  const purchaseAgg = await prisma.partnerCommission.aggregate({
-    where: { partnerId: profile.id },
-    _count: { id: true },
-    _sum: { grossPeaches: true, amountPeaches: true },
-  });
+  const [purchaseCount, purchaseAgg] = await Promise.all([
+    prisma.partnerCommission.count({
+      where: { partnerId: profile.id, amountPeaches: { gt: 0 } },
+    }),
+    prisma.partnerCommission.aggregate({
+      where: { partnerId: profile.id },
+      _sum: { grossPeaches: true, amountPeaches: true },
+    }),
+  ]);
 
   const commissions = await prisma.partnerCommission.findMany({
     where: { partnerId: profile.id },
@@ -277,7 +370,7 @@ export async function getPartnerDashboard(userId: string) {
     profile,
     links,
     referrals,
-    purchases: purchaseAgg._count.id,
+    purchases: purchaseCount,
     purchaseGrossPeaches: purchaseAgg._sum.grossPeaches || 0,
     commissionPeaches:
       purchaseAgg._sum.amountPeaches || profile.totalEarnedPeaches,

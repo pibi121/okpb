@@ -1,5 +1,6 @@
 /**
- * Peach top-ups via Cashera (SBP / crypto) and StreamPay (SBP reserve + KZ/BY/UA).
+ * Peach top-ups via Cashera (SBP / crypto) and StreamPay (KZ/BY/UA).
+ * StreamPay SBP reserve (`sp_sbp`) stays in code for fulfill/webhooks but is hidden from UI.
  */
 import { prisma } from "@/lib/db";
 import {
@@ -37,7 +38,6 @@ export const TOPUP_PAYMENT_METHODS: Array<{
   style: "primary" | "success" | "danger";
   provider: "cashera" | "streampay";
 }> = [
-  // Cashera — rename only
   {
     id: "sbp",
     labelRu: "🇷🇺 Оплатить по СБП (рублями)",
@@ -45,15 +45,6 @@ export const TOPUP_PAYMENT_METHODS: Array<{
     style: "success",
     provider: "cashera",
   },
-  // StreamPay — new
-  {
-    id: "sp_sbp",
-    labelRu: "🛟 Оплата СБП (резерв)",
-    labelEn: "🛟 SBP (backup)",
-    style: "primary",
-    provider: "streampay",
-  },
-  // Cashera — rename only
   {
     id: "crypto",
     labelRu: "₿ Криптой (USDT, BTC, ETH и т.д)",
@@ -61,7 +52,6 @@ export const TOPUP_PAYMENT_METHODS: Array<{
     style: "danger",
     provider: "cashera",
   },
-  // StreamPay — new
   {
     id: "sp_kz",
     labelRu: "🇰🇿 Картой КЗ",
@@ -86,6 +76,9 @@ export const TOPUP_PAYMENT_METHODS: Array<{
 ];
 
 export const TOPUP_ACTIVE_METHOD_IDS = TOPUP_PAYMENT_METHODS.map((m) => m.id);
+
+/** Hidden from UI; still fulfillable if an old order exists. */
+export const TOPUP_HIDDEN_METHOD_IDS: TopupPaymentMethodId[] = ["sp_sbp"];
 
 /**
  * Fee rebate %: user pays provider fee on the checkout page; we return it as 🍑.
@@ -117,6 +110,16 @@ export function isActiveTopupMethod(
   method: string,
 ): method is TopupPaymentMethodId {
   return (TOPUP_ACTIVE_METHOD_IDS as string[]).includes(method);
+}
+
+/** UI methods + hidden-but-still-valid (e.g. pending sp_sbp). */
+export function isKnownTopupMethod(
+  method: string,
+): method is TopupPaymentMethodId {
+  return (
+    isActiveTopupMethod(method) ||
+    (TOPUP_HIDDEN_METHOD_IDS as string[]).includes(method)
+  );
 }
 
 export function isCasheraTopupMethod(

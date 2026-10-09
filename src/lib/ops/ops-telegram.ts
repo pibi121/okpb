@@ -674,6 +674,45 @@ export async function notifyOpsPayment(opts: {
   }
 }
 
+/** StreamPay (or similar) refund after we already credited the user. */
+export async function notifyOpsPaymentRefund(opts: {
+  userId: string;
+  peaches: number;
+  amountMinor: number;
+  method: string;
+  balanceAfter: number;
+  currency?: string;
+  provider?: string;
+  /** Partner commission clawed back (₽). */
+  partnerClawback?: number;
+}): Promise<void> {
+  if (!opsTelegramConfigured()) return;
+  try {
+    const ident = await loadOpsUserIdentity(opts.userId);
+    const rub = (opts.amountMinor / 100).toFixed(0);
+    const method = paymentMethodLabelRu(opts.method);
+    const provider = opts.provider || "StreamPay";
+    const partnerAmt = Math.max(0, Math.floor(opts.partnerClawback || 0));
+    const text = [
+      `♻️ <b>Возврат оплаты</b> (${escHtml(provider)})`,
+      `Кто: ${ident?.who || `<code>${escHtml(opts.userId)}</code>`}`,
+      `Списано с баланса: <b>${escHtml(String(opts.peaches))}₽</b>`,
+      `Сумма ордера: <b>${escHtml(rub)} ${escHtml(opts.currency || "₽")}</b>`,
+      `Баланс после: <b>${escHtml(String(opts.balanceAfter))}₽</b>`,
+      partnerAmt > 0
+        ? `Комиссия партнёра снята: <b>${escHtml(String(partnerAmt))}₽</b>`
+        : `Комиссия партнёра: не было / уже снята`,
+      `Способ: ${escHtml(method)}`,
+      `Партнёр: ${ident?.partnerLine || "—"}`,
+      `Источник: ${ident?.sourceLine || "—"}`,
+      formatMsk(new Date()) + " МСК",
+    ].join("\n");
+    await sendOpsTelegram("payments", text);
+  } catch (e) {
+    console.error("[ops-tg] payment refund notify:", e);
+  }
+}
+
 export async function notifyOpsSignup(opts: {
   userId: string;
   via: "telegram" | "web";

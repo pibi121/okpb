@@ -3,6 +3,7 @@ import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import { listPendingPartnerWithdrawals } from "@/lib/tg/partner-admin";
 import { writeAudit } from "@/lib/ops/audit";
 import { clampPartnerCommissionPct } from "@/lib/tg/partner-program";
+import { notifyPartnersChatPayout } from "@/lib/tg/partner-payout-notify";
 
 export async function GET() {
   return withOps("partners", async () => {
@@ -37,7 +38,44 @@ export async function POST(req: Request) {
       id?: string;
       note?: string;
       commissionPct?: number;
+      volumeBonusPeaches?: number;
+      amountPeaches?: number;
     };
+
+    if (body.action === "fake_payout") {
+      const amount = Math.floor(Number(body.amountPeaches));
+      if (!Number.isFinite(amount) || amount < 1) {
+        return jsonErr("Сумма: целое число ≥ 1");
+      }
+      const bonusRaw = Number(body.volumeBonusPeaches ?? 0);
+      const bonus = Number.isFinite(bonusRaw)
+        ? Math.max(0, Math.floor(bonusRaw))
+        : 0;
+      const w = await prisma.partnerWithdrawal.create({
+        data: {
+          partnerId: null,
+          amountPeaches: amount,
+          volumeBonusPeaches: bonus,
+          isFake: true,
+          status: "paid",
+          adminNote: (body.note || "fake_payout").slice(0, 500),
+          payoutDetails: "",
+        },
+      });
+      const notify = await notifyPartnersChatPayout({
+        amountPeaches: amount,
+        volumeBonusPeaches: bonus,
+      });
+      await writeAudit({
+        actorId: actor.id,
+        action: "payout_fake",
+        targetType: "partnerWithdrawal",
+        targetId: w.id,
+        detail: { amount, bonus, notify },
+      });
+      return jsonOk({ ok: true, id: w.id, notify });
+    }
+
     if (!body.id || !body.action) return jsonErr("Нужны id и действие");
 
     if (body.action === "set_commission") {
@@ -75,27 +113,54 @@ export async function POST(req: Request) {
     }
 
     if (body.action !== "approve" && body.action !== "reject") {
-      return jsonErr("approve, reject или set_commission");
+      return jsonErr("approve, reject, set_commission или fake_payout");
     }
     const status = body.action === "approve" ? "paid" : "rejected";
-    const w = await prisma.partnerWithdrawal.findUnique({ where: { id: body.id } });
+    const w = await prisma.partnerWithdrawal.findUnique({
+      where: { id: body.id },
+    });
     if (!w) return jsonErr("Заявка не найдена");
+    if (w.isFake) return jsonErr("Фейковая заявка уже закрыта");
+
+    let volumeBonusPeaches = w.volumeBonusPeaches || 0;
+    if (status === "paid") {
+      const bonusRaw = Number(body.volumeBonusPeaches ?? volumeBonusPeaches);
+      if (!Number.isFinite(bonusRaw) || bonusRaw < 0) {
+        return jsonErr("Премия за объём: число ≥ 0");
+      }
+      volumeBonusPeaches = Math.floor(bonusRaw);
+    }
+
     await prisma.partnerWithdrawal.update({
       where: { id: body.id },
-      data: { status, adminNote: (body.note || "").slice(0, 500) },
+      data: {
+        status,
+        adminNote: (body.note || "").slice(0, 500),
+        ...(status === "paid" ? { volumeBonusPeaches } : {}),
+      },
     });
-    if (status === "rejected") {
+    if (status === "rejected" && w.partnerId) {
       await prisma.partnerProfile.update({
         where: { id: w.partnerId },
         data: { balancePeaches: { increment: w.amountPeaches } },
       });
     }
+
+    let notify: { ok: boolean; skipped?: boolean; error?: string } | undefined;
+    if (status === "paid") {
+      notify = await notifyPartnersChatPayout({
+        amountPeaches: w.amountPeaches,
+        volumeBonusPeaches,
+      });
+    }
+
     await writeAudit({
       actorId: actor.id,
       action: `payout_${status}`,
       targetType: "partnerWithdrawal",
       targetId: body.id,
+      detail: status === "paid" ? { volumeBonusPeaches, notify } : undefined,
     });
-    return jsonOk({ ok: true });
+    return jsonOk({ ok: true, notify });
   });
 }

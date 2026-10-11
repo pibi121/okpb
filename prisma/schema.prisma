@@ -1141,17 +1141,23 @@ model PartnerCommission {
 
 model PartnerWithdrawal {
   id            String   @id @default(cuid())
-  partnerId     String
+  /// Null for fake payout announcements (ops → partners chat only).
+  partnerId     String?
   amountPeaches Int
+  /// Extra shown in partners-chat announce; does not change partner balance.
+  volumeBonusPeaches Int @default(0)
+  /// Ops-created fake payout for social proof in partners chat.
+  isFake        Boolean  @default(false)
   status        String   @default("pending")
   payoutDetails String   @default("")
   adminNote     String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner PartnerProfile? @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([partnerId, status])
+  @@index([isFake, createdAt])
 }
 
 /// Own marketing start-links (not partner 50%). Payload: m_CODE

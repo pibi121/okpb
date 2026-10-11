@@ -119,7 +119,7 @@ import { ensureCopyOverlay } from "@/lib/ops/copy";
 
 export type TgUpdateMessage = {
   message_id: number;
-  chat: { id: number };
+  chat: { id: number; type?: string };
   from?: TelegramBotUser;
   text?: string;
   photo?: Array<{ file_id: string }>;
@@ -132,7 +132,7 @@ export type TgCallbackQuery = {
   id: string;
   from: TelegramBotUser;
   message?: {
-    chat: { id: number };
+    chat: { id: number; type?: string };
     message_id: number;
     photo?: unknown[];
     video?: unknown;
@@ -141,6 +141,11 @@ export type TgCallbackQuery = {
   };
   data?: string;
 };
+
+/** Product bot may sit in partner/community groups — never answer there. */
+function isPrivateChat(chat?: { type?: string } | null): boolean {
+  return !chat?.type || chat.type === "private";
+}
 
 function localeFromUser(userLocale?: string | null): TgLocale {
   return normalizeLocale(userLocale);
@@ -1680,6 +1685,12 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     return;
   }
 
+  // Ignore groups/supergroups (e.g. partners chat) — payout posts are outbound only.
+  if (!isPrivateChat(cq.message?.chat)) {
+    await tgAnswerCallbackQuery(cq.id);
+    return;
+  }
+
   const platformUserId = String(chatId);
   let user;
   try {
@@ -2057,6 +2068,9 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 }
 
 export async function handleTgMessage(msg: TgUpdateMessage) {
+  // Partners / community groups: never create users or reply.
+  if (!isPrivateChat(msg.chat)) return;
+
   await ensureCopyOverlay();
   await import("@/lib/ops/prices")
     .then(({ ensurePriceOverlay }) => ensurePriceOverlay())

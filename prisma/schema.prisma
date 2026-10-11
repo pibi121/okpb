@@ -851,6 +851,10 @@ model QuickVideoTemplate {
   funnelV2Published   Boolean  @default(false)
   /// Override title shown in TG (empty = use title)
   tgDisplayTitle      String   @default("")
+  /// "" | primary | success | danger
+  tgButtonStyle       String   @default("")
+  /// Funnel v2: start a new keyboard row when catalog customRows is on
+  tgRowBreak          Boolean  @default(false)
   tgSortOrder         Int      @default(0)
   previewIdentityKey  String   @default("")
   /// sex | story | dialogue — funnel button emojis 🍓🍿💬
@@ -955,6 +959,10 @@ model LoraI2vTemplate {
   /// Lab 2.0 Funnel v2 bot — only one-photo (requiresLora=false) templates
   funnelV2Published Boolean @default(false)
   tgDisplayTitle   String   @default("")
+  /// "" | primary | success | danger
+  tgButtonStyle    String   @default("")
+  /// Funnel v2: start a new keyboard row when catalog customRows is on
+  tgRowBreak       Boolean  @default(false)
   tgSortOrder      Int      @default(0)
   /// sex|display|… comma-separated (same as photo filter)
   sceneCategory    String   @default("")
@@ -1217,6 +1225,8 @@ model OpsSetting {
   tgFunnelV2Live         Boolean  @default(false)
   /// Frozen at first go-live — broadcast segment «база до выкатки»
   tgFunnelV2LiveAt       DateTime?
+  /// Funnel v2 photo/video keyboard: page sizes + custom row flag
+  funnelV2KeyboardJson   String   @default("")
   updatedAt              DateTime @updatedAt
 }
 
@@ -1368,6 +1378,10 @@ model PhotoTemplate {
   funnelV2Published Boolean @default(false)
   /// Override title shown in TG (empty = use title)
   tgDisplayTitle  String   @default("")
+  /// "" | primary | success | danger
+  tgButtonStyle   String   @default("")
+  /// Funnel v2: start a new keyboard row when catalog customRows is on
+  tgRowBreak      Boolean  @default(false)
   /// sex | display | dirt | public | humiliation | empty = uncategorized
   sceneCategory   String   @default("")
   /// Author character id (feed: don't show same identity twice in a row)

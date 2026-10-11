@@ -26,8 +26,14 @@ import {
 } from "@/lib/tg/character-service";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
-
-const PAGE_SIZE = 6;
+import {
+  groupKeyboardRows,
+  paginateKeyboardRows,
+  parseTgButtonStyle,
+  tgInlineButton,
+  type TgButtonStyle,
+} from "@/lib/tg/funnel-v2/keyboard-layout";
+import { loadFunnelKeyboardSettings } from "@/lib/tg/funnel-v2/keyboard-settings";
 
 type VidRow = {
   id: string;
@@ -39,6 +45,8 @@ type VidRow = {
   previewVideoUrl: string;
   durationSec: number;
   emojis: string;
+  rowBreak: boolean;
+  buttonStyle: TgButtonStyle;
 };
 
 async function activePhotoUrl(platformUserId: string): Promise<string | null> {
@@ -97,13 +105,13 @@ async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]
     prisma.quickVideoTemplate.findMany({
       where: { funnelV2Published: true },
       orderBy: [{ tgSortOrder: "asc" }, { updatedAt: "desc" }],
-      take: 40,
+      take: 120,
     }),
     prisma.loraI2vTemplate.findMany({
       // Funnel v2 bot: only one-photo I2V (no LoRA character)
       where: { funnelV2Published: true, requiresLora: false },
       orderBy: [{ tgSortOrder: "asc" }, { updatedAt: "desc" }],
-      take: 40,
+      take: 120,
     }),
   ]);
 
@@ -125,6 +133,8 @@ async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]
       previewVideoUrl: r.previewVideoUrl || "",
       durationSec: r.durationSec || 6,
       emojis: videoFunnelCategoryEmojis(r.sceneCategory),
+      rowBreak: r.tgRowBreak,
+      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
     })),
     ...li2v.map((r) => ({
       id: r.id,
@@ -138,6 +148,8 @@ async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]
       previewVideoUrl: r.previewVideoUrl || "",
       durationSec: r.durationSec || 6,
       emojis: videoFunnelCategoryEmojis(r.sceneCategory),
+      rowBreak: r.tgRowBreak,
+      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
     })),
   ];
   void userId;
@@ -157,9 +169,16 @@ export async function sendFunnelV2VideoHub(
 ) {
   const photoUrl = await activePhotoUrl(platformUserId);
   const tpls = await listVideoRows(userId, locale);
-  const pages = Math.max(1, Math.ceil(tpls.length / PAGE_SIZE));
-  const p = Math.min(Math.max(0, page), pages - 1);
-  const slice = tpls.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
+  const keyboard = await loadFunnelKeyboardSettings();
+  const grouped = groupKeyboardRows(tpls, keyboard.video.customRows);
+  const paged = paginateKeyboardRows(
+    grouped,
+    page,
+    keyboard.video.firstPageSize,
+    keyboard.video.nextPageSize,
+  );
+  const p = paged.pageIndex;
+  const pages = paged.pageCount;
 
   const header = photoUrl
     ? ""
@@ -170,24 +189,18 @@ export async function sendFunnelV2VideoHub(
     `Выбирай то, что тебе хочется с ней сделать 😜`;
 
   const rows: Array<Array<Record<string, unknown>>> = [];
-  for (let i = 0; i < slice.length; i += 2) {
-    const a = slice[i]!;
-    const b = slice[i + 1];
-    const label = (t: VidRow) =>
-      `${t.title.slice(0, 28)}${t.emojis}`.slice(0, 40);
-    const row = [
-      {
-        text: label(a),
-        callback_data: `fv2:vid:t:${a.kind}:${a.id}`,
-      },
-    ];
-    if (b) {
-      row.push({
-        text: label(b),
-        callback_data: `fv2:vid:t:${b.kind}:${b.id}`,
-      });
-    }
-    rows.push(row);
+  const label = (t: VidRow) =>
+    `${t.title.slice(0, 28)}${t.emojis}`.slice(0, 40);
+  for (const rowItems of paged.pageRows) {
+    rows.push(
+      rowItems.map((tpl) =>
+        tgInlineButton(
+          label(tpl),
+          `fv2:vid:t:${tpl.kind}:${tpl.id}`,
+          tpl.buttonStyle,
+        ),
+      ),
+    );
   }
   if (pages > 1) {
     const nav: Array<Record<string, unknown>> = [];

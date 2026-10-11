@@ -8,6 +8,17 @@ import {
   formatVideoFunnelCategories,
   type VideoFunnelCategoryId,
 } from "@/lib/photo-template-animate";
+import {
+  defaultFunnelKeyboardSettings,
+  type FunnelKeyboardCatalog,
+  type FunnelKeyboardCatalogId,
+  type FunnelKeyboardSettings,
+  type TgButtonStyle,
+} from "@/lib/tg/funnel-v2/keyboard-layout";
+import {
+  Lab2KeyboardPreview,
+  type PreviewButton,
+} from "@/components/lab2-keyboard-preview";
 
 type Kind = "photo" | "video" | "lora_i2v";
 
@@ -22,6 +33,8 @@ type TransferItem = {
   previewImageUrl: string;
   previewVideoUrl: string;
   sortOrder: number;
+  buttonStyle: TgButtonStyle;
+  rowBreak: boolean;
   durationSec: number;
   updatedAt: string;
   labHref: string;
@@ -35,7 +48,16 @@ type Draft = {
   sceneCategory: string;
   previewImageUrl: string;
   previewVideoUrl: string;
+  buttonStyle: TgButtonStyle;
+  rowBreak: boolean;
 };
+
+const BUTTON_STYLES: Array<{ id: TgButtonStyle; label: string }> = [
+  { id: "", label: "Обычная" },
+  { id: "primary", label: "Синяя" },
+  { id: "success", label: "Зелёная" },
+  { id: "danger", label: "Красная" },
+];
 
 const TABS: Array<{ id: Kind; label: string; hint: string }> = [
   {
@@ -63,6 +85,8 @@ function draftFromItem(it: TransferItem): Draft {
     sceneCategory: it.sceneCategory || "",
     previewImageUrl: it.previewImageUrl || "",
     previewVideoUrl: it.previewVideoUrl || "",
+    buttonStyle: it.buttonStyle || "",
+    rowBreak: Boolean(it.rowBreak),
   };
 }
 
@@ -78,8 +102,26 @@ function isDirty(base: Draft, cur: Draft): boolean {
     formatVideoFunnelCategories(parseVideoFunnelCategories(base.sceneCategory)) !==
       formatVideoFunnelCategories(parseVideoFunnelCategories(cur.sceneCategory)) ||
     base.previewImageUrl !== cur.previewImageUrl ||
-    base.previewVideoUrl !== cur.previewVideoUrl
+    base.previewVideoUrl !== cur.previewVideoUrl ||
+    base.buttonStyle !== cur.buttonStyle ||
+    base.rowBreak !== cur.rowBreak
   );
+}
+
+function keyboardEqual(
+  a: FunnelKeyboardSettings,
+  b: FunnelKeyboardSettings,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function buttonLabel(it: TransferItem, d: Draft): string {
+  const title = (d.displayTitle || it.title).trim() || it.title;
+  if (it.kind === "photo") return title.slice(0, 40);
+  const emojis = parseVideoFunnelCategories(d.sceneCategory)
+    .map((c) => VIDEO_FUNNEL_CATEGORIES.find((x) => x.id === c)?.emoji || "")
+    .join("");
+  return `${title.slice(0, 28)}${emojis}`.slice(0, 40);
 }
 
 export function Lab2TransferClient() {
@@ -104,11 +146,19 @@ export function Lab2TransferClient() {
     lora_i2v: false,
   });
   const [dragId, setDragId] = useState<string | null>(null);
+  const [keyboard, setKeyboard] = useState<FunnelKeyboardSettings>(
+    defaultFunnelKeyboardSettings,
+  );
+  const [keyboardBase, setKeyboardBase] = useState<FunnelKeyboardSettings>(
+    defaultFunnelKeyboardSettings,
+  );
+  const [previewPage, setPreviewPage] = useState(0);
 
   const hydrate = useCallback((data: {
     photo: TransferItem[];
     video: TransferItem[];
     lora_i2v: TransferItem[];
+    keyboard?: FunnelKeyboardSettings;
   }) => {
     setLists({
       photo: data.photo || [],
@@ -128,6 +178,9 @@ export function Lab2TransferClient() {
     setDrafts(nextDrafts);
     setBaseline(nextBase);
     setOrderDirty({ photo: false, video: false, lora_i2v: false });
+    const kb = data.keyboard || defaultFunnelKeyboardSettings();
+    setKeyboard(kb);
+    setKeyboardBase(kb);
   }, []);
 
   const load = useCallback(async () => {
@@ -144,6 +197,7 @@ export function Lab2TransferClient() {
         photo: TransferItem[];
         video: TransferItem[];
         lora_i2v: TransferItem[];
+        keyboard?: FunnelKeyboardSettings;
       };
       hydrate(data);
     } catch {
@@ -177,8 +231,9 @@ export function Lab2TransferClient() {
     for (const kind of ["photo", "video", "lora_i2v"] as Kind[]) {
       if (orderDirty[kind]) n += 1;
     }
+    if (!keyboardEqual(keyboard, keyboardBase)) n += 1;
     return n;
-  }, [drafts, baseline, orderDirty]);
+  }, [drafts, baseline, orderDirty, keyboard, keyboardBase]);
 
   const publishedOnTab = useMemo(
     () =>
@@ -188,6 +243,24 @@ export function Lab2TransferClient() {
   );
 
   const canDrag = !q.trim();
+  const catalog: FunnelKeyboardCatalogId = tab === "photo" ? "photo" : "video";
+  const previewItems = useMemo(() => {
+    const take = (kind: Kind) =>
+      lists[kind].filter(
+        (it) => drafts[draftKey(kind, it.id)]?.funnelV2Published,
+      );
+    const published =
+      catalog === "photo" ? take("photo") : [...take("video"), ...take("lora_i2v")];
+    return published.map((it) => {
+      const d = drafts[draftKey(it.kind, it.id)] || draftFromItem(it);
+      return {
+        key: draftKey(it.kind, it.id),
+        label: buttonLabel(it, d),
+        rowBreak: d.rowBreak,
+        style: d.buttonStyle,
+      } satisfies PreviewButton;
+    });
+  }, [lists, drafts, catalog]);
 
   const reorder = (fromId: string, toId: string) => {
     if (fromId === toId) return;
@@ -202,6 +275,58 @@ export function Lab2TransferClient() {
     });
     setOrderDirty((prev) => ({ ...prev, [tab]: true }));
     setOkMsg("");
+  };
+
+  const catalogOf = (kind: Kind): FunnelKeyboardCatalogId =>
+    kind === "photo" ? "photo" : "video";
+
+  const publishedInCatalog = (
+    catalog: FunnelKeyboardCatalogId,
+    draftMap: Record<string, Draft> = drafts,
+  ): TransferItem[] => {
+    const take = (kind: Kind) =>
+      lists[kind].filter(
+        (it) => draftMap[draftKey(kind, it.id)]?.funnelV2Published,
+      );
+    if (catalog === "photo") return take("photo");
+    return [...take("video"), ...take("lora_i2v")];
+  };
+
+  const setCatalogSettings = (
+    catalog: FunnelKeyboardCatalogId,
+    patch: Partial<FunnelKeyboardCatalog>,
+  ) => {
+    setKeyboard((prev) => ({
+      ...prev,
+      [catalog]: { ...prev[catalog], ...patch },
+    }));
+    setPreviewPage(0);
+    setOkMsg("");
+  };
+
+  const enableCustomRows = (catalog: FunnelKeyboardCatalogId) => {
+    if (keyboard[catalog].customRows) return;
+    const published = publishedInCatalog(catalog);
+    setDrafts((prev) => {
+      const next = { ...prev };
+      published.forEach((it, index) => {
+        const k = draftKey(it.kind, it.id);
+        const cur = next[k];
+        if (!cur) return;
+        next[k] = { ...cur, rowBreak: index % 2 === 0 };
+      });
+      return next;
+    });
+    setKeyboard((prev) => ({
+      ...prev,
+      [catalog]: { ...prev[catalog], customRows: true },
+    }));
+  };
+
+  const setRowBreak = (kind: Kind, id: string, rowBreak: boolean) => {
+    const catalog = catalogOf(kind);
+    if (!keyboard[catalog].customRows) enableCustomRows(catalog);
+    setDraft(kind, id, { rowBreak });
   };
 
   const setDraft = (kind: Kind, id: string, patch: Partial<Draft>) => {
@@ -291,6 +416,8 @@ export function Lab2TransferClient() {
       previewImageUrl?: string;
       previewVideoUrl?: string;
       sortOrder?: number;
+      buttonStyle?: TgButtonStyle;
+      rowBreak?: boolean;
     }> = [];
     const seen = new Set<string>();
 
@@ -314,6 +441,8 @@ export function Lab2TransferClient() {
           row.sceneCategory = d.sceneCategory;
           row.previewImageUrl = d.previewImageUrl;
           row.previewVideoUrl = d.previewVideoUrl;
+          row.buttonStyle = d.buttonStyle;
+          row.rowBreak = d.rowBreak;
         }
         if (ordDirty && idx >= 0) row.sortOrder = idx;
         if (seen.has(k)) continue;
@@ -322,7 +451,8 @@ export function Lab2TransferClient() {
       }
     }
 
-    if (!payload.length) {
+    const keyboardDirty = !keyboardEqual(keyboard, keyboardBase);
+    if (!payload.length && !keyboardDirty) {
       setOkMsg("Нет изменений");
       return;
     }
@@ -334,7 +464,10 @@ export function Lab2TransferClient() {
       const res = await fetch("/api/peach/lab2-transfer", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: payload }),
+        body: JSON.stringify({
+          items: payload,
+          ...(keyboardDirty ? { keyboard } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -413,7 +546,10 @@ export function Lab2TransferClient() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id);
+                setPreviewPage(0);
+              }}
               className={`rounded-2xl border px-3 py-2 text-left transition ${
                 tab === t.id
                   ? "border-peach/50 bg-peach/10"
@@ -430,6 +566,21 @@ export function Lab2TransferClient() {
           );
         })}
       </div>
+
+      <Lab2KeyboardPreview
+        title={catalog === "photo" ? "Клавиатура фото" : "Клавиатура видео"}
+        hint={
+          catalog === "photo"
+            ? "Длинное название — «Новая строка». Короткие — «В ряд с предыдущей», до 4 в строке. Следующие страницы берут раскладку своих шаблонов."
+            : "Один каталог для MiniMax и Krea→MiniMax, в порядке бота. У каждого шаблона свой ряд, до 4 кнопок в строке."
+        }
+        items={previewItems}
+        settings={keyboard[catalog]}
+        page={previewPage}
+        onPage={setPreviewPage}
+        onSettings={(patch) => setCatalogSettings(catalog, patch)}
+        onResetRows={() => setCatalogSettings(catalog, { customRows: false })}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -522,11 +673,15 @@ export function Lab2TransferClient() {
                     type="checkbox"
                     className="h-4 w-4 accent-[#f5a97f]"
                     checked={d.funnelV2Published}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const on = e.target.checked;
                       setDraft(it.kind, it.id, {
-                        funnelV2Published: e.target.checked,
-                      })
-                    }
+                        funnelV2Published: on,
+                        ...(on && keyboard[catalogOf(it.kind)].customRows
+                          ? { rowBreak: true }
+                          : {}),
+                      });
+                    }}
                   />
                   <span className="sr-only">В воронку</span>
                 </label>
@@ -596,6 +751,64 @@ export function Lab2TransferClient() {
                   {open ? "Свернуть" : "Редактировать"}
                 </button>
               </div>
+
+              {d.funnelV2Published ? (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-zinc-500">Ряд</span>
+                  <button
+                    type="button"
+                    disabled={!canDrag}
+                    title={canDrag ? "Отдельная строка" : "Сначала очисти поиск"}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] disabled:opacity-40 ${
+                      keyboard[catalog].customRows && d.rowBreak
+                        ? "border-peach/40 bg-peach/10 text-peach"
+                        : "border-white/10 text-zinc-400"
+                    }`}
+                    onClick={() => setRowBreak(it.kind, it.id, true)}
+                  >
+                    Новая строка
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !canDrag ||
+                      previewItems[0]?.key === k
+                    }
+                    title={
+                      previewItems[0]?.key === k
+                        ? "Первая кнопка каталога всегда начинает строку"
+                        : canDrag
+                          ? "Поставить в ряд с предыдущей кнопкой каталога"
+                          : "Сначала очисти поиск"
+                    }
+                    className={`rounded-full border px-2.5 py-1 text-[11px] disabled:opacity-40 ${
+                      keyboard[catalog].customRows && !d.rowBreak
+                        ? "border-peach/40 bg-peach/10 text-peach"
+                        : "border-white/10 text-zinc-400"
+                    }`}
+                    onClick={() => setRowBreak(it.kind, it.id, false)}
+                  >
+                    В ряд с предыдущей
+                  </button>
+                  <span className="ml-1 text-[11px] text-zinc-500">Цвет</span>
+                  {BUTTON_STYLES.map((s) => (
+                    <button
+                      key={s.id || "plain"}
+                      type="button"
+                      className={`rounded-full border px-2.5 py-1 text-[11px] ${
+                        d.buttonStyle === s.id
+                          ? "border-peach/40 bg-peach/10 text-peach"
+                          : "border-white/10 text-zinc-400"
+                      }`}
+                      onClick={() =>
+                        setDraft(it.kind, it.id, { buttonStyle: s.id })
+                      }
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               {open ? (
                 <div className="mt-3 grid gap-3 border-t border-white/8 pt-3 sm:grid-cols-2">

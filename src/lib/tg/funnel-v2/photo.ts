@@ -22,8 +22,14 @@ import {
 } from "@/lib/tg/funnel-v2/mode";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
-
-const PAGE_SIZE = 6;
+import {
+  groupKeyboardRows,
+  paginateKeyboardRows,
+  parseTgButtonStyle,
+  tgInlineButton,
+  type TgButtonStyle,
+} from "@/lib/tg/funnel-v2/keyboard-layout";
+import { loadFunnelKeyboardSettings } from "@/lib/tg/funnel-v2/keyboard-settings";
 
 type PhotoTpl = {
   id: string;
@@ -33,13 +39,15 @@ type PhotoTpl = {
   previewImageUrl: string;
   previewVideoUrl: string;
   notes: string;
+  rowBreak: boolean;
+  buttonStyle: TgButtonStyle;
 };
 
 async function listPhotoTemplates(): Promise<PhotoTpl[]> {
   const rows = await prisma.photoTemplate.findMany({
     where: { funnelV2Published: true },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-    take: 60,
+    take: 120,
   });
   return rows.map((r) => ({
     id: r.id,
@@ -49,6 +57,8 @@ async function listPhotoTemplates(): Promise<PhotoTpl[]> {
     previewImageUrl: r.previewImageUrl,
     previewVideoUrl: r.previewVideoUrl,
     notes: r.notes || "",
+    rowBreak: r.tgRowBreak,
+    buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
   }));
 }
 
@@ -122,9 +132,16 @@ export async function sendFunnelV2PhotoHub(
 ) {
   const photoUrl = await activePhotoUrl(platformUserId);
   const tpls = await listPhotoTemplates();
-  const pages = Math.max(1, Math.ceil(tpls.length / PAGE_SIZE));
-  const p = Math.min(Math.max(0, page), pages - 1);
-  const slice = tpls.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
+  const keyboard = await loadFunnelKeyboardSettings();
+  const grouped = groupKeyboardRows(tpls, keyboard.photo.customRows);
+  const paged = paginateKeyboardRows(
+    grouped,
+    page,
+    keyboard.photo.firstPageSize,
+    keyboard.photo.nextPageSize,
+  );
+  const p = paged.pageIndex;
+  const pages = paged.pageCount;
 
   const header = photoUrl
     ? ""
@@ -142,17 +159,16 @@ export async function sendFunnelV2PhotoHub(
       },
     ],
   ];
-  for (let i = 0; i < slice.length; i += 2) {
-    const a = slice[i]!;
-    const b = slice[i + 1];
-    const row = [{ text: a.title.slice(0, 40), callback_data: FV2.phTpl(a.id) }];
-    if (b) {
-      row.push({
-        text: b.title.slice(0, 40),
-        callback_data: FV2.phTpl(b.id),
-      });
-    }
-    rows.push(row);
+  for (const rowItems of paged.pageRows) {
+    rows.push(
+      rowItems.map((tpl) =>
+        tgInlineButton(
+          tpl.title.slice(0, 40),
+          FV2.phTpl(tpl.id),
+          tpl.buttonStyle,
+        ),
+      ),
+    );
   }
   if (pages > 1) {
     const nav: Array<Record<string, unknown>> = [];

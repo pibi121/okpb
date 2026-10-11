@@ -9,6 +9,15 @@ import {
   parseVideoFunnelCategories,
 } from "@/lib/photo-template-animate";
 import { copyAssetToTgCatalog } from "@/lib/tg/tg-publish";
+import {
+  parseTgButtonStyle,
+  type FunnelKeyboardCatalog,
+  type FunnelKeyboardSettings,
+} from "@/lib/tg/funnel-v2/keyboard-layout";
+import {
+  loadFunnelKeyboardSettings,
+  saveFunnelKeyboardSettings,
+} from "@/lib/tg/funnel-v2/keyboard-settings";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -65,6 +74,8 @@ export async function GET() {
         previewVideoUrl: true,
         sceneImageUrl: true,
         sortOrder: true,
+        tgButtonStyle: true,
+        tgRowBreak: true,
         updatedAt: true,
       },
     }),
@@ -85,6 +96,8 @@ export async function GET() {
         previewVideoUrl: true,
         durationSec: true,
         tgSortOrder: true,
+        tgButtonStyle: true,
+        tgRowBreak: true,
         updatedAt: true,
       },
     }),
@@ -107,13 +120,18 @@ export async function GET() {
         previewVideoUrl: true,
         durationSec: true,
         tgSortOrder: true,
+        tgButtonStyle: true,
+        tgRowBreak: true,
         requiresLora: true,
         updatedAt: true,
       },
     }),
   ]);
 
+  const keyboard = await loadFunnelKeyboardSettings();
+
   return NextResponse.json({
+    keyboard,
     photo: photos.map((r) => ({
       kind: "photo" as const,
       id: r.id,
@@ -127,6 +145,8 @@ export async function GET() {
       ),
       previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
       sortOrder: r.sortOrder,
+      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
+      rowBreak: r.tgRowBreak,
       durationSec: 0,
       updatedAt: r.updatedAt.toISOString(),
       labHref: `/peach/photo-edit`,
@@ -142,6 +162,8 @@ export async function GET() {
       previewImageUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewPhotoUrl)),
       previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
       sortOrder: r.tgSortOrder,
+      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
+      rowBreak: r.tgRowBreak,
       durationSec: r.durationSec || 0,
       updatedAt: r.updatedAt.toISOString(),
       labHref: `/peach/story-video`,
@@ -157,6 +179,8 @@ export async function GET() {
       previewImageUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewImageUrl)),
       previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
       sortOrder: r.tgSortOrder,
+      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
+      rowBreak: r.tgRowBreak,
       durationSec: r.durationSec || 0,
       requiresLora: r.requiresLora,
       updatedAt: r.updatedAt.toISOString(),
@@ -176,10 +200,24 @@ const itemPatchSchema = z.object({
   previewVideoUrl: z.string().max(2000).optional(),
   /** Button order in Funnel v2 (PhotoTemplate.sortOrder / tgSortOrder). */
   sortOrder: z.number().int().min(0).max(9999).optional(),
+  buttonStyle: z.enum(["", "primary", "success", "danger"]).optional(),
+  rowBreak: z.boolean().optional(),
+});
+
+const catalogSchema = z.object({
+  customRows: z.boolean(),
+  firstPageSize: z.number().int().min(1).max(24),
+  nextPageSize: z.number().int().min(1).max(24),
 });
 
 const batchSchema = z.object({
-  items: z.array(itemPatchSchema).min(1).max(120),
+  items: z.array(itemPatchSchema).max(400).optional(),
+  keyboard: z
+    .object({
+      photo: catalogSchema.optional(),
+      video: catalogSchema.optional(),
+    })
+    .optional(),
 });
 
 /** Batch save — только Funnel v2; tgPublished не меняем. */
@@ -188,10 +226,26 @@ export async function PATCH(req: NextRequest) {
   if ("error" in gate && gate.error) return gate.error;
 
   const body = batchSchema.parse(await req.json().catch(() => ({})));
+  const items = body.items || [];
+  if (!items.length && !body.keyboard) {
+    return NextResponse.json({ error: "empty" }, { status: 400 });
+  }
+
+  if (body.keyboard) {
+    const patch: Partial<FunnelKeyboardSettings> = {};
+    if (body.keyboard.photo) {
+      patch.photo = body.keyboard.photo as FunnelKeyboardCatalog;
+    }
+    if (body.keyboard.video) {
+      patch.video = body.keyboard.video as FunnelKeyboardCatalog;
+    }
+    await saveFunnelKeyboardSettings(patch);
+  }
+
   const results: Array<{ kind: Kind; id: string; ok: boolean; error?: string }> =
     [];
 
-  for (const item of body.items) {
+  for (const item of items) {
     try {
       await applyItemPatch(item);
       results.push({ kind: item.kind, id: item.id, ok: true });
@@ -204,7 +258,7 @@ export async function PATCH(req: NextRequest) {
   const failed = results.filter((r) => !r.ok);
   return NextResponse.json({
     ok: failed.length === 0,
-    saved: results.filter((r) => r.ok).length,
+    saved: results.filter((r) => r.ok).length + (body.keyboard ? 1 : 0),
     failed,
   });
 }
@@ -228,6 +282,8 @@ async function applyItemPatch(
     if (notes !== undefined) data.notes = notes;
     if (sceneCategory !== undefined) data.sceneCategory = sceneCategory;
     if (item.sortOrder !== undefined) data.sortOrder = item.sortOrder;
+    if (item.buttonStyle !== undefined) data.tgButtonStyle = item.buttonStyle;
+    if (item.rowBreak !== undefined) data.tgRowBreak = item.rowBreak;
     if (item.previewImageUrl !== undefined) {
       data.previewImageUrl = item.previewImageUrl.trim();
     }
@@ -268,6 +324,8 @@ async function applyItemPatch(
     if (notes !== undefined) data.notes = notes;
     if (sceneCategory !== undefined) data.sceneCategory = sceneCategory;
     if (item.sortOrder !== undefined) data.tgSortOrder = item.sortOrder;
+    if (item.buttonStyle !== undefined) data.tgButtonStyle = item.buttonStyle;
+    if (item.rowBreak !== undefined) data.tgRowBreak = item.rowBreak;
     if (item.previewImageUrl !== undefined) {
       data.previewPhotoUrl = item.previewImageUrl.trim();
     }
@@ -311,6 +369,8 @@ async function applyItemPatch(
     if (notes !== undefined) data.notes = notes;
     if (sceneCategory !== undefined) data.sceneCategory = sceneCategory;
     if (item.sortOrder !== undefined) data.tgSortOrder = item.sortOrder;
+    if (item.buttonStyle !== undefined) data.tgButtonStyle = item.buttonStyle;
+    if (item.rowBreak !== undefined) data.tgRowBreak = item.rowBreak;
     if (item.previewImageUrl !== undefined) {
       data.previewImageUrl = item.previewImageUrl.trim();
     }

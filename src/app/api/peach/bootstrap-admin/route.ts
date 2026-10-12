@@ -2459,6 +2459,207 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (action === "patch_mini_film_multishot") {
+    const bodyAny = body as Record<string, unknown>;
+    const id = String(bodyAny.id || bodyAny.templateId || "").trim();
+    const clampShot = (n: number) =>
+      Math.min(12, Math.max(4, Math.round(Number(n) || 6)));
+
+    const templates = id
+      ? await prisma.quickVideoTemplate.findMany({ where: { id }, take: 1 })
+      : await prisma.quickVideoTemplate.findMany({
+          where: {
+            OR: [
+              { identityPersonCount: { gte: 2 } },
+              { funnelV2Published: true },
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 30,
+        });
+
+    const pick =
+      templates.find((t) => t.identityPersonCount >= 2) ||
+      templates.find((t) =>
+        /мини|mini.?film|склей/i.test(
+          `${t.title} ${t.tgDisplayTitle || ""}`,
+        ),
+      ) ||
+      templates[0];
+
+    if (!pick) {
+      return NextResponse.json(
+        { error: "no dual/mini-film template found", candidates: [] },
+        { status: 404 },
+      );
+    }
+
+    const run = pick.sourceRunId
+      ? await prisma.quickVideoRun.findUnique({
+          where: { id: pick.sourceRunId },
+        })
+      : null;
+
+    let sourceRunIds: string[] = [];
+    let metaShots: Array<{ durationSec?: number; prompt?: string }> | null =
+      null;
+    if (run?.galleryItemId) {
+      const item = await prisma.galleryItem.findUnique({
+        where: { id: run.galleryItemId },
+      });
+      try {
+        const meta = JSON.parse(item?.metaJson || "{}") as {
+          sourceRunIds?: string[];
+          storyShots?: Array<{ durationSec?: number; prompt?: string }>;
+        };
+        if (Array.isArray(meta.sourceRunIds)) sourceRunIds = meta.sourceRunIds;
+        if (Array.isArray(meta.storyShots)) metaShots = meta.storyShots;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    type Shot = { durationSec: number; prompt: string };
+    let shots: Shot[] = [];
+    if (metaShots && metaShots.length >= 2) {
+      shots = metaShots
+        .map((s) => ({
+          durationSec: clampShot(Number(s.durationSec)),
+          prompt: String(s.prompt || "").trim(),
+        }))
+        .filter((s) => s.prompt.length >= 8);
+    } else if (sourceRunIds.length >= 2) {
+      const runs = await prisma.quickVideoRun.findMany({
+        where: { id: { in: sourceRunIds } },
+      });
+      const byId = new Map(runs.map((r) => [r.id, r]));
+      for (const rid of sourceRunIds) {
+        const r = byId.get(rid);
+        if (!r) continue;
+        let text = (r.prompt || r.composedPrompt || "").trim();
+        if (text.startsWith('{"__storyH3"')) {
+          try {
+            const j = JSON.parse(text) as { prompt?: string };
+            if (typeof j.prompt === "string") text = j.prompt.trim();
+          } catch {
+            /* keep */
+          }
+        }
+        if (text.length < 8) continue;
+        shots.push({
+          durationSec: clampShot(r.durationSec),
+          prompt: text,
+        });
+      }
+    }
+
+    if (shots.length < 2) {
+      let filmPrompt = pick.shotsJson || "";
+      try {
+        const j = JSON.parse(filmPrompt) as {
+          __storyH3?: number;
+          prompt?: string;
+        };
+        if (j.__storyH3 === 1 && typeof j.prompt === "string") {
+          filmPrompt = j.prompt;
+        }
+      } catch {
+        /* plain */
+      }
+      const blocks = filmPrompt
+        .split(/(?=\[Shot\s+\d+)/i)
+        .map((b) => b.trim())
+        .filter((b) => b.length > 20);
+      if (blocks.length >= 2) {
+        const each = clampShot(
+          Math.round(Math.max(pick.durationSec || 12, 12) / blocks.length),
+        );
+        shots = blocks.map((b) => ({
+          durationSec: each,
+          prompt: [
+            "subject_definitions:",
+            "<Picture 1> identity hero 1; <Picture 2> identity hero 2.",
+            "",
+            "summary:",
+            "[reference generation] One shot of a dual-cast mini-film.",
+            "",
+            "retention_analysis:",
+            "Identity subjects: fully_preserved.",
+            "",
+            "detailed_description:",
+            "High-quality cinematic realism with stable identity.",
+            "",
+            b,
+            "",
+            "overall_soundscape:",
+            "Natural scene ambience.",
+            "",
+            "non_diegetic_music:",
+            "N/A",
+          ].join("\n"),
+        }));
+      }
+    }
+
+    if (shots.length < 2) {
+      return NextResponse.json(
+        {
+          error: "could not reconstruct shots",
+          templateId: pick.id,
+          sourceRunId: pick.sourceRunId,
+          sourceRunIds,
+          hasMetaShots: Boolean(metaShots?.length),
+        },
+        { status: 400 },
+      );
+    }
+
+    let filmPrompt = pick.shotsJson || "";
+    try {
+      const j = JSON.parse(filmPrompt) as {
+        __storyH3?: number;
+        prompt?: string;
+      };
+      if (j.__storyH3 === 1 && typeof j.prompt === "string") {
+        filmPrompt = j.prompt;
+      }
+    } catch {
+      if (!filmPrompt.includes("detailed_description")) {
+        filmPrompt = shots[0]!.prompt;
+      }
+    }
+
+    const totalDurationSec = shots.reduce((a, s) => a + s.durationSec, 0);
+    const shotsJson = JSON.stringify({
+      __storyH3: 1,
+      prompt: filmPrompt,
+      totalDurationSec,
+      shots,
+    });
+
+    const updated = await prisma.quickVideoTemplate.update({
+      where: { id: pick.id },
+      data: { shotsJson, durationSec: totalDurationSec },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      action: "patch_mini_film_multishot",
+      id: updated.id,
+      title: updated.title,
+      tgDisplayTitle: updated.tgDisplayTitle,
+      durationSec: updated.durationSec,
+      shotCount: shots.length,
+      shotDurations: shots.map((s) => s.durationSec),
+      sourceRunIds,
+      from: metaShots?.length
+        ? "meta.storyShots"
+        : sourceRunIds.length
+          ? "sourceRunIds"
+          : "prompt-split",
+    });
+  }
+
   if (action === "dump_qv_run") {
     const runId = typeof body.runId === "string" ? body.runId.trim() : "";
     if (!runId) {

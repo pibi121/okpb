@@ -858,23 +858,64 @@ export async function handleFunnelV2PhotoUpload(opts: {
     throw e;
   }
 
-  const saved = saveGalleryBinary(
-    opts.userId,
-    "jpg",
-    opts.photoBytes,
-    "fv2_ref",
-  );
   const session = await getTgSession(opts.platformUserId);
   const pending = parsePending(session?.pendingJson || "{}") as {
     funnelV2PendingConfirm?: { kind: "ud" | "tpl"; id: string };
     funnelV2PendingVideoConfirm?: { kind: "qv" | "li2v"; id: string };
     funnelV2ReturnTo?: string;
+    funnelV2AwaitPhoto2?: boolean;
   };
+  const awaitPhoto2 = pending.funnelV2AwaitPhoto2 === true;
+  const saved = saveGalleryBinary(
+    opts.userId,
+    "jpg",
+    opts.photoBytes,
+    awaitPhoto2 ? "fv2_ref2" : "fv2_ref",
+  );
+
+  if (awaitPhoto2) {
+    await setTgSession(opts.platformUserId, {
+      chatState: "idle",
+      pending: {
+        funnelV2Photo2Url: saved.publicUrl,
+        funnelV2Photo2Key: saved.relKey,
+        funnelV2AwaitPhoto2: false,
+        funnelV2FaststartRandom: false,
+      },
+    });
+    await tgSendMessage(opts.chatId, "Фото второго героя сохранено ✅");
+    if (pending.funnelV2PendingVideoConfirm) {
+      const { resumeFunnelV2VideoAfterPhoto } = await import(
+        "@/lib/tg/funnel-v2/video"
+      );
+      await resumeFunnelV2VideoAfterPhoto({
+        chatId: opts.chatId,
+        userId: opts.userId,
+        platformUserId: opts.platformUserId,
+        locale: opts.locale,
+        photoUrl: saved.publicUrl,
+        pending: pending.funnelV2PendingVideoConfirm,
+        wasPhoto2: true,
+      });
+      return;
+    }
+    const { sendFunnelV2VideoHub } = await import("@/lib/tg/funnel-v2/video");
+    await sendFunnelV2VideoHub(
+      opts.chatId,
+      opts.userId,
+      opts.platformUserId,
+      opts.locale,
+      0,
+    );
+    return;
+  }
+
   await setTgSession(opts.platformUserId, {
     chatState: "idle",
     pending: {
       funnelV2PhotoUrl: saved.publicUrl,
       funnelV2PhotoKey: saved.relKey,
+      funnelV2AwaitPhoto2: false,
       funnelV2FaststartRandom: false,
     },
   });
@@ -904,6 +945,7 @@ export async function handleFunnelV2PhotoUpload(opts: {
       locale: opts.locale,
       photoUrl: saved.publicUrl,
       pending: pending.funnelV2PendingVideoConfirm,
+      wasPhoto2: false,
     });
     return;
   }

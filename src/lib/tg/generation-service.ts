@@ -695,6 +695,11 @@ export async function startTgVideoGeneration(opts: {
   characterId: string;
   speechLine?: string;
   speechFills?: SpeechSlotFill[];
+  /**
+   * Dual-cast Funnel v2: optional second identity photo (Picture 2).
+   * If omitted and template has baked Picture 2, that bake is used.
+   */
+  secondIdentityBytes?: Buffer | null;
 }): Promise<TgGenerateResult> {
   await assertGenerationOpen(opts.userId);
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
@@ -872,14 +877,70 @@ export async function startTgVideoGeneration(opts: {
   }
 
   const manualSlots: ManualPictureSlotInput[] = [];
+  const identitySlots = detail.slotBlueprint.filter((s) => s.role === "identity");
+  const dualCast = detail.identityPersonCount >= 2 || identitySlots.length >= 2;
   let fallbackPi =
     Math.max(
       1,
       detail.identityPersonCount,
-      ...detail.slotBlueprint
-        .filter((s) => s.role === "identity")
-        .map((s) => s.pictureIndex || 0),
+      ...identitySlots.map((s) => s.pictureIndex || 0),
     ) + 1;
+
+  if (dualCast) {
+    // Explicit Picture N identity slots: user photo1 from character + photo2
+    // from override or baked partner. Non-identity baked refs follow below.
+    const { resolveCharacterIdentityRefs } = await import(
+      "@/lib/character-ref-pack"
+    );
+    const primary = await resolveCharacterIdentityRefs(
+      opts.userId,
+      [opts.characterId],
+      1,
+    );
+    const primaryBytes = primary[0]?.bytes;
+    if (!primaryBytes?.length) {
+      throw new Error("Нужно фото девушки для этого шаблона");
+    }
+    manualSlots.push({
+      pictureIndex: 1,
+      role: "identity",
+      characterName:
+        primary[0]?.characterName || cast?.name || "Subject",
+      label: "Subject",
+      bytes: primaryBytes,
+      ext: "jpg",
+    });
+
+    const partnerSlot =
+      identitySlots.find((s) => (s.pictureIndex || 0) >= 2) ||
+      identitySlots[1];
+    const partnerPi =
+      typeof partnerSlot?.pictureIndex === "number" &&
+      partnerSlot.pictureIndex >= 2
+        ? partnerSlot.pictureIndex
+        : 2;
+    let partnerBytes: Buffer | null =
+      opts.secondIdentityBytes && opts.secondIdentityBytes.length
+        ? opts.secondIdentityBytes
+        : null;
+    if (!partnerBytes?.length && partnerSlot?.bakedRefUrl) {
+      partnerBytes = localBytesFromResultUrl(partnerSlot.bakedRefUrl);
+    }
+    if (!partnerBytes?.length) {
+      throw new Error(
+        "Для этого шаблона нужно фото второго героя (или пересохрани шаблон из Lab с партнёром)",
+      );
+    }
+    manualSlots.push({
+      pictureIndex: partnerPi,
+      role: "identity",
+      characterName: partnerSlot?.label || "Partner",
+      label: partnerSlot?.label || "Partner",
+      bytes: partnerBytes,
+      ext: "jpg",
+    });
+  }
+
   for (const slot of detail.slotBlueprint) {
     if (slot.role === "identity") continue;
     if (!slot.bakedRefUrl) continue;

@@ -83,6 +83,11 @@ export type TgPending = {
   qcSuccessMessageId?: number;
   funnelV2PhotoUrl?: string;
   funnelV2PhotoKey?: string;
+  /** Optional second hero for dual-cast QuickVideo templates. */
+  funnelV2Photo2Url?: string;
+  funnelV2Photo2Key?: string;
+  /** Next funnel_v2_awaiting_photo upload goes to photo2, not photo1. */
+  funnelV2AwaitPhoto2?: boolean;
   funnelV2AwaitReplace?: boolean;
   funnelV2PendingConfirm?: { kind: "ud" | "tpl"; id: string };
   funnelV2PendingVideoConfirm?: { kind: "qv" | "li2v"; id: string };
@@ -175,6 +180,18 @@ export async function setTgSession(
       patch.pending?.funnelV2PhotoKey === undefined
     ) {
       pending.funnelV2PhotoKey = prevPending.funnelV2PhotoKey;
+    }
+    if (
+      prevPending.funnelV2Photo2Url &&
+      patch.pending?.funnelV2Photo2Url === undefined
+    ) {
+      pending.funnelV2Photo2Url = prevPending.funnelV2Photo2Url;
+    }
+    if (
+      prevPending.funnelV2Photo2Key &&
+      patch.pending?.funnelV2Photo2Key === undefined
+    ) {
+      pending.funnelV2Photo2Key = prevPending.funnelV2Photo2Key;
     }
     if (
       prevPending.funnelV2ReturnHubAfterTopup &&

@@ -1,5 +1,6 @@
 /**
- * Funnel v2 — горячее видео по 1 фото (QuickVideo/Story H3 + LoraI2v as I2V from still).
+ * Funnel v2 — видео по 1 фото; dual-cast QuickVideo (identityPersonCount≥2)
+ * optionally accepts a second hero photo (else baked partner from template).
  */
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
@@ -47,7 +48,28 @@ type VidRow = {
   emojis: string;
   rowBreak: boolean;
   buttonStyle: TgButtonStyle;
+  identityPersonCount: number;
+  hasBakedPartner: boolean;
 };
+
+function blueprintHasBakedPartner(slotBlueprintJson: string): boolean {
+  try {
+    const j = JSON.parse(slotBlueprintJson || "[]") as Array<{
+      role?: string;
+      pictureIndex?: number;
+      bakedRefUrl?: string;
+    }>;
+    if (!Array.isArray(j)) return false;
+    return j.some(
+      (s) =>
+        s?.role === "identity" &&
+        (s.pictureIndex || 0) >= 2 &&
+        !!s.bakedRefUrl?.trim(),
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function activePhotoUrl(platformUserId: string): Promise<string | null> {
   const s = await getTgSession(platformUserId);
@@ -55,6 +77,18 @@ async function activePhotoUrl(platformUserId: string): Promise<string | null> {
     funnelV2PhotoUrl?: string;
   };
   return p.funnelV2PhotoUrl?.trim() || null;
+}
+
+async function activePhoto2Url(platformUserId: string): Promise<string | null> {
+  const s = await getTgSession(platformUserId);
+  const p = parsePending(s?.pendingJson || "{}") as {
+    funnelV2Photo2Url?: string;
+  };
+  return p.funnelV2Photo2Url?.trim() || null;
+}
+
+function isDualCast(row: VidRow): boolean {
+  return row.kind === "qv" && row.identityPersonCount >= 2;
 }
 
 async function sendFunnelRefPhoto(
@@ -120,22 +154,29 @@ async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]
   );
 
   const rows: VidRow[] = [
-    ...qv.map((r) => ({
-      id: r.id,
-      title: (r.tgDisplayTitle || (locale === "en" ? r.titleEn || r.title : r.title)).trim(),
-      kind: "qv" as const,
-      price: priceForQuickVideoTemplate({
-        shotsJson: r.shotsJson,
-        durationSec: r.durationSec,
-      }),
-      notes: (locale === "en" ? r.notesEn || r.notes : r.notes) || "",
-      previewImageUrl: r.previewPhotoUrl || "",
-      previewVideoUrl: r.previewVideoUrl || "",
-      durationSec: r.durationSec || 6,
-      emojis: videoFunnelCategoryEmojis(r.sceneCategory),
-      rowBreak: r.tgRowBreak,
-      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
-    })),
+    ...qv.map((r) => {
+      const identityPersonCount = Math.max(1, r.identityPersonCount || 1);
+      return {
+        id: r.id,
+        title: (r.tgDisplayTitle || (locale === "en" ? r.titleEn || r.title : r.title)).trim(),
+        kind: "qv" as const,
+        price: priceForQuickVideoTemplate({
+          shotsJson: r.shotsJson,
+          durationSec: r.durationSec,
+        }),
+        notes: (locale === "en" ? r.notesEn || r.notes : r.notes) || "",
+        previewImageUrl: r.previewPhotoUrl || "",
+        previewVideoUrl: r.previewVideoUrl || "",
+        durationSec: r.durationSec || 6,
+        emojis: videoFunnelCategoryEmojis(r.sceneCategory),
+        rowBreak: r.tgRowBreak,
+        buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
+        identityPersonCount,
+        hasBakedPartner:
+          identityPersonCount >= 2 &&
+          blueprintHasBakedPartner(r.slotBlueprintJson || ""),
+      };
+    }),
     ...li2v.map((r) => ({
       id: r.id,
       title: (r.tgDisplayTitle || (locale === "en" ? r.titleEn || r.title : r.title)).trim(),
@@ -150,6 +191,8 @@ async function listVideoRows(userId: string, locale: TgLocale): Promise<VidRow[]
       emojis: videoFunnelCategoryEmojis(r.sceneCategory),
       rowBreak: r.tgRowBreak,
       buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
+      identityPersonCount: 1,
+      hasBakedPartner: false,
     })),
   ];
   void userId;
@@ -250,24 +293,74 @@ async function sendVideoConfirm(
   row: VidRow,
 ) {
   const notesBlock = row.notes ? `${row.notes.slice(0, 400)}\n\n` : "";
+  const dual = isDualCast(row);
+  const photo1 = await activePhotoUrl(platformUserId);
+  const photo2 = dual ? await activePhoto2Url(platformUserId) : null;
+
+  let castBlock = "";
+  if (dual) {
+    const p1 = photo1 ? "✅ своё фото" : "❌ ещё нет — пришли фото";
+    const p2 = photo2
+      ? "✅ твоё фото"
+      : row.hasBakedPartner
+        ? "из шаблона (по умолчанию)"
+        : "❌ нет в шаблоне — пришли фото 2-го";
+    castBlock =
+      `<b>Два героя в сцене</b>\n` +
+      `• Девушка (обязательно): ${p1}\n` +
+      `• Второй герой (по желанию): ${p2}\n\n`;
+  }
+
+  const readyHint = dual
+    ? photo1
+      ? photo2 || row.hasBakedPartner
+        ? `Готово к генерации. Можно добавить своё фото 2-го героя или оставить партнёра из шаблона.\n\n`
+        : `Нужно фото второго героя (в этом шаблоне нет партнёра по умолчанию).\n\n`
+      : `Сначала пришли фото девушки, потом подтверди.\n\n`
+    : `Я готов сделать с ней это видео. Просто нажми «Подтвердить»\n\n`;
+
   const text =
     `🎥 <b>${row.title}${row.emojis}</b>\n\n` +
     notesBlock +
+    castBlock +
     `Стоимость: ${priceLine(row.price)}\n\n` +
-    `Я готов сделать с ней это видео. Просто нажми «Подтвердить»\n\n` +
+    readyHint +
     `<a href="https://telegra.ph/Instrukciya-kak-generirovat-foto-09-26">🔗 Инструкция, как этим пользоваться</a>`;
-  const kb = {
-    inline_keyboard: [
-      [
-        { text: "Отменить", callback_data: "fv2:vid:x", style: "danger" },
+
+  const rows: Array<Array<Record<string, unknown>>> = [];
+  if (dual) {
+    rows.push([
+      {
+        text: "Сменить фото девушки",
+        callback_data: `fv2:vid:chg1:${row.kind}:${row.id}`,
+        style: "danger",
+      },
+    ]);
+    rows.push([
+      {
+        text: photo2 ? "Сменить фото 2-го" : "Добавить фото 2-го",
+        callback_data: `fv2:vid:chg2:${row.kind}:${row.id}`,
+      },
+    ]);
+    if (photo2) {
+      rows.push([
         {
-          text: "Подтвердить✔️",
-          callback_data: `fv2:vid:ok:${row.kind}:${row.id}`,
-          style: "success",
+          text: "Взять 2-го из шаблона",
+          callback_data: `fv2:vid:clr2:${row.kind}:${row.id}`,
         },
-      ],
-    ],
-  };
+      ]);
+    }
+  }
+  rows.push([
+    { text: "Отменить", callback_data: "fv2:vid:x", style: "danger" },
+    {
+      text: "Подтвердить✔️",
+      callback_data: `fv2:vid:ok:${row.kind}:${row.id}`,
+      style: "success",
+    },
+  ]);
+  const kb = { inline_keyboard: rows };
+
   await funnelV2ReplaceUi(platformUserId, chatId, async () => {
     try {
       if (row.previewVideoUrl) {
@@ -293,6 +386,25 @@ async function sendVideoConfirm(
       reply_markup: kb,
     })) as { message_id?: number };
   });
+}
+
+/** Re-open confirm after dual-cast photo1/photo2 upload. */
+export async function resumeFunnelV2VideoConfirm(opts: {
+  chatId: number;
+  userId: string;
+  platformUserId: string;
+  locale: TgLocale;
+  pending: { kind: "qv" | "li2v"; id: string };
+}) {
+  const rows = await listVideoRows(opts.userId, opts.locale);
+  const row = rows.find(
+    (r) => r.id === opts.pending.id && r.kind === opts.pending.kind,
+  );
+  if (!row) {
+    await tgSendMessage(opts.chatId, "Шаблон не найден.");
+    return;
+  }
+  await sendVideoConfirm(opts.chatId, opts.platformUserId, row);
 }
 
 async function loadPhotoBytes(photoUrl: string): Promise<Buffer> {
@@ -356,6 +468,7 @@ async function runFunnelV2VideoGen(opts: {
   kind: "qv" | "li2v";
   templateId: string;
   photoUrl: string;
+  photo2Url?: string | null;
 }) {
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (!user) return;
@@ -495,6 +608,14 @@ async function runFunnelV2VideoGen(opts: {
       bytes,
       opts.locale,
     );
+    let secondIdentityBytes: Buffer | null = null;
+    if (isDualCast(row) && opts.photo2Url?.trim()) {
+      try {
+        secondIdentityBytes = await loadPhotoBytes(opts.photo2Url.trim());
+      } catch {
+        secondIdentityBytes = null;
+      }
+    }
     // Bridge: credit real wallet so existing service can debit, then it nets zero for preview.
     // For preview wallet we already debited funnel balance — credit peaches then let service debit.
     const { creditPeaches } = await import("@/lib/tg/wallet");
@@ -509,6 +630,7 @@ async function runFunnelV2VideoGen(opts: {
       platformUserId: opts.platformUserId,
       templateId: opts.templateId,
       characterId,
+      secondIdentityBytes,
     });
     if (result?.galleryItemId) {
       const gi = await prisma.galleryItem.findUnique({
@@ -550,7 +672,11 @@ export async function handleFunnelV2VideoCallback(opts: {
   if (data === "fv2:vid:chg") {
     await setTgSession(platformUserId, {
       chatState: "funnel_v2_awaiting_photo",
-      pending: { funnelV2AwaitReplace: true, funnelV2ReturnTo: "video" },
+      pending: {
+        funnelV2AwaitReplace: true,
+        funnelV2AwaitPhoto2: false,
+        funnelV2ReturnTo: "video",
+      },
     });
     await funnelV2ReplaceUi(platformUserId, chatId, () =>
       tgSendMessage(
@@ -558,6 +684,67 @@ export async function handleFunnelV2VideoCallback(opts: {
         "Пришли новое фото одним сообщением (файл или сжатое фото).",
       ),
     );
+    return true;
+  }
+  const chg1M = /^fv2:vid:chg1:(qv|li2v):(.+)$/.exec(data);
+  if (chg1M) {
+    const kind = chg1M[1] as "qv" | "li2v";
+    const id = chg1M[2]!;
+    await setTgSession(platformUserId, {
+      chatState: "funnel_v2_awaiting_photo",
+      pending: {
+        funnelV2AwaitReplace: true,
+        funnelV2AwaitPhoto2: false,
+        funnelV2PendingVideoConfirm: { kind, id },
+        funnelV2ReturnTo: "video",
+      },
+    });
+    await funnelV2ReplaceUi(platformUserId, chatId, () =>
+      tgSendMessage(
+        chatId,
+        "Пришли фото девушки одним сообщением (файл или сжатое фото).",
+      ),
+    );
+    return true;
+  }
+  const chg2M = /^fv2:vid:chg2:(qv|li2v):(.+)$/.exec(data);
+  if (chg2M) {
+    const kind = chg2M[1] as "qv" | "li2v";
+    const id = chg2M[2]!;
+    await setTgSession(platformUserId, {
+      chatState: "funnel_v2_awaiting_photo",
+      pending: {
+        funnelV2AwaitPhoto2: true,
+        funnelV2AwaitReplace: false,
+        funnelV2PendingVideoConfirm: { kind, id },
+      },
+    });
+    await funnelV2ReplaceUi(platformUserId, chatId, () =>
+      tgSendMessage(
+        chatId,
+        "Пришли фото второго героя одним сообщением (файл или сжатое фото).",
+      ),
+    );
+    return true;
+  }
+  const clr2M = /^fv2:vid:clr2:(qv|li2v):(.+)$/.exec(data);
+  if (clr2M) {
+    const kind = clr2M[1] as "qv" | "li2v";
+    const id = clr2M[2]!;
+    await setTgSession(platformUserId, {
+      pending: {
+        funnelV2Photo2Url: "",
+        funnelV2Photo2Key: "",
+        funnelV2AwaitPhoto2: false,
+        funnelV2PendingVideoConfirm: { kind, id },
+      },
+    });
+    const rows = await listVideoRows(userId, locale);
+    const row = rows.find((r) => r.id === id && r.kind === kind);
+    if (row) await sendVideoConfirm(chatId, platformUserId, row);
+    if (opts.callbackId) {
+      await tgAnswerCallbackQuery(opts.callbackId, "2-й герой из шаблона");
+    }
     return true;
   }
   const pageM = /^fv2:vid:p:(\d+)$/.exec(data);
@@ -583,6 +770,9 @@ export async function handleFunnelV2VideoCallback(opts: {
       }
       return true;
     }
+    await setTgSession(platformUserId, {
+      pending: { funnelV2PendingVideoConfirm: { kind, id } },
+    });
     await sendVideoConfirm(chatId, platformUserId, row);
     return true;
   }
@@ -590,7 +780,10 @@ export async function handleFunnelV2VideoCallback(opts: {
   if (okM) {
     const kind = okM[1] as "qv" | "li2v";
     const id = okM[2]!;
+    const rows = await listVideoRows(userId, locale);
+    const row = rows.find((r) => r.id === id && r.kind === kind);
     const photoUrl = await activePhotoUrl(platformUserId);
+    const photo2Url = await activePhoto2Url(platformUserId);
     if (!photoUrl) {
       if (opts.callbackId) {
         await tgAnswerCallbackQuery(
@@ -601,13 +794,38 @@ export async function handleFunnelV2VideoCallback(opts: {
       await setTgSession(platformUserId, {
         chatState: "funnel_v2_awaiting_photo",
         pending: {
+          funnelV2AwaitPhoto2: false,
           funnelV2PendingVideoConfirm: { kind, id },
         },
       });
       await funnelV2ReplaceUi(platformUserId, chatId, () =>
         tgSendMessage(
           chatId,
-          "Сначала пришли фото одним сообщением, потом снова нажми Подтвердить.",
+          row && isDualCast(row)
+            ? "Сначала пришли фото девушки одним сообщением, потом снова нажми Подтвердить."
+            : "Сначала пришли фото одним сообщением, потом снова нажми Подтвердить.",
+        ),
+      );
+      return true;
+    }
+    if (row && isDualCast(row) && !photo2Url && !row.hasBakedPartner) {
+      if (opts.callbackId) {
+        await tgAnswerCallbackQuery(
+          opts.callbackId,
+          "Нужно фото 2-го героя",
+        );
+      }
+      await setTgSession(platformUserId, {
+        chatState: "funnel_v2_awaiting_photo",
+        pending: {
+          funnelV2AwaitPhoto2: true,
+          funnelV2PendingVideoConfirm: { kind, id },
+        },
+      });
+      await funnelV2ReplaceUi(platformUserId, chatId, () =>
+        tgSendMessage(
+          chatId,
+          "В этом шаблоне нет партнёра по умолчанию. Пришли фото второго героя, потом Подтвердить.",
         ),
       );
       return true;
@@ -620,6 +838,7 @@ export async function handleFunnelV2VideoCallback(opts: {
       kind,
       templateId: id,
       photoUrl,
+      photo2Url,
     });
     return true;
   }
@@ -633,7 +852,18 @@ export async function resumeFunnelV2VideoAfterPhoto(opts: {
   locale: TgLocale;
   photoUrl: string;
   pending: { kind: "qv" | "li2v"; id: string };
+  /** When true, photo was for slot 2 — re-open confirm instead of auto-start. */
+  wasPhoto2?: boolean;
 }) {
+  const rows = await listVideoRows(opts.userId, opts.locale);
+  const row = rows.find(
+    (r) => r.id === opts.pending.id && r.kind === opts.pending.kind,
+  );
+  // Dual-cast: after any slot upload, return to confirm so user can add photo2 / confirm.
+  if (row && (opts.wasPhoto2 || isDualCast(row))) {
+    await sendVideoConfirm(opts.chatId, opts.platformUserId, row);
+    return;
+  }
   await runFunnelV2VideoGen({
     chatId: opts.chatId,
     userId: opts.userId,
@@ -642,5 +872,6 @@ export async function resumeFunnelV2VideoAfterPhoto(opts: {
     kind: opts.pending.kind,
     templateId: opts.pending.id,
     photoUrl: opts.photoUrl,
+    photo2Url: await activePhoto2Url(opts.platformUserId),
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SaveQuickVideoTemplateButton } from "@/components/save-quick-video-template-button";
 import { storyH3LooksStructured } from "@/lib/story-h3-prompt";
 
@@ -14,8 +14,18 @@ type RunRow = {
   createdAt?: string;
 };
 
+type ShotRow = {
+  id: string;
+  durationSec: number;
+  prompt: string;
+  runId: string | null;
+};
+
 const CHAR1_ID = "custom:hero1";
 const CHAR2_ID = "custom:hero2";
+const MAX_SHOTS = 6;
+const MIN_SHOT_SEC = 4;
+const MAX_SHOT_SEC = 12;
 
 const AI_BRIEF = `Работай строго по прикреплённой инструкции (рефинстр / referensguide).
 Верни ТОЛЬКО готовый 6-секционный промпт:
@@ -30,13 +40,114 @@ subject_definitions → summary → retention_analysis → detailed_description 
   • <Video 1> = опциональный motion/pose ref (только если я скажу, что будет видео позы).
   • <Subject 1> = герой 1 из <Picture 1>, fully_preserved.
   • <Subject 2> = герой 2 из <Picture 2>, fully_preserved.
-- Длительность до 12 сек. Формат 9:16 (если не скажу иначе).
+- Длительность до 12 сек на шот. Формат 9:16 (если не скажу иначе).
 - Диалоги: естественный русский в <d>[Russian] …</d>, спикеры (S1)/(S2).
-- Стиль/качество — из гайда; NSFW — по гайду, без эвфемизмов если сцена интимная.
+- Можно писать один полный H3 на весь фильм или отдельный H3/описание на каждый шот.
 
 Пока я не пришлю бриф сцены — не пиши финальный промпт. Спроси коротко, чего не хватает, или жди.
 
 Когда пришлю детали (сюжет, локация, одежда/состояние, камера, речь, тайминги шотов, NSFW, music/N/A) — выдай только 6 секций.`;
+
+function newShotId() {
+  return `shot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function defaultShots(): ShotRow[] {
+  return [
+    { id: newShotId(), durationSec: 6, prompt: "", runId: null },
+    { id: newShotId(), durationSec: 6, prompt: "", runId: null },
+  ];
+}
+
+function wrapShotPrompt(
+  raw: string,
+  opts: { name1: string; name2: string; durationSec: number; shotIndex: number },
+): string {
+  const text = raw.trim();
+  if (storyH3LooksStructured(text)) return text;
+  const n1 = opts.name1 || "Девушка";
+  const n2 = opts.name2 || "Парень";
+  return [
+    "subject_definitions:",
+    `<Subject 1> is the woman from <Picture 1> (${n1}); preserve recognizable facial identity, hair, skin, and body from the picture; do not invent traits.`,
+    `<Subject 2> is the man from <Picture 2> (${n2}); preserve recognizable facial identity, hair, skin, and body from the picture; do not invent traits.`,
+    `<Picture 1> is ${n1}'s identity reference.`,
+    `<Picture 2> is ${n2}'s identity reference.`,
+    "",
+    "summary:",
+    `[reference generation] A ${opts.durationSec}s shot ${opts.shotIndex + 1} with <Subject 1> and <Subject 2>, identity fully preserved from <Picture 1> and <Picture 2>.`,
+    "",
+    "retention_analysis:",
+    "<Subject 1> (throughout): fully_preserved — facial identity, hair, skin, body from <Picture 1>.",
+    "<Subject 2> (throughout): fully_preserved — facial identity, hair, skin, body from <Picture 2>.",
+    "",
+    "detailed_description:",
+    "High-quality cinematic realism with natural skin texture, believable motion, and stable identity.",
+    "",
+    `[Shot 1] ${text}`,
+    "",
+    "overall_soundscape:",
+    "Natural room tone and diegetic sounds matching the visible action.",
+    "",
+    "non_diegetic_music:",
+    "N/A",
+  ].join("\n");
+}
+
+function composeFilmPrompt(shots: ShotRow[], name1: string, name2: string): string {
+  const filled = shots.filter((s) => s.prompt.trim());
+  if (filled.length === 1 && storyH3LooksStructured(filled[0]!.prompt)) {
+    return filled[0]!.prompt.trim();
+  }
+  if (filled.every((s) => storyH3LooksStructured(s.prompt))) {
+    // Prefer first full H3; append other shot bodies into a note in detailed_description is messy —
+    // join detailed shot texts under one H3 shell.
+  }
+  const n1 = name1 || "Девушка";
+  const n2 = name2 || "Парень";
+  let cursor = 0;
+  const shotBlocks = filled.map((s, i) => {
+    const start = cursor;
+    cursor += s.durationSec;
+    const body = s.prompt.trim();
+    const extracted = storyH3LooksStructured(body)
+      ? body
+          .split(/detailed_description\s*:\s*/i)[1]
+          ?.split(/\n(?:overall_soundscape|non_diegetic_music)\s*:/i)[0]
+          ?.trim() || body
+      : body;
+    const ts =
+      i === 0
+        ? `[Shot 1]`
+        : `[Shot ${i + 1}] At ${String(Math.floor(start / 60)).padStart(2, "0")}:${String(start % 60).padStart(2, "0")}.000,`;
+    return `${ts} ${extracted.replace(/^\[Shot[^\]]*\]\s*/i, "")}`;
+  });
+  return [
+    "subject_definitions:",
+    `<Subject 1> is the woman from <Picture 1> (${n1}); preserve identity from the picture.`,
+    `<Subject 2> is the man from <Picture 2> (${n2}); preserve identity from the picture.`,
+    `<Picture 1> is ${n1}'s identity reference.`,
+    `<Picture 2> is ${n2}'s identity reference.`,
+    "",
+    "summary:",
+    `[reference generation] Multi-shot mini-film with <Subject 1> and <Subject 2>, identity fully preserved.`,
+    "",
+    "retention_analysis:",
+    "<Subject 1> (throughout): fully_preserved.",
+    "<Subject 2> (throughout): fully_preserved.",
+    "",
+    "detailed_description:",
+    "High-quality cinematic realism with natural skin texture, believable motion, and stable identity.",
+    "",
+    shotBlocks.join("\n\n"),
+    "",
+    "overall_soundscape:",
+    "Natural room tone and diegetic sounds matching the visible action.",
+    "",
+    "non_diegetic_music:",
+    "N/A",
+  ].join("\n");
+}
 
 export function Lab2MiniFilmClient() {
   const [name1, setName1] = useState("Девушка");
@@ -46,26 +157,30 @@ export function Lab2MiniFilmClient() {
   const [poseVideo, setPoseVideo] = useState<File | null>(null);
   const [title, setTitle] = useState("Мини-фильм");
   const [orientation, setOrientation] = useState<"9_16" | "16_9">("9_16");
-  const [durationSec, setDurationSec] = useState(8);
-  const [prompt, setPrompt] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [shots, setShots] = useState<ShotRow[]>(defaultShots);
+  const [busyShotId, setBusyShotId] = useState<string | null>(null);
+  const [stitchBusy, setStitchBusy] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [briefCopied, setBriefCopied] = useState(false);
   const [runs, setRuns] = useState<RunRow[]>([]);
-  const [lastReadyId, setLastReadyId] = useState<string | null>(null);
+  const [stitchRunId, setStitchRunId] = useState<string | null>(null);
 
-  const promptLen = prompt.trim().length;
-  const structured = promptLen >= 80 && storyH3LooksStructured(prompt);
+  const runById = useMemo(() => {
+    const m = new Map<string, RunRow>();
+    for (const r of runs) m.set(r.id, r);
+    return m;
+  }, [runs]);
+
+  const readyShotRuns = shots
+    .map((s) => (s.runId ? runById.get(s.runId) : null))
+    .filter((r): r is RunRow => !!r && r.status === "ready" && !!r.resultVideoUrl);
 
   const loadRuns = useCallback(async () => {
     const res = await fetch("/api/peach/quick-video/runs");
     if (!res.ok) return;
     const data = (await res.json()) as { runs?: RunRow[] };
-    const list = data.runs || [];
-    setRuns(list.slice(0, 12));
-    const ready = list.find((r) => r.status === "ready");
-    if (ready) setLastReadyId(ready.id);
+    setRuns(data.runs || []);
   }, []);
 
   useEffect(() => {
@@ -73,6 +188,35 @@ export function Lab2MiniFilmClient() {
     const t = setInterval(() => void loadRuns(), 4000);
     return () => clearInterval(t);
   }, [loadRuns]);
+
+  function patchShot(id: string, patch: Partial<ShotRow>) {
+    setShots((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
+  function addShot() {
+    if (shots.length >= MAX_SHOTS) return;
+    setShots((prev) => [
+      ...prev,
+      { id: newShotId(), durationSec: 6, prompt: "", runId: null },
+    ]);
+  }
+
+  function removeShot(id: string) {
+    setShots((prev) => (prev.length <= 1 ? prev : prev.filter((s) => s.id !== id)));
+  }
+
+  function moveShot(id: string, dir: -1 | 1) {
+    setShots((prev) => {
+      const i = prev.findIndex((s) => s.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      const tmp = next[i]!;
+      next[i] = next[j]!;
+      next[j] = tmp;
+      return next;
+    });
+  }
 
   async function copyBrief() {
     try {
@@ -84,30 +228,30 @@ export function Lab2MiniFilmClient() {
     }
   }
 
-  async function generate() {
+  async function generateShot(shot: ShotRow, index: number) {
     setError("");
     setMsg("");
     if (!file1 || !file2) {
       setError("Нужны фото героя 1 и героя 2");
       return;
     }
-    const text = prompt.trim();
-    if (text.length < 80) {
-      setError("Вставь полный H3-промпт (минимум ~80 символов)");
+    if (!shot.prompt.trim()) {
+      setError(`Шот ${index + 1}: пустой промпт`);
       return;
     }
-    if (text.length > 24000) {
-      setError("Промпт слишком длинный (макс ~24k)");
-      return;
-    }
-
     const n1 = name1.trim() || "Девушка";
     const n2 = name2.trim() || "Парень";
+    const text = wrapShotPrompt(shot.prompt, {
+      name1: n1,
+      name2: n2,
+      durationSec: shot.durationSec,
+      shotIndex: index,
+    });
 
     const fd = new FormData();
-    fd.set("title", title.trim() || "Мини-фильм");
+    fd.set("title", `${title.trim() || "Мини-фильм"} · шот ${index + 1}`);
     fd.set("orientation", orientation);
-    fd.set("durationSec", String(durationSec));
+    fd.set("durationSec", String(shot.durationSec));
     fd.set("storyH3", "1");
     fd.set("prompt", text);
     fd.set("characterIds", JSON.stringify([CHAR1_ID, CHAR2_ID]));
@@ -139,7 +283,7 @@ export function Lab2MiniFilmClient() {
     fd.set("picture_2", file2);
     if (poseVideo) fd.set("poseVideo", poseVideo);
 
-    setBusy(true);
+    setBusyShotId(shot.id);
     try {
       const res = await fetch("/api/peach/quick-video/runs", {
         method: "POST",
@@ -147,19 +291,61 @@ export function Lab2MiniFilmClient() {
       });
       const data = (await res.json()) as { run?: RunRow; error?: string };
       if (!res.ok) throw new Error(data.error || "generate failed");
-      setMsg(
-        `Запущено: ${data.run?.id || "ok"}. Жди status=ready ниже.` +
-          (structured
-            ? ""
-            : " Промпт слабо похож на 6 секций H3 — лучше полный вывод ИИ."),
-      );
+      const runId = data.run?.id || null;
+      if (runId) patchShot(shot.id, { runId });
+      setMsg(`Шот ${index + 1} запущен: ${runId || "ok"}. Жди ready.`);
       await loadRuns();
     } catch (e) {
       setError(e instanceof Error ? e.message : "ошибка");
     } finally {
-      setBusy(false);
+      setBusyShotId(null);
     }
   }
+
+  async function stitchShots() {
+    setError("");
+    setMsg("");
+    const ids = shots
+      .map((s) => s.runId)
+      .filter((id): id is string => !!id)
+      .filter((id) => {
+        const r = runById.get(id);
+        return r?.status === "ready" && !!r.resultVideoUrl;
+      });
+    if (ids.length < 2) {
+      setError("Нужны минимум 2 готовых шота для склейки");
+      return;
+    }
+    setStitchBusy(true);
+    try {
+      const res = await fetch("/api/peach/quick-video/stitch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runIds: ids,
+          title: title.trim() || "Мини-фильм",
+          prompt: composeFilmPrompt(shots, name1.trim(), name2.trim()),
+        }),
+      });
+      const data = (await res.json()) as {
+        run?: RunRow;
+        error?: string;
+        engine?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "stitch failed");
+      setStitchRunId(data.run?.id || null);
+      setMsg(
+        `Склеено (${data.engine || "ok"}): ${data.run?.id || ""}. Можно сохранить шаблон.`,
+      );
+      await loadRuns();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ошибка склейки");
+    } finally {
+      setStitchBusy(false);
+    }
+  }
+
+  const totalSec = shots.reduce((a, s) => a + s.durationSec, 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -170,8 +356,8 @@ export function Lab2MiniFilmClient() {
               Бриф для ИИ (промпт-райтер)
             </h2>
             <p className="mt-1 text-xs text-zinc-500">
-              Прикрепи рефинстр.md + этот бриф. Детали сцены — следующим
-              сообщением. Ответ ИИ вставь в поле ниже.
+              Прикрепи рефинстр.md + этот бриф. Готовый H3 вставляй в шот(ы)
+              ниже — без LEGO-табов.
             </p>
           </div>
           <button
@@ -191,7 +377,7 @@ export function Lab2MiniFilmClient() {
         <label className="text-sm">
           <span className="text-zinc-400">Имя героя 1 (Picture 1)</span>
           <input
-            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-foreground"
             value={name1}
             onChange={(e) => setName1(e.target.value)}
           />
@@ -208,7 +394,7 @@ export function Lab2MiniFilmClient() {
         <label className="text-sm">
           <span className="text-zinc-400">Имя героя 2 (Picture 2)</span>
           <input
-            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-foreground"
             value={name2}
             onChange={(e) => setName2(e.target.value)}
           />
@@ -224,7 +410,7 @@ export function Lab2MiniFilmClient() {
         </label>
         <label className="text-sm sm:col-span-2">
           <span className="text-zinc-400">
-            Видео позы / движения (опционально → Video 1)
+            Видео позы / движения (опционально → Video 1, на все шоты)
           </span>
           <input
             type="file"
@@ -232,20 +418,11 @@ export function Lab2MiniFilmClient() {
             className="mt-1 block w-full text-xs text-zinc-400"
             onChange={(e) => setPoseVideo(e.target.files?.[0] || null)}
           />
-          {poseVideo ? (
-            <p className="mt-1 text-[11px] text-emerald-400/90">
-              {poseVideo.name}
-            </p>
-          ) : (
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Можно не загружать — сцена только по H3-промпту + фото героев.
-            </p>
-          )}
         </label>
         <label className="text-sm">
-          <span className="text-zinc-400">Название прогона / шаблона</span>
+          <span className="text-zinc-400">Название</span>
           <input
-            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-foreground"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -253,7 +430,7 @@ export function Lab2MiniFilmClient() {
         <label className="text-sm">
           <span className="text-zinc-400">Ориентация</span>
           <select
-            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-foreground"
             value={orientation}
             onChange={(e) =>
               setOrientation(e.target.value === "16_9" ? "16_9" : "9_16")
@@ -263,75 +440,157 @@ export function Lab2MiniFilmClient() {
             <option value="16_9">16:9</option>
           </select>
         </label>
-        <label className="text-sm sm:col-span-2">
-          <span className="text-zinc-400">Длительность: {durationSec}s</span>
-          <input
-            type="range"
-            min={4}
-            max={12}
-            value={durationSec}
-            disabled={busy}
-            className="mt-2 block w-full max-w-md"
-            onChange={(e) => setDurationSec(Number(e.target.value))}
-          />
-        </label>
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-[#121214]/80 p-4">
-        <label className="block text-sm">
-          <span className="font-medium text-zinc-300">
-            Полный H3-промпт (6 секций)
-          </span>
-          <p className="mt-1 text-xs text-zinc-500">
-            Без LEGO-табов. Пиши{" "}
-            <code className="text-zinc-400">&lt;Picture 1&gt;</code> /{" "}
-            <code className="text-zinc-400">&lt;Picture 2&gt;</code> /{" "}
-            <code className="text-zinc-400">&lt;Subject N&gt;</code>. При
-            генерации система подставит загруженные фото в эти слоты; в шаблон
-            identity не запекается.
-          </p>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            disabled={busy}
-            rows={18}
-            className="mt-3 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 font-mono text-[12px] leading-relaxed text-zinc-100"
-            placeholder={
-              "subject_definitions:\n...\n\nsummary:\n...\n\nretention_analysis:\n...\n\ndetailed_description:\n...\n\noverall_soundscape:\n...\n\nnon_diegetic_music:\nN/A"
-            }
-          />
-          <span className="mt-1 block text-[11px] text-zinc-600">
-            {promptLen} символов
-            {promptLen >= 80
-              ? structured
-                ? " · структура H3 ок"
-                : " · слабо похоже на 6 секций"
-              : ""}
-          </span>
-        </label>
-      </section>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-medium text-zinc-200">Шоты</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Генерируй каждый шот отдельно (4–12с), потом склей. Сумма сейчас{" "}
+              {totalSec}с · до {MAX_SHOTS} шотов. В поле — полный H3 или текст
+              шота с &lt;Picture 1/2&gt;.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={shots.length >= MAX_SHOTS || !!busyShotId || stitchBusy}
+            onClick={addShot}
+            className="rounded-full border border-white/15 px-3 py-1.5 text-xs hover:border-peach/40 disabled:opacity-40"
+          >
+            + Шот
+          </button>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void generate()}
-          className="rounded-full bg-peach/90 px-5 py-2 text-sm font-medium text-black disabled:opacity-40"
-        >
-          {busy ? "Запуск…" : "Сгенерировать тест"}
-        </button>
-        {lastReadyId ? (
-          <SaveQuickVideoTemplateButton
-            sourceRunId={lastReadyId}
-            defaultTitle={title}
-            onSaved={() =>
-              setMsg(
-                "Шаблон сохранён. Открой /peach/lab2/transfer → вкладка Видео · MiniMax.",
-              )
-            }
-          />
-        ) : null}
-      </div>
+        <div className="mt-4 flex flex-col gap-4">
+          {shots.map((shot, index) => {
+            const run = shot.runId ? runById.get(shot.runId) : null;
+            const busy = busyShotId === shot.id;
+            return (
+              <div
+                key={shot.id}
+                className="rounded-xl border border-white/10 bg-[#0c0c0e] p-3"
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-zinc-200">
+                    Шот {index + 1}
+                  </span>
+                  <label className="flex items-center gap-1.5 text-xs text-zinc-500">
+                    сек
+                    <input
+                      type="number"
+                      min={MIN_SHOT_SEC}
+                      max={MAX_SHOT_SEC}
+                      disabled={busy || stitchBusy}
+                      value={shot.durationSec}
+                      onChange={(e) =>
+                        patchShot(shot.id, {
+                          durationSec: Math.min(
+                            MAX_SHOT_SEC,
+                            Math.max(
+                              MIN_SHOT_SEC,
+                              Number(e.target.value) || MIN_SHOT_SEC,
+                            ),
+                          ),
+                        })
+                      }
+                      className="w-14 rounded border border-white/10 bg-[#121214] px-2 py-1 text-sm text-foreground"
+                    />
+                  </label>
+                  {run ? (
+                    <span className="text-[11px] text-zinc-500">
+                      {run.status}
+                      {run.error ? ` · ${run.error}` : ""}
+                    </span>
+                  ) : null}
+                  <div className="ml-auto flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      disabled={busy || stitchBusy || index === 0}
+                      onClick={() => moveShot(shot.id, -1)}
+                      className="rounded border border-white/10 px-2 py-0.5 text-xs disabled:opacity-40"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        busy || stitchBusy || index === shots.length - 1
+                      }
+                      onClick={() => moveShot(shot.id, 1)}
+                      className="rounded border border-white/10 px-2 py-0.5 text-xs disabled:opacity-40"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || stitchBusy || shots.length <= 1}
+                      onClick={() => removeShot(shot.id)}
+                      className="rounded border border-white/10 px-2 py-0.5 text-xs text-red-300 disabled:opacity-40"
+                    >
+                      ×
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || stitchBusy || !!busyShotId}
+                      onClick={() => void generateShot(shot, index)}
+                      className="rounded-full bg-peach/90 px-3 py-0.5 text-xs font-medium text-black disabled:opacity-40"
+                    >
+                      {busy ? "…" : "Сгенерировать шот"}
+                    </button>
+                    {run?.status === "ready" && run.resultVideoUrl ? (
+                      <a
+                        href={run.resultVideoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-peach/40 px-3 py-0.5 text-xs text-peach"
+                      >
+                        видео
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+                <textarea
+                  value={shot.prompt}
+                  disabled={busy || stitchBusy}
+                  onChange={(e) =>
+                    patchShot(shot.id, { prompt: e.target.value, runId: null })
+                  }
+                  rows={10}
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground"
+                  placeholder={
+                    "subject_definitions:\n...\n\ndetailed_description:\n[Shot 1] …\n\nили короткий текст шота с <Picture 1>/<Picture 2>"
+                  }
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={stitchBusy || readyShotRuns.length < 2 || !!busyShotId}
+            onClick={() => void stitchShots()}
+            className="rounded-full border border-peach/50 bg-peach/15 px-5 py-2 text-sm text-peach disabled:opacity-40"
+          >
+            {stitchBusy
+              ? "Склеиваю…"
+              : `Склеить готовые шоты (${readyShotRuns.length})`}
+          </button>
+          {stitchRunId ? (
+            <SaveQuickVideoTemplateButton
+              sourceRunId={stitchRunId}
+              defaultTitle={title}
+              onSaved={() =>
+                setMsg(
+                  "Шаблон сохранён → /peach/lab2/transfer (Видео · MiniMax).",
+                )
+              }
+            />
+          ) : null}
+        </div>
+      </section>
 
       {error ? (
         <p className="rounded border border-red-400/30 bg-red-950/30 px-3 py-2 text-sm text-red-300">
@@ -344,53 +603,30 @@ export function Lab2MiniFilmClient() {
         </p>
       ) : null}
 
-      <section className="rounded-2xl border border-white/10 p-4">
-        <h2 className="text-sm font-medium text-zinc-300">Последние прогоны</h2>
-        <ul className="mt-2 space-y-2 text-sm">
-          {runs.length === 0 ? (
-            <li className="text-zinc-500">Пока пусто</li>
-          ) : (
-            runs.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 py-2"
-              >
-                <div>
-                  <div className="text-zinc-200">{r.title || r.id}</div>
-                  <div className="text-[11px] text-zinc-500">
-                    {r.status}
-                    {r.durationSec ? ` · ${r.durationSec}с` : ""}
-                    {r.error ? ` · ${r.error}` : ""}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {r.status === "ready" && r.resultVideoUrl ? (
-                    <a
-                      href={r.resultVideoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-peach underline"
-                    >
-                      видео
-                    </a>
-                  ) : null}
-                  {r.status === "ready" ? (
-                    <SaveQuickVideoTemplateButton
-                      sourceRunId={r.id}
-                      defaultTitle={r.title || title}
-                      onSaved={() =>
-                        setMsg(
-                          "Шаблон сохранён → /peach/lab2/transfer (Видео · MiniMax).",
-                        )
-                      }
-                    />
-                  ) : null}
-                </div>
-              </li>
-            ))
-          )}
-        </ul>
-      </section>
+      {stitchRunId ? (
+        <section className="rounded-2xl border border-white/10 p-4">
+          <h2 className="text-sm font-medium text-zinc-300">Склейка</h2>
+          {(() => {
+            const r = runById.get(stitchRunId);
+            if (!r) return <p className="mt-2 text-sm text-zinc-500">…</p>;
+            return (
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                <span className="text-zinc-300">{r.title}</span>
+                {r.resultVideoUrl ? (
+                  <a
+                    href={r.resultVideoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-peach underline"
+                  >
+                    смотреть
+                  </a>
+                ) : null}
+              </div>
+            );
+          })()}
+        </section>
+      ) : null}
     </div>
   );
 }

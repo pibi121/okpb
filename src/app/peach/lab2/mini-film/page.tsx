@@ -8,11 +8,10 @@ export default async function Lab2MiniFilmPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-lg font-medium">Мини-фильм · 2 героя + H3</h1>
+        <h1 className="text-lg font-medium">Мини-фильм · 2 героя + шоты</h1>
         <p className="mt-1 max-w-3xl text-sm text-zinc-500">
-          Два identity-фото (Picture 1 / 2), опционально Video 1 (поза), один
-          полный H3-промпт (6 секций) — без LEGO-табов. После теста — «В
-          шаблон», затем{" "}
+          Два identity-фото, опционально Video 1. Каждый шот — отдельная
+          пробная генерация (H3-промпт, без LEGO), потом склейка → шаблон →{" "}
           <a href="/peach/lab2/transfer" className="text-peach underline">
             Перенос Funnel v2
           </a>

@@ -18,33 +18,66 @@ type Row = {
 type BotOpt = { id: string; username: string; isPrimary: boolean };
 
 type MediaItem = { type: "photo" | "video"; url: string };
-type Btn = { text: string; path: string };
+type BtnStyle = "default" | "success" | "danger" | "primary";
+type Btn = { text: string; path: string; style?: BtnStyle };
 type CatalogOpt = Btn & {
   group: "bot" | "miniapp" | "photo" | "video";
   subtitle?: string;
 };
 
 const DEFAULT_PRESETS: Btn[] = [
-  { text: "Раздеть по 1 фото", path: "bot:undress" },
-  { text: "Фото по образу", path: "bot:photo" },
-  { text: "Видео по образу", path: "bot:video" },
-  { text: "Видео с 1 фото", path: "bot:video_one" },
+  {
+    text: "💦 Раздеть и сделать фото 💦",
+    path: "bot:photo",
+    style: "success",
+  },
+  {
+    text: "🍓 Сделать горячее видео 🍓",
+    path: "bot:video",
+    style: "danger",
+  },
+  { text: "Баланс и пополнение", path: "bot:topup" },
+  { text: "Главное меню", path: "bot:hub" },
   { text: "Лента", path: "" },
-  { text: "Пополнить", path: "bot:topup" },
+];
+
+const STYLE_OPTIONS: { value: BtnStyle; label: string }[] = [
+  { value: "default", label: "Обычная" },
+  { value: "success", label: "Зелёная" },
+  { value: "danger", label: "Красная" },
+  { value: "primary", label: "Синяя" },
 ];
 
 const GROUP_LABEL: Record<CatalogOpt["group"], string> = {
-  bot: "В боте (разделы)",
+  bot: "В боте (как главное меню)",
   miniapp: "Мини-апп",
   photo: "Фото-шаблоны",
   video: "Видео-шаблоны",
 };
 
 function buttonTargetLabel(path: string): string {
+  if (path === "bot:photo" || path === "bot:undress" || path === "bot:make_photo") {
+    return "бот → Раздеть и сделать фото (fv2:ph)";
+  }
+  if (
+    path === "bot:video" ||
+    path === "bot:video_look" ||
+    path === "bot:video_one" ||
+    path === "bot:make_video"
+  ) {
+    return "бот → Сделать горячее видео (fv2:vid)";
+  }
   if (path.startsWith("bot:pt:")) return `бот → фото ${path.slice(7)}`;
   if (path.startsWith("bot:vt:")) return `бот → видео ${path.slice(7)}`;
   if (path.startsWith("bot:")) return `бот → ${path.slice(4)}`;
   return `/tg/${path}`;
+}
+
+function styleClass(style?: BtnStyle): string {
+  if (style === "success") return "border-emerald-400/50 text-emerald-300";
+  if (style === "danger") return "border-rose-400/50 text-rose-300";
+  if (style === "primary") return "border-sky-400/50 text-sky-300";
+  return "border-white/15 text-zinc-200";
 }
 
 function formatBotStats(raw?: string): string {
@@ -93,7 +126,43 @@ export default function OpsBroadcastsPage() {
       return;
     }
     if (buttons.some((b) => b.path === opt.path && b.text === opt.text)) return;
-    setButtons((b) => [...b, { text: opt.text.slice(0, 64), path: opt.path }]);
+    const defaultStyle: BtnStyle | undefined =
+      opt.style ||
+      (opt.path === "bot:photo" || opt.path === "bot:undress"
+        ? "success"
+        : opt.path === "bot:video" ||
+            opt.path === "bot:video_look" ||
+            opt.path === "bot:video_one"
+          ? "danger"
+          : undefined);
+    setButtons((b) => [
+      ...b,
+      {
+        text: opt.text.slice(0, 64),
+        path: opt.path,
+        ...(defaultStyle && defaultStyle !== "default"
+          ? { style: defaultStyle }
+          : {}),
+      },
+    ]);
+  }
+
+  function patchButton(index: number, patch: Partial<Btn>) {
+    setButtons((list) =>
+      list.map((b, i) => {
+        if (i !== index) return b;
+        const next: Btn = {
+          ...b,
+          ...patch,
+          text:
+            patch.text !== undefined
+              ? patch.text.slice(0, 64)
+              : b.text,
+        };
+        if (patch.style === "default") delete next.style;
+        return next;
+      }),
+    );
   }
 
   async function load() {
@@ -436,8 +505,9 @@ export default function OpsBroadcastsPage() {
 
         <div className="rounded-xl border border-white/10 p-3">
           <p className="text-xs text-zinc-500">
-            Кнопки (до 6): разделы бота, конкретные шаблоны или мини-апп. Жми в
-            списке — добавится. `bot:…` открывает чат бота, остальное — Mini App.
+            Кнопки (до 6): разделы как в главном меню («Раздеть и сделать
+            фото» / «Сделать горячее видео»), шаблоны или мини-апп. После
+            добавления можно править текст и цвет.
           </p>
           <input
             value={catalogQ}
@@ -487,13 +557,21 @@ export default function OpsBroadcastsPage() {
                         key={`${p.group}-${p.path}-${p.text}`}
                         type="button"
                         title={buttonTargetLabel(p.path)}
-                        className={
-                          p.group === "bot" ||
-                          p.path.startsWith("bot:pt:") ||
-                          p.path.startsWith("bot:vt:")
-                            ? "max-w-full truncate rounded-full border border-peach/40 px-2.5 py-1 text-xs text-peach"
-                            : "max-w-full truncate rounded-full border border-white/15 px-2.5 py-1 text-xs"
-                        }
+                        className={`max-w-full truncate rounded-full border px-2.5 py-1 text-xs ${
+                          p.group === "bot"
+                            ? styleClass(
+                                p.path.includes("video")
+                                  ? "danger"
+                                  : p.path.includes("photo") ||
+                                      p.path.includes("undress")
+                                    ? "success"
+                                    : undefined,
+                              )
+                            : p.path.startsWith("bot:pt:") ||
+                                p.path.startsWith("bot:vt:")
+                              ? "border-peach/40 text-peach"
+                              : "border-white/15"
+                        }`}
                         onClick={() => addButton(p)}
                       >
                         + {p.text}
@@ -517,7 +595,7 @@ export default function OpsBroadcastsPage() {
             />
             <input
               id="btnPath"
-              placeholder="bot:undress / bot:pt:cuid / photo?templateId=…"
+              placeholder="bot:photo / bot:video / bot:pt:cuid / photo?…"
               className="flex-1 rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
             />
             <button
@@ -539,24 +617,51 @@ export default function OpsBroadcastsPage() {
             </button>
           </div>
           {buttons.length ? (
-            <ul className="mt-2 space-y-1 text-xs text-zinc-700">
+            <ul className="mt-3 space-y-2">
               {buttons.map((b, i) => (
-                <li key={`${b.path}-${i}`} className="flex justify-between gap-2">
-                  <span>
-                    {b.text} →{" "}
-                    <code className="text-zinc-500">
-                      {buttonTargetLabel(b.path)}
-                    </code>
-                  </span>
-                  <button
-                    type="button"
-                    className="text-rose-300 underline"
-                    onClick={() =>
-                      setButtons((list) => list.filter((_, j) => j !== i))
-                    }
-                  >
-                    ×
-                  </button>
+                <li
+                  key={`${b.path}-${i}`}
+                  className={`rounded-xl border bg-[#0c0c0e] p-2.5 ${styleClass(b.style)}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={b.text}
+                      maxLength={64}
+                      onChange={(e) =>
+                        patchButton(i, { text: e.target.value })
+                      }
+                      className="min-w-[12rem] flex-1 rounded-lg border border-white/10 bg-[#121214] px-2 py-1.5 text-sm text-foreground"
+                      aria-label={`Текст кнопки ${i + 1}`}
+                    />
+                    <select
+                      value={b.style || "default"}
+                      onChange={(e) =>
+                        patchButton(i, {
+                          style: e.target.value as BtnStyle,
+                        })
+                      }
+                      className="rounded-lg border border-white/10 bg-[#121214] px-2 py-1.5 text-xs text-foreground"
+                      aria-label={`Цвет кнопки ${i + 1}`}
+                    >
+                      {STYLE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="text-rose-300 underline text-xs"
+                      onClick={() =>
+                        setButtons((list) => list.filter((_, j) => j !== i))
+                      }
+                    >
+                      убрать
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    → {buttonTargetLabel(b.path)}
+                  </p>
                 </li>
               ))}
             </ul>

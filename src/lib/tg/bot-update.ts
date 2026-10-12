@@ -1767,6 +1767,8 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
         data.startsWith("tu:pay:") ||
         data.startsWith("tu:renew:") ||
         data.startsWith("qc:") ||
+        data.startsWith("bc:pt:") ||
+        data.startsWith("bc:vt:") ||
         data === CB.rulesAgree ||
         data === "rules:agree";
       if (!funnelAllowedLegacy) {

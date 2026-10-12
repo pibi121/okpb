@@ -439,6 +439,14 @@ export async function createQuickVideoTemplateFromRun(opts: {
 
   const blueprint = buildBlueprintFromRun(refSlots, refImageUrls);
   const locationSlot = blueprint.find((s) => s.role === "location");
+  const identitySlots = blueprint.filter((s) => s.role === "identity").length;
+  const identityPersonCount = Math.max(
+    1,
+    Math.min(
+      4,
+      Math.max(identityPersonCountFromRun(characterIds), identitySlots || 0),
+    ),
+  );
   const priceCredits = opts.isJuice
     ? Math.max(0, Math.min(500, Math.floor(opts.priceCredits)))
     : 0;
@@ -455,7 +463,7 @@ export async function createQuickVideoTemplateFromRun(opts: {
       sourceRunId: run.id,
       shotsJson,
       slotBlueprintJson: JSON.stringify(blueprint),
-      identityPersonCount: identityPersonCountFromRun(characterIds),
+      identityPersonCount,
       hasLocationSlot: !!locationSlot,
       defaultLocationUrl: locationSlot?.bakedRefUrl || "",
       refVideoUrl: run.refVideoUrl || "",

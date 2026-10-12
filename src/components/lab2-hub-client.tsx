@@ -44,6 +44,13 @@ const CARDS: Card[] = [
     status: "ready",
   },
   {
+    href: "/peach/lab2/mini-film",
+    title: "Мини-фильм (2 героя + шоты)",
+    blurb:
+      "Отработка шаблонов: фото героя 1 и 2 на все шоты, опционально видео позы, промпт на каждый шот. Сохранение → Перенос Funnel v2.",
+    status: "ready",
+  },
+  {
     href: "/peach/story-video",
     title: "Видео по 1 фото (из Lab 1.0)",
     blurb:

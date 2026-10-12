@@ -45,6 +45,7 @@ export const LAB2_NAV: NavLink[] = [
   { href: "/peach/tg-photo", label: "TG фото-шаблоны" },
   { href: "/peach/tg-catalog", label: "TG каталог" },
   { href: "/peach/tease-lab", label: "Tease (blur)" },
+  { href: "/peach/lab2/mini-film", label: "Мини-фильм (2 героя)" },
   { href: "/peach/story-video", label: "Видео по 1 фото" },
   { href: "/peach/lora-i2v", label: "Сюжет I2V (1 фото)" },
   { href: "/peach/gallery", label: "Галерея" },

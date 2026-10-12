@@ -35,31 +35,41 @@ export type BroadcastMediaItem = {
   url: string;
 };
 
+/** Telegram inline button accent (Bot API style). */
+export type BroadcastButtonStyle = "default" | "success" | "danger" | "primary";
+
 /**
  * Broadcast CTA button.
  * - Default: Mini App web_app via `path` under /tg/
- * - In-bot: `path` like `bot:undress` (allowlisted → callback_data, no Mini App)
+ * - In-bot: `path` like `bot:photo` (allowlisted → Funnel v2 callback, no Mini App)
  */
 export type BroadcastButton = {
   text: string;
   /** Mini App path under /tg/, or `bot:<key>` for in-bot callback. */
   path: string;
+  /** Optional TG button color (success=green, danger=red, primary=blue). */
+  style?: BroadcastButtonStyle;
 };
 
 /**
- * Allowlisted in-bot section keys → Telegram callback_data (HUB_CB).
+ * Allowlisted in-bot section keys → Funnel v2 callbacks (same as main hub).
  * Template deep links use `bot:pt:<id>` / `bot:vt:<id>` → `bc:pt|vt:<id>`.
  */
 export const BROADCAST_BOT_ACTIONS: Record<string, string> = {
-  undress: "hub:ud",
-  photo: "hub:ph",
-  video: "hub:vl",
-  video_look: "hub:vl",
-  video_one: "hub:v1",
-  topup: "hub:tu",
-  help: "hub:hp",
-  earn: "hub:earn",
-  hub: "hub:back",
+  /** Same entry as hub «Раздеть и сделать фото» */
+  photo: "fv2:ph",
+  undress: "fv2:ph",
+  /** Same entry as hub «Сделать горячее видео» */
+  video: "fv2:vid",
+  video_look: "fv2:vid",
+  video_one: "fv2:vid",
+  topup: "fv2:tu",
+  help: "fv2:help",
+  earn: "fv2:earn",
+  hub: "fv2:hub",
+  /** Explicit aliases */
+  make_photo: "fv2:ph",
+  make_video: "fv2:vid",
 };
 
 /** Prisma cuid-ish ids only — never pass arbitrary callback_data. */
@@ -90,15 +100,23 @@ export type BroadcastButtonOption = {
   subtitle?: string;
 };
 
-/** Hub sections for the ops picker (in-bot, no Mini App). */
+/** Hub sections for the ops picker — labels match Funnel v2 main menu. */
 export const BROADCAST_BOT_SECTION_OPTIONS: BroadcastButtonOption[] = [
-  { text: "Раздеть по 1 фото", path: "bot:undress", group: "bot" },
-  { text: "Фото по образу", path: "bot:photo", group: "bot" },
-  { text: "Видео по образу", path: "bot:video", group: "bot" },
-  { text: "Видео с 1 фото", path: "bot:video_one", group: "bot" },
-  { text: "Пополнить", path: "bot:topup", group: "bot" },
-  { text: "Помощь", path: "bot:help", group: "bot" },
-  { text: "Заработать", path: "bot:earn", group: "bot" },
+  {
+    text: "💦 Раздеть и сделать фото 💦",
+    path: "bot:photo",
+    group: "bot",
+    subtitle: "как в главном меню → fv2:ph",
+  },
+  {
+    text: "🍓 Сделать горячее видео 🍓",
+    path: "bot:video",
+    group: "bot",
+    subtitle: "как в главном меню → fv2:vid",
+  },
+  { text: "Баланс и пополнение", path: "bot:topup", group: "bot" },
+  { text: "🤑 Заработать", path: "bot:earn", group: "bot" },
+  { text: "ℹ️ Помощь", path: "bot:help", group: "bot" },
   { text: "Главное меню", path: "bot:hub", group: "bot" },
 ];
 
@@ -275,6 +293,22 @@ function parseMediaJson(raw: string, legacyUrl?: string): BroadcastMediaItem[] {
   return [];
 }
 
+const BUTTON_STYLES = new Set<BroadcastButtonStyle>([
+  "default",
+  "success",
+  "danger",
+  "primary",
+]);
+
+function normalizeButtonStyle(
+  raw: unknown,
+): BroadcastButtonStyle | undefined {
+  if (typeof raw !== "string") return undefined;
+  const s = raw.trim().toLowerCase() as BroadcastButtonStyle;
+  if (!BUTTON_STYLES.has(s) || s === "default") return undefined;
+  return s;
+}
+
 function parseButtonsJson(raw: string): BroadcastButton[] {
   try {
     const v = JSON.parse(raw || "[]") as BroadcastButton[];
@@ -288,9 +322,11 @@ function parseButtonsJson(raw: string): BroadcastButton[] {
         if (path.startsWith("bot:") && !resolveBroadcastBotCallback(path)) {
           return null;
         }
+        const style = normalizeButtonStyle(b.style);
         return {
           text: b.text.trim().slice(0, 64),
           path,
+          ...(style ? { style } : {}),
         };
       })
       .filter((b): b is BroadcastButton => Boolean(b));
@@ -299,20 +335,31 @@ function parseButtonsJson(raw: string): BroadcastButton[] {
   }
 }
 
-type InlineBtn =
-  | { text: string; web_app: { url: string } }
-  | { text: string; callback_data: string };
+type InlineBtn = {
+  text: string;
+  web_app?: { url: string };
+  callback_data?: string;
+  style?: "success" | "danger" | "primary";
+};
 
 function buttonsMarkup(buttons: BroadcastButton[]) {
   if (!buttons.length) return undefined;
   const rows: InlineBtn[][] = [];
   for (let i = 0; i < buttons.length; i += 2) {
     const row = buttons.slice(i, i + 2).map((b): InlineBtn => {
+      const style = normalizeButtonStyle(b.style);
       const cb = resolveBroadcastBotCallback(b.path);
-      if (cb) return { text: b.text, callback_data: cb };
+      if (cb) {
+        return {
+          text: b.text,
+          callback_data: cb,
+          ...(style ? { style } : {}),
+        };
+      }
       return {
         text: b.text,
         web_app: { url: tgMiniAppUrl(b.path.replace(/^\//, "")) },
+        ...(style ? { style } : {}),
       };
     });
     rows.push(row);

@@ -82,12 +82,22 @@ function buildBlueprintFromRun(
     const url = refImageUrls[i] || "";
     const pictureIndex = slot.pictureIndex ?? i + 1;
     if (role === "identity") {
-      // Never bake author name/face into the template — consumer supplies cast.
-      blueprint.push({
-        role: "identity",
-        label: "Subject",
-        pictureIndex,
-      });
+      // Picture 1: consumer supplies the main cast (never bake).
+      // Picture 2+: bake lab partner as Funnel v2 optional fallback.
+      if (pictureIndex >= 2 && url) {
+        blueprint.push({
+          role: "identity",
+          label: slot.characterName || slot.label || "Partner",
+          pictureIndex,
+          bakedRefUrl: url,
+        });
+      } else {
+        blueprint.push({
+          role: "identity",
+          label: "Subject",
+          pictureIndex,
+        });
+      }
       continue;
     }
     blueprint.push({
@@ -299,6 +309,7 @@ export async function getQuickVideoTemplateDetail(
       OR: [
         { published: true },
         { tgPublished: true },
+        { funnelV2Published: true },
         // Author drafts (e.g. TG-only transfer before tgPublished flip)
         { userId },
       ],

@@ -5,7 +5,12 @@ import { prisma } from "@/lib/db";
 import { backupDatabase, saveGalleryBinary } from "@/lib/local-store";
 import { localBytesFromResultUrl } from "@/lib/peach-lab";
 import { stitchClipBuffersWithFallback } from "@/lib/stitch-fallback";
-import { serializeStoryH3Template } from "@/lib/story-h3-prompt";
+import {
+  clampStoryShotSec,
+  normalizeStoryH3Shots,
+  serializeStoryH3Template,
+  sumStoryH3ShotsSec,
+} from "@/lib/story-h3-prompt";
 import { getQuickVideoRun } from "@/lib/quick-video";
 
 export const runtime = "nodejs";
@@ -14,8 +19,19 @@ export const maxDuration = 300;
 const schema = z.object({
   runIds: z.array(z.string().min(1)).min(2).max(6),
   title: z.string().max(120).optional(),
-  /** Optional full H3 dump to store on the stitch run for template save. */
+  /** Optional full-film H3 dump (shared subject/summary); shots carry per-clip prompts. */
   prompt: z.string().max(24000).optional(),
+  /** Lab shot prompts + durations — required for Funnel multi-shot regenerate. */
+  shots: z
+    .array(
+      z.object({
+        durationSec: z.number().min(1).max(12),
+        prompt: z.string().min(8).max(24000),
+      }),
+    )
+    .min(2)
+    .max(6)
+    .optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -67,13 +83,19 @@ export async function POST(req: NextRequest) {
       "mini_film_stitch",
     );
 
-    const durationSec = Math.min(
-      120,
-      Math.max(
-        4,
-        ordered.reduce((sum, r) => sum + (r!.durationSec || 0), 0) || 8,
-      ),
-    );
+    const clientShots = normalizeStoryH3Shots(body.shots);
+    const shots =
+      clientShots && clientShots.length === ordered.length
+        ? clientShots
+        : ordered.map((r, i) => ({
+            durationSec: clampStoryShotSec(r!.durationSec || 6),
+            prompt:
+              (clientShots?.[i]?.prompt || "").trim() ||
+              (r!.composedPrompt || r!.prompt || "").trim() ||
+              `Shot ${i + 1}`,
+          }));
+
+    const durationSec = sumStoryH3ShotsSec(shots);
     const orientation = ordered[0]!.orientation || "9_16";
     const width = stitched.width || ordered[0]!.width || 720;
     const height = stitched.height || ordered[0]!.height || 1280;
@@ -82,59 +104,48 @@ export async function POST(req: NextRequest) {
       body.title?.trim() ||
       `Мини-фильм · склейка ${ordered.length} шотов`;
 
-    const promptStored =
+    const filmPrompt =
       body.prompt?.trim() && body.prompt.trim().length >= 40
         ? body.prompt.trim()
-        : serializeStoryH3Template({
-            prompt: [
-              "subject_definitions:",
-              "<Picture 1> identity hero 1; <Picture 2> identity hero 2.",
-              "",
-              "summary:",
-              `[reference generation] Stitched ${ordered.length}-shot mini-film.`,
-              "",
-              "retention_analysis:",
-              "Identity subjects: fully_preserved.",
-              "",
-              "detailed_description:",
-              ordered
-                .map(
-                  (r, i) =>
-                    `[Shot ${i + 1}] From lab run ${r!.id} (${r!.durationSec}s).`,
-                )
-                .join("\n\n"),
-              "",
-              "overall_soundscape:",
-              "Natural scene ambience.",
-              "",
-              "non_diegetic_music:",
-              "N/A",
-            ].join("\n"),
-            totalDurationSec: Math.min(12, durationSec),
-          });
+        : [
+            "subject_definitions:",
+            "<Picture 1> identity hero 1; <Picture 2> identity hero 2.",
+            "",
+            "summary:",
+            `[reference generation] Stitched ${ordered.length}-shot mini-film (${durationSec}s).`,
+            "",
+            "retention_analysis:",
+            "Identity subjects: fully_preserved.",
+            "",
+            "detailed_description:",
+            "High-quality cinematic realism with stable identity across shots.",
+            "",
+            "overall_soundscape:",
+            "Natural scene ambience.",
+            "",
+            "non_diegetic_music:",
+            "N/A",
+          ].join("\n");
+
+    const promptStored = serializeStoryH3Template({
+      prompt: filmPrompt,
+      totalDurationSec: durationSec,
+      shots,
+    });
 
     const first = ordered[0]!;
     const run = await prisma.quickVideoRun.create({
       data: {
         userId: user.id,
         title,
-        prompt: promptStored.startsWith("{")
-          ? (() => {
-              try {
-                const j = JSON.parse(promptStored) as { prompt?: string };
-                return typeof j.prompt === "string" ? j.prompt : promptStored;
-              } catch {
-                return promptStored;
-              }
-            })()
-          : promptStored,
-        composedPrompt: first.composedPrompt || promptStored,
+        prompt: promptStored,
+        composedPrompt: first.composedPrompt || filmPrompt,
         characterIdsJson: first.characterIdsJson,
         refImageUrlsJson: first.refImageUrlsJson,
         refVideoUrl: first.refVideoUrl || "",
         refSlotsJson: first.refSlotsJson,
         orientation,
-        durationSec: Math.min(12, durationSec),
+        durationSec,
         width,
         height,
         status: "ready",
@@ -148,7 +159,7 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         kind: "video",
         title,
-        prompt: run.composedPrompt || run.prompt,
+        prompt: filmPrompt,
         resultUrl: saved.publicUrl,
         width,
         height,
@@ -158,6 +169,8 @@ export async function POST(req: NextRequest) {
           storyH3: true,
           quickVideoRunId: run.id,
           sourceRunIds: body.runIds,
+          storyShots: shots,
+          durationSec,
           engine: stitched.engine,
           localKey: saved.relKey,
         }),
@@ -175,6 +188,8 @@ export async function POST(req: NextRequest) {
       run: publicRun,
       item: { id: item.id, resultUrl: saved.publicUrl },
       engine: stitched.engine,
+      durationSec,
+      shotCount: shots.length,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";

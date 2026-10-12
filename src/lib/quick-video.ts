@@ -364,61 +364,6 @@ async function runQuickVideoJob(runId: string, userId: string) {
 
   const imageSlots = parseRefSlots(run.refSlotsJson);
   const hasVideo = !!run.refVideoUrl;
-  const composed =
-    run.composedPrompt ||
-    composeQuickVideoPrompt(run.prompt, imageSlots, hasVideo ? 1 : 0);
-
-  let refVideoBuffer: Buffer | null = null;
-  if (run.refVideoUrl) {
-    refVideoBuffer = localBytesFromResultUrl(run.refVideoUrl);
-  }
-
-  const out = await (async () => {
-    try {
-      return await runRef2VClip({
-        refImageBuffers: refBuffers,
-        refVideoBuffer,
-        refVideoName: run.refVideoUrl ? "pose.mp4" : undefined,
-        prompt: composed,
-        width: run.width,
-        height: run.height,
-        durationSec: run.durationSec,
-        filenamePrefix: `peach/quick_${runId}`,
-      });
-    } catch (first) {
-      const msg = first instanceof Error ? first.message : String(first);
-      const { isRetryableComfyFlake, comfyFreeMemory } = await import(
-        "@/lib/comfy-client"
-      );
-      if (!isRetryableComfyFlake(first)) throw first;
-      const isOom = /OutOfMemory|CUDA out of memory|ran out of memory/i.test(
-        msg,
-      );
-      console.warn(
-        `[peach] quick-video retry once for ${runId}:`,
-        msg.slice(0, 180),
-      );
-      try {
-        await comfyFreeMemory();
-        await new Promise((r) => setTimeout(r, isOom ? 12_000 : 2500));
-        await comfyFreeMemory();
-      } catch (freeErr) {
-        console.warn("[peach] comfyFreeMemory before retry:", freeErr);
-      }
-      return await runRef2VClip({
-        refImageBuffers: refBuffers,
-        refVideoBuffer,
-        refVideoName: run.refVideoUrl ? "pose.mp4" : undefined,
-        prompt: composed,
-        width: run.width,
-        height: run.height,
-        durationSec: run.durationSec,
-        filenamePrefix: `peach/quick_${runId}`,
-      });
-    }
-  })();
-
-  const saved = saveGalleryBinary(userId, "mp4", out.bytes, `quick_${runId}`);
 
   let prevMeta: Record<string, unknown> = {};
   if (run.galleryItemId) {
@@ -433,22 +378,139 @@ async function runQuickVideoJob(runId: string, userId: string) {
     }
   }
 
-  const { isStoryH3RunPrompt } = await import("@/lib/story-h3-prompt");
+  const {
+    isStoryH3RunPrompt,
+    parseStoryH3Template,
+    normalizeStoryH3Shots,
+    prepareStoryH3Prompt,
+    clampStoryShotSec,
+  } = await import("@/lib/story-h3-prompt");
+  const storyTpl = parseStoryH3Template(run.prompt);
+  const storyShots =
+    normalizeStoryH3Shots(prevMeta.storyShots) ||
+    storyTpl?.shots ||
+    undefined;
+  const multiStory = Boolean(storyShots && storyShots.length >= 2);
+
+  const composed =
+    run.composedPrompt ||
+    (storyTpl
+      ? prepareStoryH3Prompt(
+          multiStory ? storyShots![0]!.prompt : storyTpl.prompt,
+          imageSlots,
+          hasVideo ? 1 : 0,
+        )
+      : composeQuickVideoPrompt(run.prompt, imageSlots, hasVideo ? 1 : 0));
+
+  let refVideoBuffer: Buffer | null = null;
+  if (run.refVideoUrl) {
+    refVideoBuffer = localBytesFromResultUrl(run.refVideoUrl);
+  }
+
+  async function runOneClip(prompt: string, durationSec: number, tag: string) {
+    const tryOnce = () =>
+      runRef2VClip({
+        refImageBuffers: refBuffers,
+        refVideoBuffer,
+        refVideoName: run.refVideoUrl ? "pose.mp4" : undefined,
+        prompt,
+        width: run.width,
+        height: run.height,
+        durationSec,
+        filenamePrefix: `peach/quick_${runId}_${tag}`,
+      });
+    try {
+      return await tryOnce();
+    } catch (first) {
+      const msg = first instanceof Error ? first.message : String(first);
+      const { isRetryableComfyFlake, comfyFreeMemory } = await import(
+        "@/lib/comfy-client"
+      );
+      if (!isRetryableComfyFlake(first)) throw first;
+      const isOom = /OutOfMemory|CUDA out of memory|ran out of memory/i.test(
+        msg,
+      );
+      console.warn(
+        `[peach] quick-video retry once for ${runId}/${tag}:`,
+        msg.slice(0, 180),
+      );
+      try {
+        await comfyFreeMemory();
+        await new Promise((r) => setTimeout(r, isOom ? 12_000 : 2500));
+        await comfyFreeMemory();
+      } catch (freeErr) {
+        console.warn("[peach] comfyFreeMemory before retry:", freeErr);
+      }
+      return await tryOnce();
+    }
+  }
+
+  let outBytes: Buffer;
+  let outWidth = run.width;
+  let outHeight = run.height;
+  let outEngine = "minimax_h3";
+  let finalComposed = composed;
+
+  if (multiStory && storyShots) {
+    const clipBuffers: Buffer[] = [];
+    for (let i = 0; i < storyShots.length; i++) {
+      const shot = storyShots[i]!;
+      const shotComposed = prepareStoryH3Prompt(
+        shot.prompt,
+        imageSlots,
+        hasVideo ? 1 : 0,
+      );
+      if (i === 0) finalComposed = shotComposed;
+      const clip = await runOneClip(
+        shotComposed,
+        clampStoryShotSec(shot.durationSec),
+        `s${i + 1}`,
+      );
+      if (!clip.bytes?.length || clip.bytes.length < 1000) {
+        throw new Error(`Шот ${i + 1}: пустое видео`);
+      }
+      clipBuffers.push(clip.bytes);
+      outWidth = clip.size?.width || outWidth;
+      outHeight = clip.size?.height || outHeight;
+      outEngine = clip.engine || outEngine;
+    }
+    const { stitchClipBuffersWithFallback } = await import(
+      "@/lib/stitch-fallback"
+    );
+    const stitched = await stitchClipBuffersWithFallback({
+      clips: clipBuffers,
+      tag: `qv_${runId}`,
+    });
+    outBytes = stitched.bytes;
+    outWidth = stitched.width || outWidth;
+    outHeight = stitched.height || outHeight;
+    outEngine = `${outEngine}+${stitched.engine}`;
+  } else {
+    const out = await runOneClip(composed, clampDurationSec(run.durationSec), "one");
+    outBytes = out.bytes;
+    outWidth = out.size.width;
+    outHeight = out.size.height;
+    outEngine = out.engine;
+  }
+
+  const saved = saveGalleryBinary(userId, "mp4", outBytes, `quick_${runId}`);
+
   const storyH3 =
     prevMeta.storyH3 === true ||
     prevMeta.jobAction === "story_h3_video" ||
+    Boolean(storyTpl) ||
     isStoryH3RunPrompt(run.prompt);
 
   const galleryData = {
     resultUrl: saved.publicUrl,
-    width: out.size.width,
-    height: out.size.height,
-    prompt: composed,
+    width: outWidth,
+    height: outHeight,
+    prompt: finalComposed,
     metaJson: JSON.stringify({
       ...prevMeta,
       status: "ready",
       error: undefined,
-      engine: out.engine,
+      engine: outEngine,
       quickVideoRunId: runId,
       storyH3,
       jobAction: storyH3 ? "story_h3_video" : prevMeta.jobAction || "quick_video",
@@ -466,6 +528,7 @@ async function runQuickVideoJob(runId: string, userId: string) {
       orientation: run.orientation,
       durationSec: run.durationSec,
       shotsJson: run.prompt,
+      storyShots: multiStory ? storyShots : prevMeta.storyShots,
       refSlots: imageSlots,
       bodyLookbook: prevMeta.bodyLookbook,
       storyModelName:
@@ -499,10 +562,10 @@ async function runQuickVideoJob(runId: string, userId: string) {
       status: "ready",
       resultVideoUrl: saved.publicUrl,
       galleryItemId: itemId,
-      width: out.size.width,
-      height: out.size.height,
-      engine: out.engine,
-      composedPrompt: composed,
+      width: outWidth,
+      height: outHeight,
+      engine: outEngine,
+      composedPrompt: finalComposed,
       error: null,
     },
   });
@@ -1111,6 +1174,11 @@ export async function startQuickVideoRun(opts: {
   shotsPlan?: QuickVideoShotsPlan;
   /** Full MiniMax H3 story prompt (Grok) — rebuild subject_definitions from slots */
   storyH3?: boolean;
+  /**
+   * Multi-shot Story H3: each clip ≤12s, then stitch.
+   * When set (≥2), run.durationSec = sum and job regenerates per shot.
+   */
+  storyShots?: Array<{ durationSec: number; prompt: string }>;
   /** Story lab custom model name + body lookbook (not DB cast). */
   storyModelName?: string;
   bodyLookbook?: Record<string, string>;
@@ -1184,14 +1252,21 @@ export async function startQuickVideoRun(opts: {
     poseVideoName: opts.poseVideoName,
   });
 
+  const { normalizeStoryH3Shots, sumStoryH3ShotsSec, serializeStoryH3Template } =
+    await import("@/lib/story-h3-prompt");
+  const storyShots = normalizeStoryH3Shots(opts.storyShots);
+  const multiStory = Boolean(opts.storyH3 && storyShots && storyShots.length >= 2);
+
   let durationSec = clampDurationSec(opts.durationSec);
-  if (opts.shotsPlan) {
+  if (multiStory && storyShots) {
+    durationSec = sumStoryH3ShotsSec(storyShots);
+  } else if (opts.shotsPlan) {
     const used = sumQuickVideoShotsSec(
       opts.shotsPlan.shots.filter((s) => s.legoQuery.trim()),
     );
     if (used >= 4) durationSec = clampDurationSec(used);
   }
-  if (assembled.refVideoBuffer?.length) {
+  if (!multiStory && assembled.refVideoBuffer?.length) {
     try {
       const ext = extFromName(assembled.refVideoName, ".mp4");
       const probe = await probeMediaBuffer(assembled.refVideoBuffer, ext);
@@ -1207,7 +1282,14 @@ export async function startQuickVideoRun(opts: {
   const size = minimaxOutputSize(orientation);
   const promptStored = opts.shotsPlan
     ? serializeQuickVideoShotsPlan(opts.shotsPlan)
-    : legacyPrompt;
+    : multiStory && storyShots
+      ? serializeStoryH3Template({
+          prompt: legacyPrompt,
+          totalDurationSec: durationSec,
+          shots: storyShots,
+          bodyLookbook: opts.bodyLookbook,
+        })
+      : legacyPrompt;
   let composed: string;
   if (opts.shotsPlan) {
     composed = composeQuickVideoMultiShotPrompt(
@@ -1219,8 +1301,9 @@ export async function startQuickVideoRun(opts: {
     );
   } else if (opts.storyH3) {
     const { prepareStoryH3Prompt } = await import("@/lib/story-h3-prompt");
+    const seedPrompt = multiStory && storyShots ? storyShots[0]!.prompt : legacyPrompt;
     composed = prepareStoryH3Prompt(
-      legacyPrompt,
+      seedPrompt,
       assembled.imageSlots,
       assembled.refVideoBuffer ? 1 : 0,
       { pictureRemap: assembled.pictureRemap },
@@ -1277,6 +1360,7 @@ export async function startQuickVideoRun(opts: {
         orientation,
         durationSec,
         shotsJson: promptStored,
+        storyShots: multiStory ? storyShots : undefined,
         refImageUrls: assembled.refImageUrls,
         refVideoUrl: assembled.refVideoUrl,
         refSlots: assembled.imageSlots,

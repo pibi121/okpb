@@ -986,6 +986,7 @@ export async function startTgVideoGeneration(opts: {
     shotsPlan: shotsPlan || undefined,
     prompt: storyTpl?.prompt,
     storyH3: Boolean(storyTpl),
+    storyShots: storyTpl?.shots,
     characterIds: [opts.characterId],
     manualSlots: manualSlots.length ? manualSlots : undefined,
     poseVideoBuffer,

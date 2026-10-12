@@ -325,6 +325,13 @@ export function Lab2MiniFilmClient() {
           runIds: ids,
           title: title.trim() || "Мини-фильм",
           prompt: composeFilmPrompt(shots, name1.trim(), name2.trim()),
+          shots: ids.map((id) => {
+            const s = shots.find((x) => x.runId === id)!;
+            return {
+              durationSec: s.durationSec,
+              prompt: s.prompt.trim(),
+            };
+          }),
         }),
       });
       const data = (await res.json()) as {

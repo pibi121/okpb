@@ -24,27 +24,78 @@ const SECTION_KEYS = [
   "non_diegetic_music",
 ] as const;
 
+/** One MiniMax H3 clip (engine hard-cap 12s). Multi-shot films stitch these. */
+export type StoryH3ShotStored = {
+  durationSec: number;
+  prompt: string;
+};
+
 export type StoryH3TemplateStored = {
   __storyH3: 1;
   prompt: string;
+  /** Full film length (sum of shots); may exceed 12 when multi-shot. */
   totalDurationSec: number;
+  /** Per-clip prompts for multi-shot regenerate + stitch in Funnel/TG. */
+  shots?: StoryH3ShotStored[];
   /** Default body/bust/hips ids for the Story lab form (not baked identity). */
   bodyLookbook?: Record<string, string>;
 };
 
+const MAX_STORY_FILM_SEC = 120;
+const MAX_STORY_SHOT_SEC = 12;
+const MIN_STORY_SHOT_SEC = 4;
+
+export function clampStoryShotSec(n: number): number {
+  if (!Number.isFinite(n)) return 6;
+  return Math.min(MAX_STORY_SHOT_SEC, Math.max(MIN_STORY_SHOT_SEC, Math.round(n)));
+}
+
+export function normalizeStoryH3Shots(
+  raw: unknown,
+): StoryH3ShotStored[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 1) return undefined;
+  const shots: StoryH3ShotStored[] = [];
+  for (const row of raw.slice(0, 6)) {
+    if (!row || typeof row !== "object") continue;
+    const prompt = String((row as { prompt?: unknown }).prompt || "").trim();
+    if (prompt.length < 8) continue;
+    const durationSec = clampStoryShotSec(
+      Number((row as { durationSec?: unknown }).durationSec),
+    );
+    shots.push({ durationSec, prompt });
+  }
+  return shots.length ? shots : undefined;
+}
+
+export function sumStoryH3ShotsSec(shots: StoryH3ShotStored[]): number {
+  return Math.min(
+    MAX_STORY_FILM_SEC,
+    Math.max(
+      MIN_STORY_SHOT_SEC,
+      shots.reduce((a, s) => a + clampStoryShotSec(s.durationSec), 0),
+    ),
+  );
+}
+
 export function serializeStoryH3Template(opts: {
   prompt: string;
   totalDurationSec: number;
+  shots?: StoryH3ShotStored[];
   bodyLookbook?: Record<string, string>;
 }): string {
+  const shots = normalizeStoryH3Shots(opts.shots);
+  const totalDurationSec = shots?.length
+    ? sumStoryH3ShotsSec(shots)
+    : Math.min(
+        MAX_STORY_FILM_SEC,
+        Math.max(MIN_STORY_SHOT_SEC, Math.floor(opts.totalDurationSec) || 8),
+      );
   const payload: StoryH3TemplateStored = {
     __storyH3: 1,
     prompt: opts.prompt.trim(),
-    totalDurationSec: Math.min(
-      12,
-      Math.max(4, Math.floor(opts.totalDurationSec) || 8),
-    ),
+    totalDurationSec,
   };
+  if (shots?.length) payload.shots = shots;
   if (opts.bodyLookbook && Object.keys(opts.bodyLookbook).length) {
     payload.bodyLookbook = opts.bodyLookbook;
   }
@@ -61,13 +112,21 @@ export function parseStoryH3Template(
     if (j.__storyH3 !== 1 || typeof j.prompt !== "string") return null;
     const prompt = j.prompt.trim();
     if (prompt.length < 40) return null;
+    const shots = normalizeStoryH3Shots(j.shots);
+    const totalDurationSec = shots?.length
+      ? sumStoryH3ShotsSec(shots)
+      : Math.min(
+          MAX_STORY_FILM_SEC,
+          Math.max(
+            MIN_STORY_SHOT_SEC,
+            Math.floor(Number(j.totalDurationSec)) || 8,
+          ),
+        );
     return {
       __storyH3: 1,
       prompt,
-      totalDurationSec: Math.min(
-        12,
-        Math.max(4, Math.floor(Number(j.totalDurationSec)) || 8),
-      ),
+      totalDurationSec,
+      shots,
       bodyLookbook:
         j.bodyLookbook && typeof j.bodyLookbook === "object"
           ? (j.bodyLookbook as Record<string, string>)

@@ -413,11 +413,14 @@ export async function createQuickVideoTemplateFromRun(opts: {
     : [];
   const authorNames = authorNamesFromRun(authorChars, refSlots);
   const shotsJson = isStory
-    ? serializeStoryH3Template({
-        prompt: run.prompt,
-        totalDurationSec: run.durationSec,
-        bodyLookbook: await (async () => {
-          if (!run.galleryItemId) return undefined;
+    ? await (async () => {
+        const { parseStoryH3Template, normalizeStoryH3Shots } = await import(
+          "@/lib/story-h3-prompt"
+        );
+        const existing = parseStoryH3Template(run.prompt);
+        let bodyLookbook: Record<string, string> | undefined;
+        let metaShots: ReturnType<typeof normalizeStoryH3Shots>;
+        if (run.galleryItemId) {
           try {
             const item = await prisma.galleryItem.findUnique({
               where: { id: run.galleryItemId },
@@ -425,13 +428,24 @@ export async function createQuickVideoTemplateFromRun(opts: {
             });
             const meta = JSON.parse(item?.metaJson || "{}") as {
               bodyLookbook?: Record<string, string>;
+              storyShots?: unknown;
             };
-            return meta.bodyLookbook;
+            bodyLookbook = meta.bodyLookbook;
+            metaShots = normalizeStoryH3Shots(meta.storyShots);
           } catch {
-            return undefined;
+            /* ignore */
           }
-        })(),
-      })
+        }
+        return serializeStoryH3Template({
+          prompt: existing?.prompt || run.prompt,
+          totalDurationSec: Math.max(
+            run.durationSec || 0,
+            existing?.totalDurationSec || 0,
+          ),
+          shots: existing?.shots || metaShots,
+          bodyLookbook,
+        });
+      })()
     : sanitizeShotsJsonForTemplate(run.prompt, authorNames);
 
   const { extractSpeechSlots } = await import("@/lib/speech-slots");

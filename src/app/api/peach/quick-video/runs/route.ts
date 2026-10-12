@@ -133,8 +133,28 @@ export async function POST(req: NextRequest) {
     if (ctype.includes("multipart/form-data")) {
       const form = await req.formData();
       const title = String(form.get("title") || "");
-      const prompt = String(form.get("prompt") || "");
+      const prompt = String(form.get("prompt") || "").trim();
       const shotsPlan = parseShotsPlan(form.get("shotsJson"));
+      const storyH3Raw = String(form.get("storyH3") || "").toLowerCase();
+      const storyH3 =
+        !shotsPlan &&
+        (storyH3Raw === "1" ||
+          storyH3Raw === "true" ||
+          storyH3Raw === "yes");
+      if (storyH3) {
+        if (prompt.length < 80) {
+          return NextResponse.json(
+            { error: "Вставь полный H3-промпт (слишком короткий)" },
+            { status: 400 },
+          );
+        }
+        if (prompt.length > 24000) {
+          return NextResponse.json(
+            { error: "Промпт слишком длинный (макс ~24k символов)" },
+            { status: 400 },
+          );
+        }
+      }
       const orientation = String(form.get("orientation") || "9_16");
       const durationSec = Number(form.get("durationSec") || 6);
       const characterIds = parseIds(form.get("characterIds"));
@@ -195,6 +215,7 @@ export async function POST(req: NextRequest) {
           title,
           prompt: shotsPlan ? undefined : prompt,
           shotsPlan: shotsPlan || undefined,
+          storyH3,
           characterIds,
           extraImageBuffers: extraBuffers,
           extraExtensions: extraExts,
@@ -221,6 +242,7 @@ export async function POST(req: NextRequest) {
         title,
         prompt: shotsPlan ? undefined : prompt,
         shotsPlan: shotsPlan || undefined,
+        storyH3,
         characterIds,
         manualSlots,
         poseVideoBuffer,

@@ -1,15 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { QuickVideoShotsEditor } from "@/components/quick-video-shots-editor";
+import { useCallback, useEffect, useState } from "react";
 import { SaveQuickVideoTemplateButton } from "@/components/save-quick-video-template-button";
-import type { LegoCharacterRef, VideoLegoFile } from "@/lib/prompt-lego-core";
-import {
-  MAX_QUICK_VIDEO_TOTAL_SEC,
-  splitDurationEvenly,
-  sumQuickVideoShotsSec,
-  type QuickVideoShotsPlan,
-} from "@/lib/quick-video-prompt";
+import { storyH3LooksStructured } from "@/lib/story-h3-prompt";
 
 type RunRow = {
   id: string;
@@ -24,24 +17,28 @@ type RunRow = {
 const CHAR1_ID = "custom:hero1";
 const CHAR2_ID = "custom:hero2";
 
-function defaultPlan(): QuickVideoShotsPlan {
-  const total = 8;
-  const parts = splitDurationEvenly(total, 2);
-  return {
-    totalDurationSec: total,
-    shots: parts.map((durationSec, i) => ({
-      id: `shot-${i + 1}`,
-      durationSec,
-      legoQuery: "",
-    })),
-  };
-}
+const AI_BRIEF = `Работай строго по прикреплённой инструкции (рефинстр / referensguide).
+Верни ТОЛЬКО готовый 6-секционный промпт:
+subject_definitions → summary → retention_analysis → detailed_description → overall_soundscape → non_diegetic_music.
+Без пояснений и альтернатив.
 
-export function Lab2MiniFilmClient({
-  videoLego,
-}: {
-  videoLego: VideoLegoFile;
-}) {
+Контекст Peachbitch (шаблон мини-фильма, 2 героя):
+- В проде пользователь подставит СВОИ фото в слоты identity.
+- Контракт слотов:
+  • <Picture 1> = identity героя 1 (девушка) — лицо/волосы/кожа/тело с фото пользователя. Конкретных черт НЕ выдумывай.
+  • <Picture 2> = identity героя 2 (парень) — то же.
+  • <Video 1> = опциональный motion/pose ref (только если я скажу, что будет видео позы).
+  • <Subject 1> = герой 1 из <Picture 1>, fully_preserved.
+  • <Subject 2> = герой 2 из <Picture 2>, fully_preserved.
+- Длительность до 12 сек. Формат 9:16 (если не скажу иначе).
+- Диалоги: естественный русский в <d>[Russian] …</d>, спикеры (S1)/(S2).
+- Стиль/качество — из гайда; NSFW — по гайду, без эвфемизмов если сцена интимная.
+
+Пока я не пришлю бриф сцены — не пиши финальный промпт. Спроси коротко, чего не хватает, или жди.
+
+Когда пришлю детали (сюжет, локация, одежда/состояние, камера, речь, тайминги шотов, NSFW, music/N/A) — выдай только 6 секций.`;
+
+export function Lab2MiniFilmClient() {
   const [name1, setName1] = useState("Девушка");
   const [name2, setName2] = useState("Парень");
   const [file1, setFile1] = useState<File | null>(null);
@@ -49,35 +46,17 @@ export function Lab2MiniFilmClient({
   const [poseVideo, setPoseVideo] = useState<File | null>(null);
   const [title, setTitle] = useState("Мини-фильм");
   const [orientation, setOrientation] = useState<"9_16" | "16_9">("9_16");
-  const [plan, setPlan] = useState<QuickVideoShotsPlan>(defaultPlan);
+  const [durationSec, setDurationSec] = useState(8);
+  const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [briefCopied, setBriefCopied] = useState(false);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [lastReadyId, setLastReadyId] = useState<string | null>(null);
 
-  const characters: LegoCharacterRef[] = useMemo(
-    () => [
-      {
-        id: CHAR1_ID,
-        name: name1.trim() || "Девушка",
-        gender: "female",
-        triggerWord: null,
-      },
-      {
-        id: CHAR2_ID,
-        name: name2.trim() || "Парень",
-        gender: "male",
-        triggerWord: null,
-      },
-    ],
-    [name1, name2],
-  );
-
-  const selectedCharacterIds = useMemo(
-    () => [CHAR1_ID, CHAR2_ID],
-    [],
-  );
+  const promptLen = prompt.trim().length;
+  const structured = promptLen >= 80 && storyH3LooksStructured(prompt);
 
   const loadRuns = useCallback(async () => {
     const res = await fetch("/api/peach/quick-video/runs");
@@ -95,6 +74,16 @@ export function Lab2MiniFilmClient({
     return () => clearInterval(t);
   }, [loadRuns]);
 
+  async function copyBrief() {
+    try {
+      await navigator.clipboard.writeText(AI_BRIEF);
+      setBriefCopied(true);
+      setTimeout(() => setBriefCopied(false), 2000);
+    } catch {
+      setError("Не удалось скопировать бриф");
+    }
+  }
+
   async function generate() {
     setError("");
     setMsg("");
@@ -102,34 +91,26 @@ export function Lab2MiniFilmClient({
       setError("Нужны фото героя 1 и героя 2");
       return;
     }
-    const filled = plan.shots.filter((s) => s.legoQuery.trim());
-    if (!filled.length) {
-      setError("Заполни промпт хотя бы одного шота");
+    const text = prompt.trim();
+    if (text.length < 80) {
+      setError("Вставь полный H3-промпт (минимум ~80 символов)");
       return;
     }
-    const used = sumQuickVideoShotsSec(filled);
-    if (used < 4 || used > MAX_QUICK_VIDEO_TOTAL_SEC) {
-      setError(`Сумма шотов ${used}с — нужно от 4 до ${MAX_QUICK_VIDEO_TOTAL_SEC}`);
+    if (text.length > 24000) {
+      setError("Промпт слишком длинный (макс ~24k)");
       return;
     }
 
     const n1 = name1.trim() || "Девушка";
     const n2 = name2.trim() || "Парень";
-    const shotsPlan: QuickVideoShotsPlan = {
-      totalDurationSec: used,
-      shots: filled,
-    };
 
     const fd = new FormData();
     fd.set("title", title.trim() || "Мини-фильм");
     fd.set("orientation", orientation);
-    fd.set("durationSec", String(used));
-    fd.set("shotsJson", JSON.stringify(shotsPlan));
-    fd.set("prompt", filled.map((s) => s.legoQuery).join("\n\n"));
-    fd.set(
-      "characterIds",
-      JSON.stringify([CHAR1_ID, CHAR2_ID]),
-    );
+    fd.set("durationSec", String(durationSec));
+    fd.set("storyH3", "1");
+    fd.set("prompt", text);
+    fd.set("characterIds", JSON.stringify([CHAR1_ID, CHAR2_ID]));
     fd.set(
       "customCharacters",
       JSON.stringify([
@@ -166,7 +147,12 @@ export function Lab2MiniFilmClient({
       });
       const data = (await res.json()) as { run?: RunRow; error?: string };
       if (!res.ok) throw new Error(data.error || "generate failed");
-      setMsg(`Запущено: ${data.run?.id || "ok"}. Жди status=ready ниже.`);
+      setMsg(
+        `Запущено: ${data.run?.id || "ok"}. Жди status=ready ниже.` +
+          (structured
+            ? ""
+            : " Промпт слабо похож на 6 секций H3 — лучше полный вывод ИИ."),
+      );
       await loadRuns();
     } catch (e) {
       setError(e instanceof Error ? e.message : "ошибка");
@@ -177,6 +163,30 @@ export function Lab2MiniFilmClient({
 
   return (
     <div className="flex flex-col gap-6">
+      <section className="rounded-2xl border border-white/10 bg-[#121214]/80 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium text-zinc-200">
+              Бриф для ИИ (промпт-райтер)
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Прикрепи рефинстр.md + этот бриф. Детали сцены — следующим
+              сообщением. Ответ ИИ вставь в поле ниже.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void copyBrief()}
+            className="rounded-full border border-peach/40 bg-peach/10 px-3 py-1.5 text-xs text-peach hover:bg-peach/20"
+          >
+            {briefCopied ? "Скопировано" : "Скопировать бриф"}
+          </button>
+        </div>
+        <pre className="mt-3 max-h-36 overflow-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-black/40 p-3 text-[11px] leading-relaxed text-zinc-400">
+          {AI_BRIEF}
+        </pre>
+      </section>
+
       <section className="grid gap-4 rounded-2xl border border-white/10 bg-[#121214]/80 p-4 sm:grid-cols-2">
         <label className="text-sm">
           <span className="text-zinc-400">Имя героя 1 (Picture 1)</span>
@@ -214,7 +224,7 @@ export function Lab2MiniFilmClient({
         </label>
         <label className="text-sm sm:col-span-2">
           <span className="text-zinc-400">
-            Видео позы / движения (опционально, одно на весь фильм)
+            Видео позы / движения (опционально → Video 1)
           </span>
           <input
             type="file"
@@ -228,7 +238,7 @@ export function Lab2MiniFilmClient({
             </p>
           ) : (
             <p className="mt-1 text-[11px] text-zinc-600">
-              Можно не загружать — шоты поедут только по тексту + фото героев.
+              Можно не загружать — сцена только по H3-промпту + фото героев.
             </p>
           )}
         </label>
@@ -253,25 +263,52 @@ export function Lab2MiniFilmClient({
             <option value="16_9">16:9</option>
           </select>
         </label>
+        <label className="text-sm sm:col-span-2">
+          <span className="text-zinc-400">Длительность: {durationSec}s</span>
+          <input
+            type="range"
+            min={4}
+            max={12}
+            value={durationSec}
+            disabled={busy}
+            className="mt-2 block w-full max-w-md"
+            onChange={(e) => setDurationSec(Number(e.target.value))}
+          />
+        </label>
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-[#121214]/80 p-4">
-        <h2 className="text-sm font-medium text-zinc-300">Шоты</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          В LEGO используй имена героев ({name1 || "Девушка"} /{" "}
-          {name2 || "Парень"}) или отсылки к Picture 1 / Picture 2. Сумма
-          длительностей ≤ {MAX_QUICK_VIDEO_TOTAL_SEC}с.
-        </p>
-        <div className="mt-3">
-          <QuickVideoShotsEditor
-            plan={plan}
-            onChange={setPlan}
-            selectedCharacterIds={selectedCharacterIds}
-            characters={characters}
-            videoLego={videoLego}
+        <label className="block text-sm">
+          <span className="font-medium text-zinc-300">
+            Полный H3-промпт (6 секций)
+          </span>
+          <p className="mt-1 text-xs text-zinc-500">
+            Без LEGO-табов. Пиши{" "}
+            <code className="text-zinc-400">&lt;Picture 1&gt;</code> /{" "}
+            <code className="text-zinc-400">&lt;Picture 2&gt;</code> /{" "}
+            <code className="text-zinc-400">&lt;Subject N&gt;</code>. При
+            генерации система подставит загруженные фото в эти слоты; в шаблон
+            identity не запекается.
+          </p>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
             disabled={busy}
+            rows={18}
+            className="mt-3 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 font-mono text-[12px] leading-relaxed text-zinc-100"
+            placeholder={
+              "subject_definitions:\n...\n\nsummary:\n...\n\nretention_analysis:\n...\n\ndetailed_description:\n...\n\noverall_soundscape:\n...\n\nnon_diegetic_music:\nN/A"
+            }
           />
-        </div>
+          <span className="mt-1 block text-[11px] text-zinc-600">
+            {promptLen} символов
+            {promptLen >= 80
+              ? structured
+                ? " · структура H3 ок"
+                : " · слабо похоже на 6 секций"
+              : ""}
+          </span>
+        </label>
       </section>
 
       <div className="flex flex-wrap items-center gap-3">

@@ -194,10 +194,20 @@ export function prepareStoryH3Prompt(
 
   const parts: string[] = [];
 
-  if (defs.length) {
-    parts.push(`subject_definitions:\n${defs.join("\n")}`);
-  } else if (sections.subject_definitions) {
-    parts.push(`subject_definitions:\n${sections.subject_definitions}`);
+  // Slot Picture lines are authoritative for wired refs; keep user's
+  // <Subject>/<Video>/<Audio> lines so dual-cast H3 prompts stay coherent.
+  const userDefLines = (sections.subject_definitions || "")
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim().length > 0)
+    .filter((l) => {
+      if (!defs.length) return true;
+      return !/^<Picture\s+\d+>/i.test(l.trim());
+    });
+  if (defs.length || userDefLines.length) {
+    parts.push(
+      `subject_definitions:\n${[...defs, ...userDefLines].join("\n")}`,
+    );
   }
 
   const lock = bodyShapeLockBlock(bodyHints);

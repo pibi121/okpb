@@ -7,6 +7,7 @@ import { localBytesFromResultUrl } from "@/lib/peach-lab";
 import { stitchClipBuffersWithFallback } from "@/lib/stitch-fallback";
 import {
   clampStoryShotSec,
+  MAX_STORY_H3_SHOTS,
   normalizeStoryH3Shots,
   serializeStoryH3Template,
   sumStoryH3ShotsSec,
@@ -17,7 +18,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const schema = z.object({
-  runIds: z.array(z.string().min(1)).min(2).max(6),
+  runIds: z.array(z.string().min(1)).min(2).max(MAX_STORY_H3_SHOTS),
   title: z.string().max(120).optional(),
   /** Optional full-film H3 dump (shared subject/summary); shots carry per-clip prompts. */
   prompt: z.string().max(24000).optional(),
@@ -30,9 +31,94 @@ const schema = z.object({
       }),
     )
     .min(2)
-    .max(6)
+    .max(MAX_STORY_H3_SHOTS)
     .optional(),
 });
+
+/** Restore Lab shot rows from a previous stitch (sourceRunIds + storyShots). */
+export async function GET(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
+
+  const runId = (req.nextUrl.searchParams.get("runId") || "").trim();
+  if (!runId) {
+    return NextResponse.json({ error: "runId required" }, { status: 400 });
+  }
+
+  const run = await prisma.quickVideoRun.findFirst({
+    where: { id: runId, userId: user.id },
+  });
+  if (!run) {
+    return NextResponse.json({ error: "run not found" }, { status: 404 });
+  }
+
+  let sourceRunIds: string[] = [];
+  let storyShots: Array<{ durationSec: number; prompt: string }> | undefined;
+  if (run.galleryItemId) {
+    const item = await prisma.galleryItem.findUnique({
+      where: { id: run.galleryItemId },
+      select: { metaJson: true },
+    });
+    try {
+      const meta = JSON.parse(item?.metaJson || "{}") as {
+        sourceRunIds?: unknown;
+        storyShots?: unknown;
+      };
+      if (Array.isArray(meta.sourceRunIds)) {
+        sourceRunIds = meta.sourceRunIds
+          .filter((id): id is string => typeof id === "string" && !!id)
+          .slice(0, MAX_STORY_H3_SHOTS);
+      }
+      storyShots = normalizeStoryH3Shots(meta.storyShots);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!sourceRunIds.length) {
+    return NextResponse.json(
+      { error: "у этой склейки нет sourceRunIds — восстановить шоты нельзя" },
+      { status: 400 },
+    );
+  }
+
+  const clipRuns = await prisma.quickVideoRun.findMany({
+    where: { userId: user.id, id: { in: sourceRunIds } },
+  });
+  const byId = new Map(clipRuns.map((r) => [r.id, r]));
+
+  const shots = sourceRunIds.map((id, i) => {
+    const clip = byId.get(id);
+    const fromMeta = storyShots?.[i];
+    let prompt =
+      (fromMeta?.prompt || "").trim() ||
+      (clip?.composedPrompt || clip?.prompt || "").trim();
+    if (prompt.startsWith('{"__storyH3"')) {
+      try {
+        const j = JSON.parse(prompt) as { prompt?: string };
+        if (typeof j.prompt === "string") prompt = j.prompt.trim();
+      } catch {
+        /* keep */
+      }
+    }
+    return {
+      runId: id,
+      durationSec: clampStoryShotSec(
+        fromMeta?.durationSec ?? clip?.durationSec ?? 6,
+      ),
+      prompt: prompt || `Shot ${i + 1}`,
+      status: clip?.status || "missing",
+      resultVideoUrl: clip?.resultVideoUrl || null,
+    };
+  });
+
+  return NextResponse.json({
+    stitchRunId: run.id,
+    title: run.title,
+    sourceRunIds,
+    shots,
+  });
+}
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();

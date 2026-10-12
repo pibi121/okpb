@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SaveQuickVideoTemplateButton } from "@/components/save-quick-video-template-button";
-import { storyH3LooksStructured } from "@/lib/story-h3-prompt";
+import {
+  MAX_STORY_H3_SHOTS,
+  storyH3LooksStructured,
+} from "@/lib/story-h3-prompt";
 
 type RunRow = {
   id: string;
@@ -12,6 +15,7 @@ type RunRow = {
   resultVideoUrl?: string | null;
   durationSec?: number;
   createdAt?: string;
+  engine?: string | null;
 };
 
 type ShotRow = {
@@ -23,9 +27,10 @@ type ShotRow = {
 
 const CHAR1_ID = "custom:hero1";
 const CHAR2_ID = "custom:hero2";
-const MAX_SHOTS = 6;
+const MAX_SHOTS = MAX_STORY_H3_SHOTS;
 const MIN_SHOT_SEC = 4;
 const MAX_SHOT_SEC = 12;
+const DRAFT_KEY = "lab2-mini-film-draft-v1";
 
 const AI_BRIEF = `Работай строго по прикреплённой инструкции (рефинстр / referensguide).
 Верни ТОЛЬКО готовый 6-секционный промпт:
@@ -160,6 +165,8 @@ export function Lab2MiniFilmClient() {
   const [shots, setShots] = useState<ShotRow[]>(defaultShots);
   const [busyShotId, setBusyShotId] = useState<string | null>(null);
   const [stitchBusy, setStitchBusy] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [briefCopied, setBriefCopied] = useState(false);
@@ -182,6 +189,66 @@ export function Lab2MiniFilmClient() {
     const data = (await res.json()) as { runs?: RunRow[] };
     setRuns(data.runs || []);
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const j = JSON.parse(raw) as {
+          title?: string;
+          name1?: string;
+          name2?: string;
+          orientation?: "9_16" | "16_9";
+          stitchRunId?: string | null;
+          shots?: ShotRow[];
+        };
+        if (typeof j.title === "string") setTitle(j.title);
+        if (typeof j.name1 === "string") setName1(j.name1);
+        if (typeof j.name2 === "string") setName2(j.name2);
+        if (j.orientation === "9_16" || j.orientation === "16_9") {
+          setOrientation(j.orientation);
+        }
+        if (typeof j.stitchRunId === "string" || j.stitchRunId === null) {
+          setStitchRunId(j.stitchRunId);
+        }
+        if (Array.isArray(j.shots) && j.shots.length >= 1) {
+          setShots(
+            j.shots.slice(0, MAX_SHOTS).map((s) => ({
+              id: typeof s.id === "string" ? s.id : newShotId(),
+              durationSec: Math.min(
+                MAX_SHOT_SEC,
+                Math.max(MIN_SHOT_SEC, Number(s.durationSec) || 6),
+              ),
+              prompt: typeof s.prompt === "string" ? s.prompt : "",
+              runId: typeof s.runId === "string" ? s.runId : null,
+            })),
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          title,
+          name1,
+          name2,
+          orientation,
+          stitchRunId,
+          shots,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [draftReady, title, name1, name2, orientation, stitchRunId, shots]);
 
   useEffect(() => {
     void loadRuns();
@@ -305,17 +372,23 @@ export function Lab2MiniFilmClient() {
   async function stitchShots() {
     setError("");
     setMsg("");
-    const ids = shots
-      .map((s) => s.runId)
-      .filter((id): id is string => !!id)
-      .filter((id) => {
-        const r = runById.get(id);
-        return r?.status === "ready" && !!r.resultVideoUrl;
-      });
-    if (ids.length < 2) {
+    const readyRows = shots.filter((s) => {
+      if (!s.runId) return false;
+      const r = runById.get(s.runId);
+      return !!r && r.status === "ready" && !!r.resultVideoUrl;
+    });
+    if (readyRows.length < 2) {
       setError("Нужны минимум 2 готовых шота для склейки");
       return;
     }
+    const pending = shots.length - readyRows.length;
+    if (pending > 0) {
+      setError(
+        `Есть ${pending} шот(ов) без готового видео — сначала сгенерируй их, потом склей все ${shots.length}.`,
+      );
+      return;
+    }
+    const ids = readyRows.map((s) => s.runId!);
     setStitchBusy(true);
     try {
       const res = await fetch("/api/peach/quick-video/stitch", {
@@ -325,13 +398,10 @@ export function Lab2MiniFilmClient() {
           runIds: ids,
           title: title.trim() || "Мини-фильм",
           prompt: composeFilmPrompt(shots, name1.trim(), name2.trim()),
-          shots: ids.map((id) => {
-            const s = shots.find((x) => x.runId === id)!;
-            return {
-              durationSec: s.durationSec,
-              prompt: s.prompt.trim(),
-            };
-          }),
+          shots: readyRows.map((s) => ({
+            durationSec: s.durationSec,
+            prompt: s.prompt.trim(),
+          })),
         }),
       });
       const data = (await res.json()) as {
@@ -342,7 +412,7 @@ export function Lab2MiniFilmClient() {
       if (!res.ok) throw new Error(data.error || "stitch failed");
       setStitchRunId(data.run?.id || null);
       setMsg(
-        `Склеено (${data.engine || "ok"}): ${data.run?.id || ""}. Можно сохранить шаблон.`,
+        `Склеено (${data.engine || "ok"}): ${data.run?.id || ""}. Старые клипы не перегенерировались. Можно сохранить шаблон.`,
       );
       await loadRuns();
     } catch (e) {
@@ -351,6 +421,67 @@ export function Lab2MiniFilmClient() {
       setStitchBusy(false);
     }
   }
+
+  async function restoreShotsFromStitch(runId: string) {
+    setError("");
+    setMsg("");
+    const id = runId.trim();
+    if (!id) {
+      setError("Нужен id склейки (stitch run)");
+      return;
+    }
+    setRestoreBusy(true);
+    try {
+      const res = await fetch(
+        `/api/peach/quick-video/stitch?runId=${encodeURIComponent(id)}`,
+      );
+      const data = (await res.json()) as {
+        error?: string;
+        title?: string;
+        stitchRunId?: string;
+        shots?: Array<{
+          runId: string;
+          durationSec: number;
+          prompt: string;
+        }>;
+      };
+      if (!res.ok) throw new Error(data.error || "restore failed");
+      const next = (data.shots || []).slice(0, MAX_SHOTS).map((s) => ({
+        id: newShotId(),
+        durationSec: Math.min(
+          MAX_SHOT_SEC,
+          Math.max(MIN_SHOT_SEC, Number(s.durationSec) || 6),
+        ),
+        prompt: s.prompt || "",
+        runId: s.runId || null,
+      }));
+      if (next.length < 1) throw new Error("в склейке нет шотов");
+      setShots(next);
+      setStitchRunId(data.stitchRunId || id);
+      if (data.title) setTitle(data.title);
+      setMsg(
+        `Восстановлено ${next.length} шотов из склейки (клипы на месте). Добавь новый шот → сгенерируй только его → склей снова.`,
+      );
+      await loadRuns();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ошибка восстановления");
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
+  const latestStitchRun = useMemo(() => {
+    return (
+      runs.find((r) => {
+        if (r.status !== "ready") return false;
+        const eng = (r.engine || "").toLowerCase();
+        if (eng.includes("concat") || eng.includes("stitch") || eng.includes("autoedit")) {
+          return true;
+        }
+        return /склей|мини-фильм|mini.?film/i.test(r.title || "");
+      }) || null
+    );
+  }, [runs]);
 
   const totalSec = shots.reduce((a, s) => a + s.durationSec, 0);
 
@@ -577,13 +708,35 @@ export function Lab2MiniFilmClient() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled={stitchBusy || readyShotRuns.length < 2 || !!busyShotId}
+            disabled={
+              stitchBusy ||
+              restoreBusy ||
+              readyShotRuns.length < 2 ||
+              !!busyShotId ||
+              readyShotRuns.length !== shots.length
+            }
             onClick={() => void stitchShots()}
             className="rounded-full border border-peach/50 bg-peach/15 px-5 py-2 text-sm text-peach disabled:opacity-40"
           >
             {stitchBusy
               ? "Склеиваю…"
-              : `Склеить готовые шоты (${readyShotRuns.length})`}
+              : `Склеить готовые шоты (${readyShotRuns.length}/${shots.length})`}
+          </button>
+          <button
+            type="button"
+            disabled={
+              restoreBusy ||
+              stitchBusy ||
+              !!busyShotId ||
+              !(stitchRunId || latestStitchRun?.id)
+            }
+            onClick={() =>
+              void restoreShotsFromStitch(stitchRunId || latestStitchRun?.id || "")
+            }
+            className="rounded-full border border-white/15 px-4 py-2 text-sm text-zinc-300 hover:border-peach/40 disabled:opacity-40"
+            title="Подтянуть промпты и runId готовых клипов из последней склейки — без регена"
+          >
+            {restoreBusy ? "Восстанавливаю…" : "Вернуть шоты из склейки"}
           </button>
           {stitchRunId ? (
             <SaveQuickVideoTemplateButton
@@ -597,6 +750,11 @@ export function Lab2MiniFilmClient() {
             />
           ) : null}
         </div>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Новый шот: «+ Шот» → сгенерируй только его → «Склеить». Старые клипы
+          не пересчитываются. Черновик шотов держится в этой вкладке
+          (sessionStorage).
+        </p>
       </section>
 
       {error ? (

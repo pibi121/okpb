@@ -44,6 +44,8 @@ export type StoryH3TemplateStored = {
 const MAX_STORY_FILM_SEC = 120;
 const MAX_STORY_SHOT_SEC = 12;
 const MIN_STORY_SHOT_SEC = 4;
+/** Cap for Lab2 mini-film + Funnel multi-shot (each clip ≤12s). */
+export const MAX_STORY_H3_SHOTS = 10;
 
 export function clampStoryShotSec(n: number): number {
   if (!Number.isFinite(n)) return 6;
@@ -55,7 +57,7 @@ export function normalizeStoryH3Shots(
 ): StoryH3ShotStored[] | undefined {
   if (!Array.isArray(raw) || raw.length < 1) return undefined;
   const shots: StoryH3ShotStored[] = [];
-  for (const row of raw.slice(0, 6)) {
+  for (const row of raw.slice(0, MAX_STORY_H3_SHOTS)) {
     if (!row || typeof row !== "object") continue;
     const prompt = String((row as { prompt?: unknown }).prompt || "").trim();
     if (prompt.length < 8) continue;

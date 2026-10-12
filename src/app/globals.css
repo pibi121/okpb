@@ -172,19 +172,42 @@ body > * {
 @layer base {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   select,
-  textarea {
+  textarea,
+  [contenteditable="true"] {
     background: var(--surface);
     border-color: var(--hairline-strong);
-    color: var(--foreground);
+    /* Inverted zinc theme makes text-zinc-100 dark — force readable ink. */
+    color: var(--foreground) !important;
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--peach);
     border-radius: 12px;
   }
 
   input:not([type="checkbox"]):not([type="radio"]):focus,
   select:focus,
-  textarea:focus {
+  textarea:focus,
+  [contenteditable="true"]:focus {
     outline: none;
     border-color: color-mix(in srgb, var(--apricot) 55%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--coral) 28%, transparent);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+    -webkit-text-fill-color: var(--muted);
+    opacity: 1;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--foreground) !important;
+    caret-color: var(--peach);
+    box-shadow: 0 0 0 1000px var(--surface) inset;
+    transition: background-color 99999s ease-out;
   }
 
   option {
@@ -203,6 +226,17 @@ body > * {
     color: var(--foreground);
   }
 
+  /* Theme maps zinc-50..200 to dark surfaces; keep TEXT utilities light. */
+  .text-zinc-50 {
+    color: #fafafa !important;
+  }
+  .text-zinc-100 {
+    color: #f4f4f5 !important;
+  }
+  .text-zinc-200 {
+    color: #e4e4e7 !important;
+  }
+
   .text-zinc-800,
   .text-zinc-900 {
     color: var(--foreground) !important;
@@ -215,6 +249,22 @@ body > * {
     background-image: var(--peach-grad) !important;
     background-color: var(--apricot) !important;
     color: var(--ink) !important;
+  }
+
+  /* Form fields must stay dark + light text (never peach-grad + black ink). */
+  input.bg-zinc-900,
+  input.bg-zinc-800,
+  input.bg-zinc-950,
+  textarea.bg-zinc-900,
+  textarea.bg-zinc-800,
+  textarea.bg-zinc-950,
+  select.bg-zinc-900,
+  select.bg-zinc-800,
+  select.bg-zinc-950 {
+    background-image: none !important;
+    background-color: var(--surface) !important;
+    color: var(--foreground) !important;
+    -webkit-text-fill-color: var(--foreground) !important;
   }
 
   .border-rose-700 {

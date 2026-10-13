@@ -4,15 +4,37 @@ import { useEffect, useState } from "react";
 import { fmtTime, opsFetch } from "@/lib/ops/ops-fetch";
 import { OpsTgRichText } from "@/components/ops-tg-rich-text";
 import { normalizeBroadcastBody } from "@/lib/ops/telegram-html";
+import { toMskDateTimeLocal } from "@/lib/ops/msk-time";
+
+function formatMskShort(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
 type Row = {
   id: string;
   title: string;
   status: string;
+  bodyRu?: string;
+  bodyEn?: string;
+  mediaJson?: string;
+  buttonsJson?: string;
+  filterJson?: string;
   sentCount: number;
   failCount: number;
   sentByBotJson?: string;
   createdAt: string;
+  scheduledAt?: string | null;
+  sentAt?: string | null;
 };
 
 type BotOpt = { id: string; username: string; isPrimary: boolean };
@@ -118,6 +140,11 @@ export default function OpsBroadcastsPage() {
   const [msgTone, setMsgTone] = useState<"ok" | "err">("ok");
   const [bodyRu, setBodyRu] = useState("");
   const [bodyEn, setBodyEn] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [scheduleLocal, setScheduleLocal] = useState("");
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
 
   function addButton(opt: Btn) {
     if (buttons.length >= 6) {
@@ -237,7 +264,7 @@ export default function OpsBroadcastsPage() {
   function readForm(form: HTMLFormElement) {
     const f = new FormData(form);
     return {
-      title: String(f.get("title") || ""),
+      title: titleDraft.trim() || String(f.get("title") || ""),
       bodyRu: normalizeBroadcastBody(bodyRu || String(f.get("bodyRu") || "")),
       bodyEn: normalizeBroadcastBody(bodyEn || String(f.get("bodyEn") || "")),
       mediaUrl: media[0]?.url || "",
@@ -249,7 +276,56 @@ export default function OpsBroadcastsPage() {
         skipQuietDays: 7,
         ...(selectedBotIds.length ? { botIds: selectedBotIds } : {}),
       },
+      scheduledAt: scheduleLocal.trim() || undefined,
     };
+  }
+
+  function resetForm(form?: HTMLFormElement | null) {
+    form?.reset();
+    setTitleDraft("");
+    setBodyRu("");
+    setBodyEn("");
+    setMedia([]);
+    setButtons([]);
+    setEditingId(null);
+    setScheduleLocal("");
+  }
+
+  function loadRowIntoForm(r: Row) {
+    setEditingId(r.id);
+    setTitleDraft(r.title || "");
+    setBodyRu(r.bodyRu || "");
+    setBodyEn(r.bodyEn || "");
+    try {
+      const m = JSON.parse(r.mediaJson || "[]") as MediaItem[];
+      setMedia(Array.isArray(m) ? m.slice(0, 2) : []);
+    } catch {
+      setMedia([]);
+    }
+    try {
+      const b = JSON.parse(r.buttonsJson || "[]") as Btn[];
+      setButtons(Array.isArray(b) ? b.slice(0, 6) : []);
+    } catch {
+      setButtons([]);
+    }
+    try {
+      const f = JSON.parse(r.filterJson || "{}") as {
+        who?: string;
+        botIds?: string[];
+      };
+      if (f.who) setWho(f.who);
+      if (Array.isArray(f.botIds) && f.botIds.length) {
+        setSelectedBotIds(f.botIds);
+      }
+    } catch {
+      /* keep */
+    }
+    setScheduleLocal(
+      r.scheduledAt ? toMskDateTimeLocal(new Date(r.scheduledAt)) : "",
+    );
+    setMsgTone("ok");
+    setMsg(`Редактирование «${r.title}» — сохрани черновик или запланируй`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function sendExisting(id: string, title: string) {
@@ -297,9 +373,9 @@ export default function OpsBroadcastsPage() {
       <div>
         <h1 className="font-display text-3xl">Рассылки</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Dual-bot: уходит во все выбранные active-боты, счётчики отдельно по
-          каждому. Кнопки bot:* (Раздеть) — в чате того бота, куда пришло.
-          Сначала тест, потом отправка.
+          Dual-bot: уходит во все выбранные active-боты. Можно сохранить
+          черновик, запланировать по МСК или отправить сразу. Запланированные
+          можно править до отправки.
         </p>
       </div>
       {msg ? (
@@ -311,68 +387,39 @@ export default function OpsBroadcastsPage() {
       ) : null}
       <form
         className="flex flex-col gap-2 rounded-2xl border border-white/10 p-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          const form = e.currentTarget;
-          const payload = readForm(form);
-          if (!payload.title.trim() || !payload.bodyRu.trim()) {
-            setMsgTone("err");
-            setMsg("Нужны название и текст RU");
-            return;
-          }
-          if (bots.length && !selectedBotIds.length) {
-            setMsgTone("err");
-            setMsg("Выбери хотя бы одного активного бота");
-            return;
-          }
-          const n = count ?? "?";
-          const botNames = bots
-            .filter((b) => selectedBotIds.includes(b.id))
-            .map((b) => `@${b.username}`)
-            .join(", ");
-          if (
-            !confirm(
-              `Отправить ~${n} людям через ${botNames || "активных ботов"}?\n\n«${payload.title.trim()}»`,
-            )
-          ) {
-            return;
-          }
-          setSending(true);
-          setMsg("");
-          try {
-            const created = await opsFetch<{ id: string }>(
-              "/api/ops/broadcasts",
-              {
-                method: "POST",
-                body: JSON.stringify({ action: "create", ...payload }),
-              },
-            );
-            await opsFetch("/api/ops/broadcasts", {
-              method: "POST",
-              body: JSON.stringify({ action: "send", id: created.id }),
-            });
-            setMsgTone("ok");
-            setMsg("Рассылка запущена");
-            form.reset();
-            setBodyRu("");
-            setBodyEn("");
-            setMedia([]);
-            setButtons([]);
-            await load();
-          } catch (err) {
-            setMsgTone("err");
-            setMsg(err instanceof Error ? err.message : "Ошибка отправки");
-          } finally {
-            setSending(false);
-          }
-        }}
+        onSubmit={(e) => e.preventDefault()}
       >
+        {editingId ? (
+          <p className="text-xs text-peach">
+            Редактируешь{" "}
+            <code className="text-zinc-500">{editingId.slice(0, 10)}…</code>
+            {" · "}
+            <button
+              type="button"
+              className="underline"
+              onClick={() => resetForm(document.querySelector("form"))}
+            >
+              новая рассылка
+            </button>
+          </p>
+        ) : null}
         <input
           name="title"
+          value={titleDraft}
+          onChange={(e) => setTitleDraft(e.target.value)}
           placeholder="Название (для себя)"
           className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm"
           required
         />
+        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+          Отложенная отправка (МСК)
+          <input
+            type="datetime-local"
+            value={scheduleLocal}
+            onChange={(e) => setScheduleLocal(e.target.value)}
+            className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2 text-sm text-foreground"
+          />
+        </label>
         <select
           value={who}
           onChange={(e) => setWho(e.target.value)}
@@ -767,11 +814,200 @@ export default function OpsBroadcastsPage() {
             Сколько человек: {count ?? "?"}
           </button>
           <button
-            type="submit"
-            disabled={sending}
-            className="rounded-full btn-grad px-4 py-1.5 text-sm disabled:opacity-50"
+            type="button"
+            disabled={savingDraft || sending || scheduling}
+            className="rounded-full border border-white/15 px-4 py-1.5 text-sm disabled:opacity-50"
+            onClick={async () => {
+              const form = document.querySelector("form") as HTMLFormElement;
+              if (!form) return;
+              const payload = readForm(form);
+              if (!payload.title.trim() || !payload.bodyRu.trim()) {
+                setMsgTone("err");
+                setMsg("Нужны название и текст RU");
+                return;
+              }
+              if (bots.length && !selectedBotIds.length) {
+                setMsgTone("err");
+                setMsg("Выбери хотя бы одного активного бота");
+                return;
+              }
+              setSavingDraft(true);
+              setMsg("");
+              try {
+                if (editingId) {
+                  await opsFetch("/api/ops/broadcasts", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      action: "update",
+                      id: editingId,
+                      ...payload,
+                      scheduledAt: null,
+                    }),
+                  });
+                  setMsgTone("ok");
+                  setMsg("Черновик сохранён");
+                } else {
+                  const created = await opsFetch<{ id: string }>(
+                    "/api/ops/broadcasts",
+                    {
+                      method: "POST",
+                      body: JSON.stringify({ action: "create", ...payload }),
+                    },
+                  );
+                  setEditingId(created.id);
+                  setMsgTone("ok");
+                  setMsg("Черновик создан");
+                }
+                setScheduleLocal("");
+                await load();
+              } catch (err) {
+                setMsgTone("err");
+                setMsg(err instanceof Error ? err.message : "ошибка");
+              } finally {
+                setSavingDraft(false);
+              }
+            }}
           >
-            {sending ? "Запускаю…" : "Отправить"}
+            {savingDraft
+              ? "…"
+              : editingId
+                ? "Сохранить черновик"
+                : "Сохранить черновик"}
+          </button>
+          <button
+            type="button"
+            disabled={scheduling || sending || savingDraft}
+            className="rounded-full border border-peach/40 bg-peach/10 px-4 py-1.5 text-sm text-peach disabled:opacity-50"
+            onClick={async () => {
+              const form = document.querySelector("form") as HTMLFormElement;
+              if (!form) return;
+              const payload = readForm(form);
+              if (!payload.title.trim() || !payload.bodyRu.trim()) {
+                setMsgTone("err");
+                setMsg("Нужны название и текст RU");
+                return;
+              }
+              if (!scheduleLocal.trim()) {
+                setMsgTone("err");
+                setMsg("Укажи дату и время (МСК)");
+                return;
+              }
+              if (bots.length && !selectedBotIds.length) {
+                setMsgTone("err");
+                setMsg("Выбери хотя бы одного активного бота");
+                return;
+              }
+              setScheduling(true);
+              setMsg("");
+              try {
+                if (editingId) {
+                  await opsFetch("/api/ops/broadcasts", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      action: "update",
+                      id: editingId,
+                      ...payload,
+                      scheduledAt: scheduleLocal,
+                    }),
+                  });
+                } else {
+                  const created = await opsFetch<{ id: string }>(
+                    "/api/ops/broadcasts",
+                    {
+                      method: "POST",
+                      body: JSON.stringify({
+                        action: "create",
+                        scheduleOnly: true,
+                        ...payload,
+                        scheduledAt: scheduleLocal,
+                      }),
+                    },
+                  );
+                  setEditingId(created.id);
+                }
+                setMsgTone("ok");
+                setMsg(`Запланировано на ${scheduleLocal} МСК`);
+                await load();
+              } catch (err) {
+                setMsgTone("err");
+                setMsg(err instanceof Error ? err.message : "ошибка плана");
+              } finally {
+                setScheduling(false);
+              }
+            }}
+          >
+            {scheduling ? "…" : "Запланировать (МСК)"}
+          </button>
+          <button
+            type="button"
+            disabled={sending || savingDraft || scheduling}
+            className="rounded-full btn-grad px-4 py-1.5 text-sm disabled:opacity-50"
+            onClick={async () => {
+              const form = document.querySelector("form") as HTMLFormElement;
+              if (!form) return;
+              const payload = readForm(form);
+              if (!payload.title.trim() || !payload.bodyRu.trim()) {
+                setMsgTone("err");
+                setMsg("Нужны название и текст RU");
+                return;
+              }
+              if (bots.length && !selectedBotIds.length) {
+                setMsgTone("err");
+                setMsg("Выбери хотя бы одного активного бота");
+                return;
+              }
+              const n = count ?? "?";
+              const botNames = bots
+                .filter((b) => selectedBotIds.includes(b.id))
+                .map((b) => `@${b.username}`)
+                .join(", ");
+              if (
+                !confirm(
+                  `Отправить сейчас ~${n} людям через ${botNames || "активных ботов"}?\n\n«${payload.title.trim()}»`,
+                )
+              ) {
+                return;
+              }
+              setSending(true);
+              setMsg("");
+              try {
+                let id = editingId;
+                if (id) {
+                  await opsFetch("/api/ops/broadcasts", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      action: "update",
+                      id,
+                      ...payload,
+                    }),
+                  });
+                } else {
+                  const created = await opsFetch<{ id: string }>(
+                    "/api/ops/broadcasts",
+                    {
+                      method: "POST",
+                      body: JSON.stringify({ action: "create", ...payload }),
+                    },
+                  );
+                  id = created.id;
+                }
+                await opsFetch("/api/ops/broadcasts", {
+                  method: "POST",
+                  body: JSON.stringify({ action: "send", id }),
+                });
+                setMsgTone("ok");
+                setMsg("Рассылка запущена");
+                resetForm(form);
+                await load();
+              } catch (err) {
+                setMsgTone("err");
+                setMsg(err instanceof Error ? err.message : "Ошибка отправки");
+              } finally {
+                setSending(false);
+              }
+            }}
+          >
+            {sending ? "Запускаю…" : "Отправить сейчас"}
           </button>
         </div>
       </form>
@@ -782,11 +1018,54 @@ export default function OpsBroadcastsPage() {
             className="flex flex-wrap items-center justify-between gap-2 border-t border-white/8 py-2"
           >
             <span>
-              {r.title} · {r.status} · ушло {r.sentCount} · брак {r.failCount}
+              {r.title} · {r.status}
+              {r.scheduledAt
+                ? ` · план ${formatMskShort(r.scheduledAt)} МСК`
+                : ""}{" "}
+              · ушло {r.sentCount} · брак {r.failCount}
               {formatBotStats(r.sentByBotJson)} · {fmtTime(r.createdAt)}
             </span>
-            <span className="flex gap-2">
-              {r.status === "draft" ? (
+            <span className="flex flex-wrap gap-2">
+              {r.status === "draft" || r.status === "scheduled" ? (
+                <button
+                  type="button"
+                  className="text-sky-300 underline"
+                  onClick={() => loadRowIntoForm(r)}
+                >
+                  Изменить
+                </button>
+              ) : null}
+              {r.status === "scheduled" ? (
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  className="text-amber-300 underline disabled:opacity-50"
+                  onClick={async () => {
+                    setBusyId(r.id);
+                    try {
+                      await opsFetch("/api/ops/broadcasts", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: "unschedule",
+                          id: r.id,
+                        }),
+                      });
+                      setMsgTone("ok");
+                      setMsg(`«${r.title}» снята с плана`);
+                      if (editingId === r.id) setScheduleLocal("");
+                      await load();
+                    } catch (e) {
+                      setMsgTone("err");
+                      setMsg(e instanceof Error ? e.message : "ошибка");
+                    } finally {
+                      setBusyId("");
+                    }
+                  }}
+                >
+                  Снять план
+                </button>
+              ) : null}
+              {r.status === "draft" || r.status === "scheduled" ? (
                 <button
                   type="button"
                   disabled={busyId === r.id}

@@ -98,6 +98,8 @@ export async function GET() {
         tgSortOrder: true,
         tgButtonStyle: true,
         tgRowBreak: true,
+        identityPersonCount: true,
+        shotsJson: true,
         updatedAt: true,
       },
     }),
@@ -151,23 +153,34 @@ export async function GET() {
       updatedAt: r.updatedAt.toISOString(),
       labHref: `/peach/photo-edit`,
     })),
-    video: videos.map((r) => ({
-      kind: "video" as const,
-      id: r.id,
-      title: r.title,
-      notes: r.notes || "",
-      displayTitle: r.tgDisplayTitle || "",
-      funnelV2Published: r.funnelV2Published,
-      sceneCategory: r.sceneCategory || "",
-      previewImageUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewPhotoUrl)),
-      previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
-      sortOrder: r.tgSortOrder,
-      buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
-      rowBreak: r.tgRowBreak,
-      durationSec: r.durationSec || 0,
-      updatedAt: r.updatedAt.toISOString(),
-      labHref: `/peach/story-video`,
-    })),
+    video: videos.map((r) => {
+      const multiShot =
+        typeof r.shotsJson === "string" &&
+        r.shotsJson.includes('"shots"') &&
+        r.shotsJson.includes("__storyH3");
+      const dual = (r.identityPersonCount || 1) >= 2 || multiShot;
+      return {
+        kind: "video" as const,
+        id: r.id,
+        title: r.title,
+        notes: r.notes || "",
+        displayTitle: r.tgDisplayTitle || "",
+        funnelV2Published: r.funnelV2Published,
+        sceneCategory: r.sceneCategory || "",
+        previewImageUrl: resolveTgCatalogAssetUrl(firstUrl(r.previewPhotoUrl)),
+        previewVideoUrl: resolveTgCatalogAssetUrl(r.previewVideoUrl || ""),
+        sortOrder: r.tgSortOrder,
+        buttonStyle: parseTgButtonStyle(r.tgButtonStyle),
+        rowBreak: r.tgRowBreak,
+        durationSec: r.durationSec || 0,
+        identityPersonCount: r.identityPersonCount || 1,
+        updatedAt: r.updatedAt.toISOString(),
+        labHref: dual
+          ? `/peach/lab2/mini-film?templateId=${r.id}`
+          : `/peach/story-video?storyTemplate=${r.id}`,
+        makeVideoHref: `/peach/lab2/mini-film?templateId=${r.id}`,
+      };
+    }),
     lora_i2v: loraI2v.map((r) => ({
       kind: "lora_i2v" as const,
       id: r.id,

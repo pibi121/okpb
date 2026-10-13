@@ -38,6 +38,9 @@ type TransferItem = {
   durationSec: number;
   updatedAt: string;
   labHref: string;
+  /** Open mini-film lab with template prompts/shots prefilled. */
+  makeVideoHref?: string;
+  identityPersonCount?: number;
   requiresLora?: boolean;
 };
 
@@ -922,6 +925,14 @@ export function Lab2TransferClient() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 sm:col-span-2">
+                    {it.kind === "video" && it.makeVideoHref ? (
+                      <Link
+                        href={it.makeVideoHref}
+                        className="rounded-lg border border-peach/40 bg-peach/10 px-3 py-1.5 text-[11px] font-medium text-peach"
+                      >
+                        Сделать видео по шаблону
+                      </Link>
+                    ) : null}
                     <Link
                       href={it.labHref}
                       className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] text-zinc-300"

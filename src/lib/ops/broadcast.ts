@@ -48,7 +48,7 @@ export type BroadcastButton = {
   /** Mini App path under /tg/, or `bot:<key>` for in-bot callback. */
   path: string;
   /** Optional TG button color (success=green, danger=red, primary=blue). */
-  style?: BroadcastButtonStyle;
+  style?: Exclude<BroadcastButtonStyle, "default">;
 };
 
 /**
@@ -293,43 +293,35 @@ function parseMediaJson(raw: string, legacyUrl?: string): BroadcastMediaItem[] {
   return [];
 }
 
-const BUTTON_STYLES = new Set<BroadcastButtonStyle>([
-  "default",
-  "success",
-  "danger",
-  "primary",
-]);
-
 function normalizeButtonStyle(
   raw: unknown,
-): BroadcastButtonStyle | undefined {
+): Exclude<BroadcastButtonStyle, "default"> | undefined {
   if (typeof raw !== "string") return undefined;
-  const s = raw.trim().toLowerCase() as BroadcastButtonStyle;
-  if (!BUTTON_STYLES.has(s) || s === "default") return undefined;
-  return s;
+  const s = raw.trim().toLowerCase();
+  if (s === "success" || s === "danger" || s === "primary") return s;
+  return undefined;
 }
 
 function parseButtonsJson(raw: string): BroadcastButton[] {
   try {
     const v = JSON.parse(raw || "[]") as BroadcastButton[];
     if (!Array.isArray(v)) return [];
-    return v
-      .filter((b) => b?.text?.trim() && typeof b.path === "string")
-      .slice(0, 6)
-      .map((b) => {
-        const path = b.path.trim().replace(/^\//, "");
-        // Drop unknown bot: keys — never send arbitrary callback_data.
-        if (path.startsWith("bot:") && !resolveBroadcastBotCallback(path)) {
-          return null;
-        }
-        const style = normalizeButtonStyle(b.style);
-        return {
-          text: b.text.trim().slice(0, 64),
-          path,
-          ...(style ? { style } : {}),
-        };
-      })
-      .filter((b): b is BroadcastButton => Boolean(b));
+    const out: BroadcastButton[] = [];
+    for (const b of v.slice(0, 6)) {
+      if (!b?.text?.trim() || typeof b.path !== "string") continue;
+      const path = b.path.trim().replace(/^\//, "");
+      // Drop unknown bot: keys — never send arbitrary callback_data.
+      if (path.startsWith("bot:") && !resolveBroadcastBotCallback(path)) {
+        continue;
+      }
+      const style = normalizeButtonStyle(b.style);
+      out.push({
+        text: b.text.trim().slice(0, 64),
+        path,
+        ...(style ? { style } : {}),
+      });
+    }
+    return out;
   } catch {
     return [];
   }
@@ -459,6 +451,89 @@ async function deliverBroadcastPayload(
   await tgSendMessage(chatId, text, markup ? { reply_markup: markup } : {}, token);
 }
 
+export type BroadcastEditableFields = {
+  title?: string;
+  bodyRu?: string;
+  bodyEn?: string;
+  mediaUrl?: string;
+  mediaJson?: string;
+  buttonsJson?: string;
+  filterJson?: string;
+  scheduledAt?: Date | null;
+};
+
+function assertEditable(status: string) {
+  if (status !== "draft" && status !== "scheduled") {
+    throw new Error("Можно править только черновик или запланированную рассылку");
+  }
+}
+
+export async function updateBroadcast(
+  id: string,
+  fields: BroadcastEditableFields,
+) {
+  const row = await prisma.broadcast.findUnique({ where: { id } });
+  if (!row) throw new Error("Рассылка не найдена");
+  assertEditable(row.status);
+
+  const data: Record<string, unknown> = {};
+  if (fields.title !== undefined) data.title = fields.title.trim().slice(0, 200);
+  if (fields.bodyRu !== undefined) data.bodyRu = fields.bodyRu;
+  if (fields.bodyEn !== undefined) data.bodyEn = fields.bodyEn;
+  if (fields.mediaUrl !== undefined) data.mediaUrl = fields.mediaUrl;
+  if (fields.mediaJson !== undefined) data.mediaJson = fields.mediaJson;
+  if (fields.buttonsJson !== undefined) data.buttonsJson = fields.buttonsJson;
+  if (fields.filterJson !== undefined) data.filterJson = fields.filterJson;
+
+  if (fields.scheduledAt !== undefined) {
+    if (fields.scheduledAt === null) {
+      data.scheduledAt = null;
+      if (row.status === "scheduled") data.status = "draft";
+    } else {
+      if (fields.scheduledAt.getTime() <= Date.now() - 30_000) {
+        throw new Error("Время отправки должно быть в будущем (МСК)");
+      }
+      data.scheduledAt = fields.scheduledAt;
+      data.status = "scheduled";
+    }
+  }
+
+  if (!Object.keys(data).length) {
+    throw new Error("Нечего обновлять");
+  }
+
+  return prisma.broadcast.update({ where: { id }, data });
+}
+
+export async function scheduleBroadcast(id: string, scheduledAt: Date) {
+  if (!(scheduledAt instanceof Date) || Number.isNaN(scheduledAt.getTime())) {
+    throw new Error("Некорректная дата");
+  }
+  if (scheduledAt.getTime() <= Date.now() - 30_000) {
+    throw new Error("Время отправки должно быть в будущем (МСК)");
+  }
+  const row = await prisma.broadcast.findUnique({ where: { id } });
+  if (!row) throw new Error("Рассылка не найдена");
+  assertEditable(row.status);
+  await resolveBroadcastTargetBots(parseFilter(row.filterJson));
+  return prisma.broadcast.update({
+    where: { id },
+    data: { status: "scheduled", scheduledAt },
+  });
+}
+
+export async function unscheduleBroadcast(id: string) {
+  const row = await prisma.broadcast.findUnique({ where: { id } });
+  if (!row) throw new Error("Рассылка не найдена");
+  if (row.status !== "scheduled" && row.status !== "draft") {
+    throw new Error("Снять с плана можно только запланированную рассылку");
+  }
+  return prisma.broadcast.update({
+    where: { id },
+    data: { status: "draft", scheduledAt: null },
+  });
+}
+
 export async function runBroadcast(
   id: string,
   _opts?: { skipCooldown?: boolean },
@@ -467,14 +542,27 @@ export async function runBroadcast(
   if (!row) throw new Error("Рассылка не найдена");
   if (row.status === "sending") throw new Error("Рассылка уже отправляется");
   if (row.status === "sent") throw new Error("Рассылка уже отправлена");
+  if (row.status !== "draft" && row.status !== "scheduled") {
+    throw new Error(`Нельзя отправить со статусом ${row.status}`);
+  }
 
   // Validate targets up front so UI gets a clear error before background fan-out.
   await resolveBroadcastTargetBots(parseFilter(row.filterJson));
 
-  await prisma.broadcast.update({
-    where: { id },
-    data: { status: "sending", sentCount: 0, failCount: 0, sentByBotJson: "{}" },
+  // Atomic claim — avoids double-send from UI + scheduler.
+  const claimed = await prisma.broadcast.updateMany({
+    where: { id, status: { in: ["draft", "scheduled"] } },
+    data: {
+      status: "sending",
+      sentCount: 0,
+      failCount: 0,
+      sentByBotJson: "{}",
+      scheduledAt: null,
+    },
   });
+  if (claimed.count !== 1) {
+    throw new Error("Рассылка уже отправляется или недоступна");
+  }
 
   // Heavy fan-out continues in background; caller already got "started".
   void processBroadcastSend(id).catch(async (e) => {

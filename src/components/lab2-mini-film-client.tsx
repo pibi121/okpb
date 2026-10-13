@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SaveQuickVideoTemplateButton } from "@/components/save-quick-video-template-button";
 import {
   MAX_STORY_H3_SHOTS,
+  parseStoryH3Template,
   storyH3LooksStructured,
 } from "@/lib/story-h3-prompt";
 
@@ -172,6 +173,10 @@ export function Lab2MiniFilmClient() {
   const [briefCopied, setBriefCopied] = useState(false);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [stitchRunId, setStitchRunId] = useState<string | null>(null);
+  const [hydrateBusy, setHydrateBusy] = useState(false);
+  const [templateIdFromUrl, setTemplateIdFromUrl] = useState<string | null>(
+    null,
+  );
 
   const runById = useMemo(() => {
     const m = new Map<string, RunRow>();
@@ -191,6 +196,20 @@ export function Lab2MiniFilmClient() {
   }, []);
 
   useEffect(() => {
+    let tid = "";
+    try {
+      tid = (
+        new URLSearchParams(window.location.search).get("templateId") || ""
+      ).trim();
+    } catch {
+      tid = "";
+    }
+    setTemplateIdFromUrl(tid);
+    // Query templateId wins over session draft — skip draft restore.
+    if (tid) {
+      setDraftReady(true);
+      return;
+    }
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
@@ -232,7 +251,7 @@ export function Lab2MiniFilmClient() {
   }, []);
 
   useEffect(() => {
-    if (!draftReady) return;
+    if (!draftReady || hydrateBusy) return;
     try {
       sessionStorage.setItem(
         DRAFT_KEY,
@@ -248,13 +267,157 @@ export function Lab2MiniFilmClient() {
     } catch {
       /* ignore */
     }
-  }, [draftReady, title, name1, name2, orientation, stitchRunId, shots]);
+  }, [
+    draftReady,
+    hydrateBusy,
+    title,
+    name1,
+    name2,
+    orientation,
+    stitchRunId,
+    shots,
+  ]);
 
   useEffect(() => {
     void loadRuns();
     const t = setInterval(() => void loadRuns(), 4000);
     return () => clearInterval(t);
   }, [loadRuns]);
+
+  useEffect(() => {
+    if (!draftReady || !templateIdFromUrl) return;
+    let cancelled = false;
+    setHydrateBusy(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/peach/quick-video/templates/${encodeURIComponent(templateIdFromUrl)}`,
+        );
+        const data = (await res.json()) as {
+          error?: string;
+          template?: {
+            title?: string;
+            shotsJson?: string;
+            orientation?: string;
+            durationSec?: number;
+            sourceRunId?: string;
+            owned?: boolean;
+          };
+        };
+        if (!res.ok) throw new Error(data.error || "шаблон не найден");
+        const tpl = data.template;
+        if (!tpl?.owned) {
+          throw new Error("Нет доступа к промпту шаблона (нужен свой шаблон)");
+        }
+        if (cancelled) return;
+
+        setTitle(tpl.title?.trim() || "Мини-фильм");
+        if (tpl.orientation === "9_16" || tpl.orientation === "16_9") {
+          setOrientation(tpl.orientation);
+        }
+
+        const sourceRunId = (tpl.sourceRunId || "").trim();
+        if (sourceRunId) {
+          const stitchRes = await fetch(
+            `/api/peach/quick-video/stitch?runId=${encodeURIComponent(sourceRunId)}`,
+          );
+          const stitchData = (await stitchRes.json()) as {
+            error?: string;
+            stitchRunId?: string;
+            shots?: Array<{
+              runId: string;
+              durationSec: number;
+              prompt: string;
+            }>;
+          };
+          if (stitchRes.ok && (stitchData.shots?.length || 0) >= 1) {
+            if (cancelled) return;
+            setShots(
+              (stitchData.shots || []).slice(0, MAX_SHOTS).map((s) => ({
+                id: newShotId(),
+                durationSec: Math.min(
+                  MAX_SHOT_SEC,
+                  Math.max(MIN_SHOT_SEC, Number(s.durationSec) || 6),
+                ),
+                prompt: s.prompt || "",
+                runId: s.runId || null,
+              })),
+            );
+            setStitchRunId(stitchData.stitchRunId || sourceRunId);
+            setMsg(
+              `Шаблон загружен: ${stitchData.shots!.length} шот(ов) со склейки (клипы на месте). Загрузи фото героев и прогони / склей.`,
+            );
+            await loadRuns();
+            return;
+          }
+        }
+
+        const story = parseStoryH3Template(String(tpl.shotsJson || ""));
+        if (story?.shots && story.shots.length >= 1) {
+          setShots(
+            story.shots.slice(0, MAX_SHOTS).map((s) => ({
+              id: newShotId(),
+              durationSec: Math.min(
+                MAX_SHOT_SEC,
+                Math.max(MIN_SHOT_SEC, Number(s.durationSec) || 6),
+              ),
+              prompt: s.prompt,
+              runId: null,
+            })),
+          );
+          setStitchRunId(sourceRunId || null);
+          setMsg(
+            `Шаблон загружен: ${story.shots.length} шот(ов). Загрузи фото героев и сгенерируй нужные клипы.`,
+          );
+          return;
+        }
+
+        const filmPrompt =
+          story?.prompt?.trim() ||
+          String(tpl.shotsJson || "").trim();
+        const dur = Math.min(
+          MAX_SHOT_SEC,
+          Math.max(
+            MIN_SHOT_SEC,
+            Number(story?.totalDurationSec || tpl.durationSec) || 6,
+          ),
+        );
+        if (filmPrompt.length < 8) {
+          throw new Error("В шаблоне нет промпта для шотов");
+        }
+        setShots([
+          {
+            id: newShotId(),
+            durationSec: dur,
+            prompt: filmPrompt,
+            runId: null,
+          },
+        ]);
+        setStitchRunId(sourceRunId || null);
+        setMsg(
+          "Шаблон загружен (1 шот). Загрузи фото героев и прогони генерацию.",
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "ошибка загрузки шаблона");
+        }
+      } finally {
+        if (!cancelled) {
+          setHydrateBusy(false);
+          try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete("templateId");
+            window.history.replaceState({}, "", u.pathname + u.search);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [draftReady, templateIdFromUrl, loadRuns]);
 
   function patchShot(id: string, patch: Partial<ShotRow>) {
     setShots((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -757,6 +920,11 @@ export function Lab2MiniFilmClient() {
         </p>
       </section>
 
+      {hydrateBusy ? (
+        <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-400">
+          Загружаю шаблон…
+        </p>
+      ) : null}
       {error ? (
         <p className="rounded border border-red-400/30 bg-red-950/30 px-3 py-2 text-sm text-red-300">
           {error}

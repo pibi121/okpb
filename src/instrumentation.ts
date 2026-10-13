@@ -113,6 +113,11 @@ export async function register() {
     .then(({ startOpsTelegramScheduler }) => startOpsTelegramScheduler())
     .catch((e) => console.error("[peach] ops-tg scheduler:", e));
 
+  // Delayed ops broadcasts (scheduledAt in UTC, UI is Europe/Moscow).
+  void import("@/lib/ops/broadcast-scheduler")
+    .then(({ startBroadcastScheduler }) => startBroadcastScheduler())
+    .catch((e) => console.error("[peach] broadcast scheduler:", e));
+
   // Staff ops bot: inline-button callbacks (Age Gate approve/reject in ops chat).
   setTimeout(() => {
     void import("@/lib/ops/ops-tg-callback-poller")

@@ -12,18 +12,28 @@ const LINK_SEP = "__";
  * Display-only — does not write to DB or allow real withdrawals of fake balance.
  * Remove when real stats are ready.
  */
-const DEMO_PARTNER_BY_TG: Record<
-  string,
-  {
-    referrals: number;
-    purchases: number;
-    purchaseGrossPeaches: number;
-    commissionPeaches: number;
-    balancePeaches: number;
-    totalEarnedPeaches: number;
-    commissionPct: number;
-  }
-> = {
+type DemoPartnerLink = {
+  /** Match PartnerLink.slug */
+  slug: string;
+  clicks: number;
+  signups: number;
+  purchases: number;
+  purchaseGrossPeaches: number;
+  commissionPeaches: number;
+};
+
+type DemoPartnerRow = {
+  referrals: number;
+  purchases: number;
+  purchaseGrossPeaches: number;
+  commissionPeaches: number;
+  balancePeaches: number;
+  totalEarnedPeaches: number;
+  commissionPct: number;
+  links?: DemoPartnerLink[];
+};
+
+const DEMO_PARTNER_BY_TG: Record<string, DemoPartnerRow> = {
   "8762393340": {
     referrals: 411,
     purchases: 63,
@@ -33,16 +43,45 @@ const DEMO_PARTNER_BY_TG: Record<
     totalEarnedPeaches: 22696,
     commissionPct: 50,
   },
-  // ~×2.7 vs first demo; higher purchase rate, uneven numbers
-  // 2026-09-25: +2d×2.5; 2026-09-29: +4d×1.55; 2026-10-01: +2d + partial repeats from old refs
+  // 2026-09-25…10-01 bumps; 2026-10-13: M2 (~+30% vs A) + repeats, 90% withdrawn; links L3
   "8612204954": {
-    referrals: 1610,
-    purchases: 368,
-    purchaseGrossPeaches: 215390,
-    commissionPeaches: 107695,
-    balancePeaches: 40536,
-    totalEarnedPeaches: 107695,
+    referrals: 3048,
+    purchases: 628,
+    purchaseGrossPeaches: 367750,
+    commissionPeaches: 183875,
+    // ~10% of earned left on balance (90% «выведено»)
+    balancePeaches: 18391,
+    totalEarnedPeaches: 183875,
     commissionPct: 50,
+    links: [
+      // Тр1 weak
+      {
+        slug: "1",
+        clicks: 98,
+        signups: 51,
+        purchases: 7,
+        purchaseGrossPeaches: 4060,
+        commissionPeaches: 2030,
+      },
+      // Тр2 strongest
+      {
+        slug: "2",
+        clicks: 292,
+        signups: 158,
+        purchases: 32,
+        purchaseGrossPeaches: 19120,
+        commissionPeaches: 9560,
+      },
+      // Тр3 mid
+      {
+        slug: "3",
+        clicks: 161,
+        signups: 86,
+        purchases: 16,
+        purchaseGrossPeaches: 9520,
+        commissionPeaches: 4760,
+      },
+    ],
   },
 };
 
@@ -387,8 +426,24 @@ export async function getPartnerDashboard(userId: string) {
   const demo =
     tgAcc && DEMO_PARTNER_BY_TG[String(tgAcc.platformUserId)];
   if (demo) {
+    const demoBySlug = new Map(
+      (demo.links || []).map((l) => [l.slug, l] as const),
+    );
+    const links = dash.links.map((link) => {
+      const ov = demoBySlug.get(link.slug);
+      if (!ov) return link;
+      return {
+        ...link,
+        clicks: ov.clicks,
+        signups: ov.signups,
+        purchases: ov.purchases,
+        purchaseGrossPeaches: ov.purchaseGrossPeaches,
+        commissionPeaches: ov.commissionPeaches,
+      };
+    });
     return {
       ...dash,
+      links,
       referrals: demo.referrals,
       purchases: demo.purchases,
       purchaseGrossPeaches: demo.purchaseGrossPeaches,

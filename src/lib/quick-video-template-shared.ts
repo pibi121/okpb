@@ -33,6 +33,7 @@ export type QuickVideoTemplateDetail = PublicQuickVideoTemplate & {
   slotBlueprint: TemplateSlotBlueprint[];
   defaultLocationUrl: string;
   refVideoUrl: string;
+  sourceRunId?: string;
 };
 
 export type QuickVideoTemplateApplyPayload = {

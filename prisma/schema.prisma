@@ -1337,6 +1337,10 @@ model Broadcast {
   sentByBotJson String  @default("{}")
   createdAt   DateTime  @default(now())
   sentAt      DateTime?
+  /** UTC instant for delayed send (status=scheduled). UI shows Europe/Moscow. */
+  scheduledAt DateTime?
+
+  @@index([status, scheduledAt])
 }
 
 model AdminAudit {

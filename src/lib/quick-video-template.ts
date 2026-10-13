@@ -49,6 +49,7 @@ export type QuickVideoTemplateDetail = PublicQuickVideoTemplate & {
   slotBlueprint: TemplateSlotBlueprint[];
   defaultLocationUrl: string;
   refVideoUrl: string;
+  sourceRunId: string;
 };
 
 function parseBlueprint(raw: string): TemplateSlotBlueprint[] {
@@ -201,6 +202,7 @@ function detailFromCreatedRow(
     slotBlueprintJson: string;
     defaultLocationUrl: string;
     refVideoUrl: string;
+    sourceRunId?: string;
   },
   viewerUserId: string,
 ): QuickVideoTemplateDetail {
@@ -211,6 +213,7 @@ function detailFromCreatedRow(
     slotBlueprint: parseBlueprint(row.slotBlueprintJson),
     defaultLocationUrl: row.defaultLocationUrl,
     refVideoUrl: row.refVideoUrl,
+    sourceRunId: row.sourceRunId || "",
   };
 }
 
@@ -327,6 +330,7 @@ export async function getQuickVideoTemplateDetail(
       slotBlueprint: [],
       defaultLocationUrl: "",
       refVideoUrl: "",
+      sourceRunId: "",
     };
   }
   return {
@@ -335,6 +339,7 @@ export async function getQuickVideoTemplateDetail(
     slotBlueprint: parseBlueprint(row.slotBlueprintJson),
     defaultLocationUrl: row.defaultLocationUrl,
     refVideoUrl: row.refVideoUrl,
+    sourceRunId: row.sourceRunId || "",
   };
 }
 

@@ -178,6 +178,14 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
     const limit = isVideo ? STUCK_VIDEO_MS : STUCK_PHOTO_MS;
     if (age < limit) continue;
 
+    const { closeGpuJobIfDelivered, tunnelHoldMs } = await import(
+      "@/lib/gpu/stuck-job-settle"
+    );
+    if (await closeGpuJobIfDelivered(job, now)) continue;
+
+    // Tunnel blip: leave the row so we can pull the file or requeue when Comfy is back.
+    if (!comfyUp && age < tunnelHoldMs(job)) continue;
+
     const mins = Math.round(age / 60_000);
     const reason = !comfyUp
       ? `tunnel/Comfy down — job stuck ${mins} min`
@@ -289,8 +297,12 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
             continue;
           }
         }
-      } catch {
-        /* fall through to fail */
+      } catch (e) {
+        console.error(
+          "[peach] tunnel-healer quick-video heal:",
+          e instanceof Error ? e.message : e,
+        );
+        if (age < hardCapMs) continue;
       }
     } else if (beatFresh && age < hardCapMs) {
       console.log(
@@ -371,10 +383,16 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
             continue;
           }
         }
-      } catch {
-        /* fall through to fail */
+      } catch (e) {
+        console.error(
+          "[peach] tunnel-healer gallery heal:",
+          e instanceof Error ? e.message : e,
+        );
+        if (age < hardCapMs) continue;
       }
     }
+
+    if (await closeGpuJobIfDelivered(job, now)) continue;
 
     await prisma.gpuJob.update({
       where: { id: job.id },

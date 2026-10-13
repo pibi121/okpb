@@ -636,7 +636,11 @@ export async function tryRecoverQuickVideoFromComfy(
   const run = await prisma.quickVideoRun.findFirst({
     where: { id: runId, userId },
   });
-  if (!run || (run.status === "ready" && !opts?.force)) return false;
+  if (!run) return false;
+  // Already delivered — caller should close the GpuJob, not refund.
+  if (run.status === "ready" && !opts?.force) {
+    return !!run.resultVideoUrl?.trim();
+  }
 
   const {
     ensureComfyReady,

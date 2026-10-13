@@ -189,6 +189,16 @@ export async function sweepStaleGpuJobs(): Promise<number> {
       ? staleRunLimitMs(job.kind, job.pool)
       : staleQueueLimitMs(job.kind, job.pool);
     if (now - anchor < limit) continue;
+    const { closeGpuJobIfDelivered, tunnelHoldMs } = await import(
+      "@/lib/gpu/stuck-job-settle"
+    );
+    if (await closeGpuJobIfDelivered(job, now)) continue;
+    if (
+      (job.refType === "galleryItem" || job.refType === "quickVideoRun") &&
+      now - anchor < tunnelHoldMs(job)
+    ) {
+      continue;
+    }
     const mins = Math.round((now - anchor) / 60_000);
 
     if (job.refType === "quickVideoRun" && job.refId) {

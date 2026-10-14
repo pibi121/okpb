@@ -1,10 +1,13 @@
 /**
  * Extra Metalnode GPUs alongside primary (:8188).
- * Keys live in Railway env; tunnels map to local :8189 / :8190.
+ * Keys live in Railway env; tunnels map to local :8189 / :8190 / :8191.
  *
  * Policy: when only primary is live, leave fleet keys empty / genPreferred off.
  * Fleet cards are optional overflow — not preferred while single-GPU.
+ * `ownerlab` (pool lab) is Owner Lab only — never genPreferred, never user funnel.
  */
+import type { GpuPool } from "@/lib/gpu/types";
+
 export type FleetGpu = {
   key: string;
   label: string;
@@ -13,11 +16,13 @@ export type FleetGpu = {
   host?: string;
   keyEnv: string;
   keyPath: string;
-  pool: "any" | "photo" | "video" | "lora";
+  pool: "any" | "photo" | "video" | "lora" | "lab";
   /** Prefer this node for LoRA train SSH. */
   loraPreferred?: boolean;
   /** Prefer this node for user photo/video gens when online. */
   genPreferred?: boolean;
+  /** Owner Lab only — excluded from user/funnel pickWorker. */
+  labOnly?: boolean;
 };
 
 export const FLEET_EXTRA_GPUS: FleetGpu[] = [
@@ -40,6 +45,16 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     keyPath: "/tmp/metalnode_key_bmserv1",
     pool: "any",
   },
+  {
+    key: "ownerlab",
+    label: "Metalnode Owner Lab (22026)",
+    localPort: 8191,
+    sshPort: 22026,
+    keyEnv: "METALNODE_SSH_KEY_OWNERLAB",
+    keyPath: "/tmp/metalnode_key_ownerlab",
+    pool: "lab",
+    labOnly: true,
+  },
 ];
 
 export function fleetComfyUrl(g: FleetGpu): string {
@@ -48,6 +63,16 @@ export function fleetComfyUrl(g: FleetGpu): string {
 
 export function fleetConfigured(g: FleetGpu): boolean {
   return Boolean(process.env[g.keyEnv]?.trim());
+}
+
+export function ownerLabFleet(): FleetGpu | null {
+  const hit = FLEET_EXTRA_GPUS.find((g) => g.labOnly && fleetConfigured(g));
+  return hit || null;
+}
+
+/** When Owner Lab GPU key is set, Lab jobs use pool `lab`; else keep legacy pool. */
+export function ownerLabPoolOr(fallback: GpuPool): GpuPool {
+  return ownerLabFleet() ? "lab" : fallback;
 }
 
 export function loraPreferredFleet(): FleetGpu | null {

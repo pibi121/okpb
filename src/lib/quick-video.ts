@@ -874,7 +874,9 @@ export async function requeueQuickVideoAfterHeal(
     });
   }
 
-  enqueueQuickVideoJob(runId, userId);
+  enqueueQuickVideoJob(runId, userId, {
+    useOwnerLab: Boolean(meta.ownerLab),
+  });
   console.log(`[peach] healer requeued quick-video ${runId}`);
   return true;
 }
@@ -991,54 +993,69 @@ async function markQuickVideoRunError(
 /** GPU queue entry — survives only while the Node process is alive. */
 const activeQuickVideoJobs = new Set<string>();
 
-export function enqueueQuickVideoJob(runId: string, userId: string) {
+export function enqueueQuickVideoJob(
+  runId: string,
+  userId: string,
+  opts?: { useOwnerLab?: boolean },
+) {
   if (activeQuickVideoJobs.has(runId)) return;
   activeQuickVideoJobs.add(runId);
-  void enqueueGpuJob(
-    async () => {
-    try {
-      const run = await prisma.quickVideoRun.findFirst({
-        where: { id: runId, userId },
-        select: { galleryItemId: true },
-      });
-      if (run?.galleryItemId) {
-        const item = await prisma.galleryItem.findUnique({
-          where: { id: run.galleryItemId },
-        });
-        let meta: Record<string, unknown> = {};
+  const useOwnerLab = Boolean(opts?.useOwnerLab);
+  void (async () => {
+    const { ownerLabPoolOr } = await import("@/lib/gpu/fleet");
+    const pool = useOwnerLab ? ownerLabPoolOr("video") : "video";
+    void enqueueGpuJob(
+      async () => {
         try {
-          meta = JSON.parse(item?.metaJson || "{}") as Record<string, unknown>;
-        } catch {
-          /* ignore */
+          const run = await prisma.quickVideoRun.findFirst({
+            where: { id: runId, userId },
+            select: { galleryItemId: true },
+          });
+          if (run?.galleryItemId) {
+            const item = await prisma.galleryItem.findUnique({
+              where: { id: run.galleryItemId },
+            });
+            let meta: Record<string, unknown> = {};
+            try {
+              meta = JSON.parse(item?.metaJson || "{}") as Record<
+                string,
+                unknown
+              >;
+            } catch {
+              /* ignore */
+            }
+            await prisma.galleryItem.update({
+              where: { id: run.galleryItemId },
+              data: {
+                metaJson: JSON.stringify({
+                  ...meta,
+                  gpuEnqueuedAt: new Date().toISOString(),
+                  ...(useOwnerLab ? { ownerLab: true } : {}),
+                }),
+              },
+            });
+          }
+          await runQuickVideoJob(runId, userId);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error("[peach] quick video failed:", msg);
+          await markQuickVideoRunError(runId, userId, msg);
+        } finally {
+          activeQuickVideoJobs.delete(runId);
         }
-        await prisma.galleryItem.update({
-          where: { id: run.galleryItemId },
-          data: {
-            metaJson: JSON.stringify({
-              ...meta,
-              gpuEnqueuedAt: new Date().toISOString(),
-            }),
-          },
-        });
-      }
-      await runQuickVideoJob(runId, userId);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error("[peach] quick video failed:", msg);
-      await markQuickVideoRunError(runId, userId, msg);
-    } finally {
-      activeQuickVideoJobs.delete(runId);
-    }
-  },
-    {
-      kind: "video",
-      pool: "video",
-      userId,
-      refType: "quickVideoRun",
-      refId: runId,
-      title: `quick-video ${runId}`,
-    },
-  );
+      },
+      {
+        kind: "video",
+        pool,
+        userId,
+        refType: "quickVideoRun",
+        refId: runId,
+        title: `quick-video ${runId}`,
+        providers: useOwnerLab ? ["metalnode"] : undefined,
+        meta: useOwnerLab ? { ownerLab: true } : undefined,
+      },
+    );
+  })();
 }
 
 /** Re-queue / recover runs stuck in `busy` after a process restart. */
@@ -1127,7 +1144,15 @@ export async function resumeStuckQuickVideoRuns(opts?: {
     toResume.map((r) => r.id).join(", "),
   );
   for (const run of toResume) {
-    enqueueQuickVideoJob(run.id, run.userId);
+    let useOwnerLab = false;
+    if (run.galleryItemId) {
+      const item = await prisma.galleryItem.findUnique({
+        where: { id: run.galleryItemId },
+        select: { metaJson: true },
+      });
+      useOwnerLab = Boolean(parseGalleryMeta(item?.metaJson).ownerLab);
+    }
+    enqueueQuickVideoJob(run.id, run.userId, { useOwnerLab });
   }
   return recovered + toResume.length;
 }
@@ -1142,6 +1167,7 @@ export async function retryQuickVideoRun(userId: string, runId: string) {
     where: { id: runId },
     data: { status: "busy", error: null, updatedAt: new Date() },
   });
+  let useOwnerLab = false;
   if (run.galleryItemId) {
     let meta: Record<string, unknown> = {};
     try {
@@ -1152,6 +1178,7 @@ export async function retryQuickVideoRun(userId: string, runId: string) {
     } catch {
       /* ignore */
     }
+    useOwnerLab = Boolean(meta.ownerLab);
     await prisma.galleryItem.update({
       where: { id: run.galleryItemId },
       data: {
@@ -1165,7 +1192,7 @@ export async function retryQuickVideoRun(userId: string, runId: string) {
       },
     });
   }
-  enqueueQuickVideoJob(runId, userId);
+  enqueueQuickVideoJob(runId, userId, { useOwnerLab });
   return getQuickVideoRun(userId, runId);
 }
 
@@ -1196,6 +1223,8 @@ export async function startQuickVideoRun(opts: {
   orientation?: VideoOrientationId | string;
   durationSec?: number;
   customCharacters?: Array<{ id: string; name: string }>;
+  /** Peach Lab routes only — pin to Owner Lab GPU when configured. */
+  useOwnerLab?: boolean;
 }) {
   const legacyPrompt = opts.prompt?.trim() || "";
   const hasShots = !!opts.shotsPlan?.shots?.some((s) => s.legoQuery.trim());
@@ -1370,6 +1399,7 @@ export async function startQuickVideoRun(opts: {
         refSlots: assembled.imageSlots,
         storyModelName: opts.storyModelName || undefined,
         bodyLookbook: opts.bodyLookbook || undefined,
+        ...(opts.useOwnerLab ? { ownerLab: true } : {}),
       }),
     },
   });
@@ -1381,7 +1411,9 @@ export async function startQuickVideoRun(opts: {
   backupDatabase("quick-video-pending");
 
   scheduleGpu(() => {
-    enqueueQuickVideoJob(run.id, opts.userId);
+    enqueueQuickVideoJob(run.id, opts.userId, {
+      useOwnerLab: Boolean(opts.useOwnerLab),
+    });
   });
 
   return getQuickVideoRun(opts.userId, run.id);

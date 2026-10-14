@@ -50,7 +50,7 @@ export async function createManualWorker(input: ManualWorkerInput) {
   const existing = await prisma.gpuWorker.findUnique({ where: { key } });
   if (existing) throw new Error(`Карта с ключом «${key}» уже есть`);
 
-  const pool = ["photo", "video", "lora", "any"].includes(String(input.pool))
+  const pool = ["photo", "video", "lora", "any", "lab"].includes(String(input.pool))
     ? String(input.pool)
     : "any";
   const provider = (input.provider || "manual").trim().slice(0, 40) || "manual";
@@ -101,7 +101,7 @@ export async function updateManualWorker(
   if (typeof patch.provider === "string" && patch.provider.trim()) {
     data.provider = patch.provider.trim().slice(0, 40);
   }
-  if (patch.pool && ["photo", "video", "lora", "any"].includes(patch.pool)) {
+  if (patch.pool && ["photo", "video", "lora", "any", "lab"].includes(patch.pool)) {
     data.pool = patch.pool;
   }
   if (typeof patch.comfyUrl === "string") {

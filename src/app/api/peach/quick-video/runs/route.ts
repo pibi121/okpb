@@ -225,6 +225,7 @@ export async function POST(req: NextRequest) {
           orientation,
           durationSec,
           customCharacters,
+          useOwnerLab: true,
         });
         return NextResponse.json({ run });
       }
@@ -250,6 +251,7 @@ export async function POST(req: NextRequest) {
         orientation,
         durationSec,
         customCharacters,
+        useOwnerLab: true,
       });
       return NextResponse.json({ run });
     }
@@ -281,6 +283,7 @@ export async function POST(req: NextRequest) {
       poseVideoBuffer,
       orientation: body.orientation,
       durationSec: body.durationSec,
+      useOwnerLab: true,
     });
     return NextResponse.json({ run });
   } catch (e) {

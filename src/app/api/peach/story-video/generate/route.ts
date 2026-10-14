@@ -200,6 +200,7 @@ export async function POST(req: NextRequest) {
       poseVideoName,
       orientation,
       durationSec,
+      useOwnerLab: true,
     });
 
     return NextResponse.json({

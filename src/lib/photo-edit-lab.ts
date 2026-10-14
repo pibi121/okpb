@@ -148,6 +148,8 @@ export async function enqueuePhotoEditLabJob(opts: {
   const conceptLoraIds = opts.conceptLoraIds || [];
   const useUndressStack = opts.useUndressStack !== false;
 
+  const { ownerLabPoolOr } = await import("@/lib/gpu/fleet");
+  const labPool = ownerLabPoolOr("photo");
   void enqueueGpuJob(
     async () => {
       try {
@@ -201,9 +203,9 @@ export async function enqueuePhotoEditLabJob(opts: {
       title: "photo-edit-lab",
       refType: "galleryItem",
       refId: galleryItemId,
-      pool: "photo",
+      pool: labPool,
       providers: ["metalnode"],
-      meta: { photoEditLab: true },
+      meta: { photoEditLab: true, ownerLab: true },
     },
   );
 

@@ -67,13 +67,16 @@ export async function ensureFleetWorkers() {
       host: g.host || cfg.host || process.env.METALNODE_HOST || "",
       sshPort: g.sshPort,
       localPort: g.localPort,
-      role: g.loraPreferred
-        ? "lora_preferred"
-        : g.genPreferred
-          ? "gen_preferred"
-          : "fleet",
+      role: g.labOnly
+        ? "owner_lab"
+        : g.loraPreferred
+          ? "lora_preferred"
+          : g.genPreferred
+            ? "gen_preferred"
+            : "fleet",
       server: g.key,
       keyEnv: g.keyEnv,
+      labOnly: Boolean(g.labOnly),
     });
     await prisma.gpuWorker.upsert({
       where: { key: g.key },
@@ -325,6 +328,12 @@ export async function pickWorker(
       orderBy: { updatedAt: "asc" },
     });
     let live = candidates.filter((w) => w.comfyUrl && w.status !== "dead");
+    // Owner Lab GPU (pool=lab) never takes user/funnel jobs; lab jobs never spill to primary.
+    if (pool === "lab") {
+      live = live.filter((w) => w.pool === "lab");
+    } else {
+      live = live.filter((w) => w.pool !== "lab");
+    }
     if (allow?.length) {
       live = live.filter((w) => allow.includes(w.provider.toLowerCase()));
     }
@@ -339,6 +348,16 @@ export async function pickWorker(
       );
     }
     if (!live.length) {
+      // Lab pool must not fall back onto the user/primary card.
+      if (pool === "lab") {
+        if (Date.now() >= deadline) {
+          throw new Error(
+            "Owner Lab GPU offline (ownerlab :8191). Проверь туннель METALNODE_SSH_KEY_OWNERLAB.",
+          );
+        }
+        await new Promise((r) => setTimeout(r, 1_200));
+        continue;
+      }
       // Hard requirement missed — fall back to primary Metalnode rather than a bad GPU.
       return ensurePrimaryWorker();
     }

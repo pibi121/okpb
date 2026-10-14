@@ -26,6 +26,13 @@ const FLEET = [
     keyEnv: "METALNODE_SSH_KEY_BMSERV1",
     keyPath: "/tmp/metalnode_key_bmserv1",
   },
+  {
+    name: "ownerlab",
+    localPort: 8191,
+    sshPort: 22026,
+    keyEnv: "METALNODE_SSH_KEY_OWNERLAB",
+    keyPath: "/tmp/metalnode_key_ownerlab",
+  },
 ];
 
 /** @type {import("node:child_process").ChildProcess | null} */
@@ -99,7 +106,7 @@ export function fleetTunnelAlive() {
 export async function ensureFleetTunnels() {
   const ready = materializeFleetKeys();
   if (!ready.length) {
-    log("no METALNODE_SSH_KEY_BMSERV* — skip fleet tunnels");
+    log("no METALNODE_SSH_KEY_BMSERV*/OWNERLAB — skip fleet tunnels");
     return { ok: false, reason: "no_keys" };
   }
 

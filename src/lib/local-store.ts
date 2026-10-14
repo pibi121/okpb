@@ -64,15 +64,32 @@ export function resolveGalleryFile(relKey: string): string | null {
   return null;
 }
 
-/** Copy SQLite DB into data/backups. Safe to call often. */
+/** Min gap between SQLite file copies — full copyFileSync locks the volume. */
+const BACKUP_MIN_INTERVAL_MS = 10 * 60 * 1000;
+let backupInFlight = false;
+let lastBackupAt = 0;
+
+/**
+ * Copy SQLite DB into data/backups.
+ * Debounced + single-flight: call sites may fire on every gallery/QV write;
+ * copying prod.db on every call locks Railway SQLite for seconds and cascades P1008.
+ */
 export function backupDatabase(reason = "auto"): string | null {
+  if (backupInFlight) return null;
+  const now = Date.now();
+  if (lastBackupAt > 0 && now - lastBackupAt < BACKUP_MIN_INTERVAL_MS) {
+    return null;
+  }
+  backupInFlight = true;
   try {
     ensureDataDirs();
     const src = resolveSqlitePath();
     if (!fs.existsSync(src)) return null;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const dest = path.join(backupsRoot(), `dev-${stamp}-${reason}.db`);
+    const safeReason = String(reason || "auto").replace(/[^\w.-]+/g, "_").slice(0, 40);
+    const dest = path.join(backupsRoot(), `dev-${stamp}-${safeReason}.db`);
     fs.copyFileSync(src, dest);
+    lastBackupAt = Date.now();
     // keep last 30 backups
     const files = fs
       .readdirSync(backupsRoot())
@@ -85,5 +102,7 @@ export function backupDatabase(reason = "auto"): string | null {
     return dest;
   } catch {
     return null;
+  } finally {
+    backupInFlight = false;
   }
 }

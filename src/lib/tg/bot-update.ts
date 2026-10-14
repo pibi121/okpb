@@ -189,6 +189,14 @@ async function handleStart(chatId: number, from: TelegramBotUser, payload?: stri
       await tgSendMessage(chatId, signupRateLimitedMessage(loc));
       return;
     }
+    const { isTransientDbError } = await import("@/lib/db");
+    if (isTransientDbError(e)) {
+      await tgSendMessage(
+        chatId,
+        "Связь на секунду пропала. Отправь сообщение ещё раз.",
+      ).catch(() => undefined);
+      return;
+    }
     throw e;
   }
   const locale = localeFromUser(user.locale);
@@ -1707,6 +1715,14 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
       );
       return;
     }
+    const { isTransientDbError } = await import("@/lib/db");
+    if (isTransientDbError(e)) {
+      await tgAnswerCallbackQuery(
+        cq.id,
+        "Связь на секунду пропала. Нажми кнопку ещё раз.",
+      ).catch(() => undefined);
+      return;
+    }
     throw e;
   }
   let locale = localeFromUser(user.locale);
@@ -2097,6 +2113,14 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       const loc =
         from.language_code?.toLowerCase().startsWith("en") ? "en" : "ru";
       await tgSendMessage(chatId, signupRateLimitedMessage(loc));
+      return;
+    }
+    const { isTransientDbError } = await import("@/lib/db");
+    if (isTransientDbError(e)) {
+      await tgSendMessage(
+        chatId,
+        "Связь на секунду пропала. Отправь сообщение ещё раз.",
+      ).catch(() => undefined);
       return;
     }
     throw e;
@@ -2780,9 +2804,24 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
   await sendMainMenuHub(chatId, user.id, locale);
 }
 
+let outboxFlushRunning = false;
+
 export async function flushTgOutbox() {
+  if (outboxFlushRunning) return;
+  outboxFlushRunning = true;
+  try {
+    await flushTgOutboxOnce();
+  } finally {
+    outboxFlushRunning = false;
+  }
+}
+
+async function flushTgOutboxOnce() {
   const { resolveBotTokenByInstanceId, listLiveBots } = await import(
     "@/lib/tg/bot-registry"
+  );
+  const { claimTgOutboxSend, releaseTgOutboxClaim } = await import(
+    "@/lib/tg/session"
   );
   const { tgSendMessage } = await import("@/lib/tg/telegram-api");
   const {
@@ -2792,8 +2831,11 @@ export async function flushTgOutbox() {
   } = await import("@/lib/tg/deliver-media");
   const rows = await listPendingTgOutbox(15);
   for (const row of rows) {
+    const claimed = await claimTgOutboxSend(row.id);
+    if (!claimed) continue;
+    let claimId = "";
     try {
-      const payload = JSON.parse(row.payloadJson || "{}") as {
+      const payload = JSON.parse(claimed.payloadJson || "{}") as {
         url?: string;
         caption?: string;
         text?: string;
@@ -2817,7 +2859,9 @@ export async function flushTgOutbox() {
         /** Keyboard already on media — do not send a second «Готово» spam. */
         attachResultKeyboard?: boolean;
         offerQcDislike?: boolean;
+        claimId?: string;
       };
+      claimId = String(payload.claimId || "");
       const chatId = Number(row.platformUserId);
       const locale = payload.locale || "ru";
 
@@ -3098,24 +3142,35 @@ export async function flushTgOutbox() {
         continue;
       }
 
-      // Soft retry budget for transient errors (stored in payload).
+      // Soft retry budget. Re-read the row so a photo already accepted
+      // by Telegram is not uploaded again.
       try {
-        const payload = JSON.parse(row.payloadJson || "{}") as Record<
-          string,
-          unknown
-        >;
-        const attempts = Number(payload.attempts || 0) + 1;
-        await prisma.tgOutbox.update({
+        const fresh = await prisma.tgOutbox.findUnique({
           where: { id: row.id },
-          data: {
-            payloadJson: JSON.stringify({ ...payload, attempts }),
-          },
+          select: { payloadJson: true, sentAt: true },
         });
-        if (attempts >= 8) {
-          await markTgOutboxSent(row.id).catch(() => undefined);
+        if (fresh && !fresh.sentAt) {
+          const payload = JSON.parse(fresh.payloadJson || "{}") as Record<
+            string,
+            unknown
+          >;
+          if (claimId && payload.claimId === claimId) {
+            const attempts = Number(payload.attempts || 0) + 1;
+            delete payload.claimUntil;
+            delete payload.claimId;
+            await prisma.tgOutbox.updateMany({
+              where: { id: row.id, sentAt: null, payloadJson: fresh.payloadJson },
+              data: {
+                payloadJson: JSON.stringify({ ...payload, attempts }),
+              },
+            });
+            if (attempts >= 8) {
+              await markTgOutboxSent(row.id).catch(() => undefined);
+            }
+          }
         }
       } catch {
-        /* ignore */
+        await releaseTgOutboxClaim(row.id, claimId).catch(() => undefined);
       }
 
       void import("@/lib/ops/errors")

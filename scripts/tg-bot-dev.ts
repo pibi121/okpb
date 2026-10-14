@@ -60,14 +60,24 @@ async function pollOneBot(bot: LiveBot) {
                 const { isExpectedClientError, reportOpsError } = await import(
                   "../src/lib/ops/errors"
                 );
-                const { isTransientTgNetworkError } = await import(
-                  "../src/lib/tg/telegram-api"
-                );
-                if (isExpectedClientError(msg) || isTransientTgNetworkError(e)) {
+                const { isTransientTgNetworkError, tgAnswerCallbackQuery } =
+                  await import("../src/lib/tg/telegram-api");
+                const { isTransientDbError } = await import("../src/lib/db");
+                if (
+                  isExpectedClientError(msg) ||
+                  isTransientTgNetworkError(e) ||
+                  isTransientDbError(e)
+                ) {
                   console.warn(
                     `[tg-bot @${bot.username}] callback skipped (transient/expected):`,
                     msg.slice(0, 160),
                   );
+                  if (isTransientDbError(e)) {
+                    await tgAnswerCallbackQuery(
+                      u.callback_query.id,
+                      "Связь на секунду пропала. Нажми кнопку ещё раз.",
+                    ).catch(() => undefined);
+                  }
                 } else {
                   console.error(`[tg-bot @${bot.username}] callback error:`, e);
                   void reportOpsError({
@@ -91,7 +101,12 @@ async function pollOneBot(bot: LiveBot) {
                 const { isTransientTgNetworkError } = await import(
                   "../src/lib/tg/telegram-api"
                 );
-                if (isExpectedClientError(msg) || isTransientTgNetworkError(e)) {
+                const { isTransientDbError } = await import("../src/lib/db");
+                if (
+                  isExpectedClientError(msg) ||
+                  isTransientTgNetworkError(e) ||
+                  isTransientDbError(e)
+                ) {
                   console.warn(
                     `[tg-bot @${bot.username}] message skipped (transient/expected):`,
                     msg.slice(0, 160),

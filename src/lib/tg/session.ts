@@ -216,16 +216,12 @@ export async function setTgSession(
   });
 }
 
-export async function enqueueTgOutbox(opts: {
-  platformUserId: string;
-  userId: string;
-  kind: "video" | "photo" | "text" | "error";
-  payload: Record<string, unknown>;
-}) {
+async function resolveOutboxBotId(
+  platformUserId: string,
+  payload: Record<string, unknown>,
+): Promise<string> {
   let botInstanceId =
-    typeof opts.payload.botInstanceId === "string"
-      ? opts.payload.botInstanceId
-      : "";
+    typeof payload.botInstanceId === "string" ? payload.botInstanceId : "";
   if (!botInstanceId) {
     try {
       const { currentTgBot } = await import("@/lib/tg/bot-context");
@@ -237,7 +233,7 @@ export async function enqueueTgOutbox(opts: {
   if (!botInstanceId) {
     try {
       const acc = await prisma.platformAccount.findFirst({
-        where: { platform: "telegram", platformUserId: opts.platformUserId },
+        where: { platform: "telegram", platformUserId },
         select: { lastBotInstanceId: true },
       });
       botInstanceId = acc?.lastBotInstanceId || "";
@@ -245,16 +241,103 @@ export async function enqueueTgOutbox(opts: {
       /* ignore */
     }
   }
-  await prisma.tgOutbox.create({
-    data: {
-      platformUserId: opts.platformUserId,
-      userId: opts.userId,
-      kind: opts.kind,
-      payloadJson: JSON.stringify({
-        ...opts.payload,
-        ...(botInstanceId ? { botInstanceId } : {}),
-      }),
-    },
+  return botInstanceId;
+}
+
+function outboxPayloadJson(
+  payload: Record<string, unknown>,
+  botInstanceId: string,
+): string {
+  return JSON.stringify({
+    ...payload,
+    ...(botInstanceId ? { botInstanceId } : {}),
+  });
+}
+
+export async function enqueueTgOutbox(opts: {
+  platformUserId: string;
+  userId: string;
+  kind: "video" | "photo" | "text" | "error";
+  payload: Record<string, unknown>;
+}) {
+  const botInstanceId = await resolveOutboxBotId(
+    opts.platformUserId,
+    opts.payload,
+  );
+  const galleryItemId =
+    typeof opts.payload.galleryItemId === "string"
+      ? opts.payload.galleryItemId.trim()
+      : "";
+  const dedupeKey =
+    galleryItemId && (opts.kind === "photo" || opts.kind === "video")
+      ? `${opts.userId}:${galleryItemId}:${opts.kind}`
+      : null;
+  try {
+    await prisma.tgOutbox.create({
+      data: {
+        platformUserId: opts.platformUserId,
+        userId: opts.userId,
+        kind: opts.kind,
+        payloadJson: outboxPayloadJson(opts.payload, botInstanceId),
+        dedupeKey,
+      },
+    });
+  } catch (e) {
+    const code =
+      e && typeof e === "object" && "code" in e
+        ? String((e as { code?: string }).code || "")
+        : "";
+    if (code === "P2002") return;
+    throw e;
+  }
+}
+
+const OUTBOX_CLAIM_MS = 90_000;
+
+/** One sender owns the row until it is marked sent or the claim expires. */
+export async function claimTgOutboxSend(
+  id: string,
+): Promise<{ payloadJson: string } | null> {
+  const row = await prisma.tgOutbox.findUnique({ where: { id } });
+  if (!row || row.sentAt) return null;
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(row.payloadJson || "{}") as Record<string, unknown>;
+  } catch {
+    payload = {};
+  }
+  const until = Number(payload.claimUntil || 0);
+  if (Number.isFinite(until) && until > Date.now()) return null;
+  const claimId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const payloadJson = JSON.stringify({
+    ...payload,
+    claimUntil: Date.now() + OUTBOX_CLAIM_MS,
+    claimId,
+  });
+  const res = await prisma.tgOutbox.updateMany({
+    where: { id, sentAt: null, payloadJson: row.payloadJson },
+    data: { payloadJson },
+  });
+  if (res.count !== 1) return null;
+  return { payloadJson };
+}
+
+/** Drop the send lock. Keeps mediaSent so a retry does not upload the file again. */
+export async function releaseTgOutboxClaim(id: string, claimId: string) {
+  const row = await prisma.tgOutbox.findUnique({ where: { id } });
+  if (!row || row.sentAt) return;
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(row.payloadJson || "{}") as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  if (payload.claimId !== claimId) return;
+  delete payload.claimUntil;
+  delete payload.claimId;
+  await prisma.tgOutbox.updateMany({
+    where: { id, sentAt: null, payloadJson: row.payloadJson },
+    data: { payloadJson: JSON.stringify(payload) },
   });
 }
 

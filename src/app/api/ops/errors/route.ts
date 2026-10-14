@@ -52,6 +52,9 @@ export async function POST(req: Request) {
           payload = {};
         }
         delete payload.attempts;
+        delete payload.mediaSent;
+        delete payload.claimUntil;
+        delete payload.claimId;
         await prisma.tgOutbox.update({
           where: { id: out.id },
           data: {

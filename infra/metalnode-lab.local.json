@@ -9,5 +9,5 @@
   "localTunnelPort": 8191,
   "remoteComfyPort": 8188,
   "sshExample": "ssh -i metalnode_lab_id_ed25519_22026 -L 8191:localhost:8188 root@77.94.203.13 -p 22026",
-  "notes": "Lab-only GPU. Do not map to local :8188 (conflicts with primary). Railway uses METALNODE_SSH_KEY_OWNERLAB → tunnel :8191. pool=lab, never user funnel."
+  "notes": "Lab-only GPU (opt-in). Off unless OWNERLAB_GPU_ENABLED=1 + METALNODE_SSH_KEY_OWNERLAB → tunnel :8191, pool=lab. When off, Owner Lab shares primary :8188."
 }

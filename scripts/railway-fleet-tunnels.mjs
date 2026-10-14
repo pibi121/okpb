@@ -53,9 +53,19 @@ function writeKey(envName, keyPath) {
   return true;
 }
 
+function ownerLabGpuEnabled() {
+  return process.env.OWNERLAB_GPU_ENABLED === "1";
+}
+
+function activeFleet() {
+  return FLEET.filter(
+    (g) => g.name !== "ownerlab" || ownerLabGpuEnabled(),
+  );
+}
+
 export function materializeFleetKeys() {
   const ok = [];
-  for (const g of FLEET) {
+  for (const g of activeFleet()) {
     if (writeKey(g.keyEnv, g.keyPath)) ok.push(g.name);
   }
   return ok;
@@ -81,7 +91,7 @@ function pingPort(port, timeoutMs = 3000) {
 
 export async function pingFleetComfy() {
   const out = {};
-  for (const g of FLEET) {
+  for (const g of activeFleet()) {
     out[g.name] = await pingPort(g.localPort);
   }
   return out;
@@ -143,14 +153,16 @@ export async function ensureFleetTunnels() {
 
   const host = process.env.METALNODE_HOST || "77.94.203.13";
   const fleetJson = JSON.stringify(
-    FLEET.filter((g) => fs.existsSync(g.keyPath)).map((g) => ({
-      name: g.name,
-      localPort: g.localPort,
-      sshPort: g.sshPort,
-      keyPath: g.keyPath,
-      host,
-      sshUser: process.env.METALNODE_SSH_USER || "root",
-    })),
+    activeFleet()
+      .filter((g) => fs.existsSync(g.keyPath))
+      .map((g) => ({
+        name: g.name,
+        localPort: g.localPort,
+        sshPort: g.sshPort,
+        keyPath: g.keyPath,
+        host,
+        sshUser: process.env.METALNODE_SSH_USER || "root",
+      })),
   );
 
   log(`starting fleet tunnels (${ready.join(", ")}) via ${py}`);

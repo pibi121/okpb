@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { isTransientDbError, prisma, withDbRetry } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import {
   telegramSyntheticEmail,
@@ -55,32 +55,67 @@ export async function findOrCreateTelegramUser(
   startPayload?: string,
 ) {
   const platformUserId = String(tg.id);
-  const existing = await prisma.platformAccount.findUnique({
-    where: {
-      platform_platformUserId: {
-        platform: "telegram",
-        platformUserId,
+  const existing = await withDbRetry(() =>
+    prisma.platformAccount.findUnique({
+      where: {
+        platform_platformUserId: {
+          platform: "telegram",
+          platformUserId,
+        },
       },
-    },
-    include: { user: true },
-  });
+      include: { user: true },
+    }),
+  );
 
   if (existing) {
-    await prisma.platformAccount.update({
-      where: { id: existing.id },
-      data: {
-        username: tg.username ?? null,
-        firstName: tg.first_name ?? null,
-        lastName: tg.last_name ?? null,
-        languageCode: tg.language_code ?? null,
-        lastSeenAt: new Date(),
-      },
-    });
-    if (tg.language_code) {
-      await prisma.user.update({
-        where: { id: existing.user.id },
-        data: { locale: normalizeLocale(tg.language_code) },
+    const username = tg.username ?? null;
+    const firstName = tg.first_name ?? null;
+    const lastName = tg.last_name ?? null;
+    const languageCode = tg.language_code ?? null;
+    const profileSame =
+      (existing.username || null) === username &&
+      (existing.firstName || null) === firstName &&
+      (existing.lastName || null) === lastName &&
+      (existing.languageCode || null) === languageCode;
+    const seenFresh =
+      Date.now() - new Date(existing.lastSeenAt).getTime() < 60_000;
+    // A slow profile touch must not drop the button. Skip it when nothing changed.
+    if (!profileSame || !seenFresh) {
+      await withDbRetry(() =>
+        prisma.platformAccount.update({
+          where: { id: existing.id },
+          data: {
+            username,
+            firstName,
+            lastName,
+            languageCode,
+            lastSeenAt: new Date(),
+          },
+        }),
+      ).catch((e) => {
+        console.warn(
+          "[tg] profile touch skipped:",
+          isTransientDbError(e) ? "db slow" : e instanceof Error ? e.message : e,
+        );
       });
+    }
+    const nextLocale = languageCode ? normalizeLocale(languageCode) : null;
+    if (nextLocale && existing.user.locale !== nextLocale) {
+      const saved = await withDbRetry(() =>
+        prisma.user.update({
+          where: { id: existing.user.id },
+          data: { locale: nextLocale },
+        }),
+      )
+        .then(() => true)
+        .catch((e) => {
+          console.warn(
+            "[tg] locale touch skipped:",
+            isTransientDbError(e) ? "db slow" : e instanceof Error ? e.message : e,
+          );
+          return false;
+        });
+      if (saved) existing.user.locale = nextLocale;
     }
     // First-touch partner/traffic: existing users may hit /start ref_… after an
     // earlier create without payload (e.g. Mini App auth or pre-/start findOrCreate).
@@ -114,7 +149,7 @@ export async function findOrCreateTelegramUser(
         }
       }
     }
-    return prisma.user.findUniqueOrThrow({ where: { id: existing.user.id } });
+    return existing.user;
   }
 
   const {

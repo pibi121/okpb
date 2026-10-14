@@ -56,3 +56,33 @@ function getPrisma(): PrismaClient {
 }
 
 export const prisma = getPrisma();
+
+/** SQLite / Prisma engine wedged for a moment. Safe to retry the same read. */
+export function isTransientDbError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: string }).code || "")
+      : "";
+  return (
+    code === "P1008" ||
+    /Socket timeout|database is locked|SQLITE_BUSY|Timeout exceeded/i.test(msg)
+  );
+}
+
+export async function withDbRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isTransientDbError(e) || i === attempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw last;
+}

@@ -55,16 +55,18 @@ export async function claimTgMediaNotify(
     });
     if (!gi) return true;
     const meta = JSON.parse(gi.metaJson || "{}") as Record<string, unknown>;
-    if (meta.tgMediaNotified) return false;
-    meta.tgMediaNotified = Date.now();
-    await prisma.galleryItem.update({
-      where: { id },
-      data: { metaJson: JSON.stringify(meta) },
+    if (meta.tgMediaNotified) {
+      return !(await alreadyQueuedTgMediaOutbox(userId, id, kind));
+    }
+    const next = { ...meta, tgMediaNotified: Date.now() };
+    const updated = await prisma.galleryItem.updateMany({
+      where: { id, metaJson: gi.metaJson },
+      data: { metaJson: JSON.stringify(next) },
     });
+    return updated.count === 1;
   } catch {
-    /* best-effort — still fall through to outbox dedupe */
+    return false;
   }
-  return true;
 }
 
 export async function notifyTelegramMediaReady(opts: {

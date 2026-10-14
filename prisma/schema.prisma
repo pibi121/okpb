@@ -1415,6 +1415,8 @@ model TgOutbox {
   userId           String
   kind             String
   payloadJson      String    @default("{}")
+  /// One media delivery per user + gallery item + kind. Null for texts.
+  dedupeKey        String?   @unique
   sentAt           DateTime?
   createdAt        DateTime  @default(now())
 

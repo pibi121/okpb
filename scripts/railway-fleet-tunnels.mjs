@@ -27,8 +27,15 @@ const FLEET = [
     keyPath: "/tmp/metalnode_key_bmserv1",
   },
   {
-    name: "ownerlab",
+    name: "gpu2",
     localPort: 8191,
+    sshPort: 22026,
+    keyEnv: "METALNODE_SSH_KEY_GPU2",
+    keyPath: "/tmp/metalnode_key_gpu2",
+  },
+  {
+    name: "ownerlab",
+    localPort: 8192,
     sshPort: 22026,
     keyEnv: "METALNODE_SSH_KEY_OWNERLAB",
     keyPath: "/tmp/metalnode_key_ownerlab",
@@ -58,9 +65,7 @@ function ownerLabGpuEnabled() {
 }
 
 function activeFleet() {
-  return FLEET.filter(
-    (g) => g.name !== "ownerlab" || ownerLabGpuEnabled(),
-  );
+  return FLEET.filter((g) => g.name !== "ownerlab" || ownerLabGpuEnabled());
 }
 
 export function materializeFleetKeys() {

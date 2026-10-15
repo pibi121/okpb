@@ -334,6 +334,16 @@ export async function pickWorker(
     } else {
       live = live.filter((w) => w.pool !== "lab");
     }
+    // When GPU2 (genPreferred) is up, pin user photo/video there so primary can train.
+    if (pool === "photo" || pool === "video" || pool === "any") {
+      const preferredKeys = FLEET_EXTRA_GPUS.filter(
+        (g) => g.genPreferred && fleetConfigured(g),
+      ).map((g) => g.key);
+      if (preferredKeys.length) {
+        const preferredLive = live.filter((w) => preferredKeys.includes(w.key));
+        if (preferredLive.length) live = preferredLive;
+      }
+    }
     if (allow?.length) {
       live = live.filter((w) => allow.includes(w.provider.toLowerCase()));
     }

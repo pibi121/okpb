@@ -3,14 +3,13 @@
  * Keys live in Railway env; tunnels map to local :8189 / :8190 / :8191.
  *
  * Policy: when only primary is live, leave fleet keys empty / genPreferred off.
- * Fleet cards are optional overflow — not preferred while single-GPU.
- * `ownerlab` (pool lab) is Owner Lab only — never genPreferred, never user funnel.
- * Opt-in: set OWNERLAB_GPU_ENABLED=1 and METALNODE_SSH_KEY_OWNERLAB; otherwise Lab
- * shares the primary Metalnode pool (same GPU as users).
+ * `gpu2` (22026 → :8191) is user photo/video preferred when keyed — keeps primary
+ * free for LoRA train / heavy overflow.
+ * Legacy `ownerlab` lab-only pool stays opt-in via OWNERLAB_GPU_ENABLED=1.
  */
 import type { GpuPool } from "@/lib/gpu/types";
 
-/** Second GPU for Owner Lab — off until explicitly re-enabled. */
+/** Dedicated Owner Lab pool (legacy) — off unless explicitly re-enabled. */
 export function ownerLabGpuEnabled(): boolean {
   return process.env.OWNERLAB_GPU_ENABLED === "1";
 }
@@ -41,7 +40,6 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     keyEnv: "METALNODE_SSH_KEY_BMSERV4",
     keyPath: "/tmp/metalnode_key_bmserv4",
     pool: "any",
-    // Was genPreferred while dual-GPU; off until a second live node is back.
   },
   {
     key: "bmserv1",
@@ -53,9 +51,19 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     pool: "any",
   },
   {
-    key: "ownerlab",
-    label: "Metalnode Owner Lab (22026)",
+    key: "gpu2",
+    label: "Metalnode GPU2 (22026)",
     localPort: 8191,
+    sshPort: 22026,
+    keyEnv: "METALNODE_SSH_KEY_GPU2",
+    keyPath: "/tmp/metalnode_key_gpu2",
+    pool: "any",
+    genPreferred: true,
+  },
+  {
+    key: "ownerlab",
+    label: "Metalnode Owner Lab (legacy)",
+    localPort: 8192,
     sshPort: 22026,
     keyEnv: "METALNODE_SSH_KEY_OWNERLAB",
     keyPath: "/tmp/metalnode_key_ownerlab",
@@ -92,4 +100,11 @@ export function loraPreferredFleet(): FleetGpu | null {
 export function genPreferredFleet(): FleetGpu | null {
   const hit = FLEET_EXTRA_GPUS.find((g) => g.genPreferred && fleetConfigured(g));
   return hit || null;
+}
+
+/** Keys of online-capable genPreferred fleet cards (for pickWorker sticky routing). */
+export function genPreferredKeys(): string[] {
+  return FLEET_EXTRA_GPUS.filter((g) => g.genPreferred && fleetConfigured(g)).map(
+    (g) => g.key,
+  );
 }

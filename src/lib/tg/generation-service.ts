@@ -878,7 +878,9 @@ export async function startTgVideoGeneration(opts: {
 
   const manualSlots: ManualPictureSlotInput[] = [];
   const identitySlots = detail.slotBlueprint.filter((s) => s.role === "identity");
-  const dualCast = detail.identityPersonCount >= 2 || identitySlots.length >= 2;
+  // Source of truth is identityPersonCount. Blueprint often repeats the same
+  // hero as several identity refs (Аня×3) — that is NOT dual-cast.
+  const dualCast = (detail.identityPersonCount || 1) >= 2;
   let fallbackPi =
     Math.max(
       1,
@@ -928,7 +930,7 @@ export async function startTgVideoGeneration(opts: {
     }
     if (!partnerBytes?.length) {
       throw new Error(
-        "Для этого шаблона нужно фото второго героя (или пересохрани шаблон из Lab с партнёром)",
+        "Для этого шаблона нужно фото второго человека. Пришли ещё одно фото и нажми Подтвердить ещё раз.",
       );
     }
     manualSlots.push({

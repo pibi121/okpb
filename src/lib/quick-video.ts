@@ -663,6 +663,50 @@ export async function tryRecoverQuickVideoFromComfy(
   const promptId =
     typeof jobMeta.comfyPromptId === "string" ? jobMeta.comfyPromptId : "";
 
+  // Live GpuJob still owns the run — never steal a mid-pipeline Comfy clip
+  // (multi-shot story writes comfyPromptId after each shot; recovering that
+  // marks the whole film "ready" at ~first-shot length).
+  if (
+    !opts?.force &&
+    job &&
+    ["queued", "assigned", "running"].includes(job.status)
+  ) {
+    console.log(
+      `[peach] skip recover quick-video ${runId} — gpuJob ${job.id} still ${job.status}`,
+    );
+    return false;
+  }
+
+  let galleryMeta: Record<string, unknown> = {};
+  if (run.galleryItemId) {
+    try {
+      const prev = await prisma.galleryItem.findUnique({
+        where: { id: run.galleryItemId },
+        select: { metaJson: true },
+      });
+      galleryMeta = JSON.parse(prev?.metaJson || "{}") as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      galleryMeta = {};
+    }
+  }
+  const { normalizeStoryH3Shots, parseStoryH3Template } = await import(
+    "@/lib/story-h3-prompt"
+  );
+  const storyShots =
+    normalizeStoryH3Shots(galleryMeta.storyShots) ||
+    parseStoryH3Template(run.prompt)?.shots ||
+    undefined;
+  // One Comfy history/file is a single clip — never deliver as the full stitch.
+  if (!opts?.force && storyShots && storyShots.length >= 2) {
+    console.log(
+      `[peach] skip recover quick-video ${runId} — multi-shot story (${storyShots.length} clips), need full re-render/stitch`,
+    );
+    return false;
+  }
+
   const bases: string[] = [];
   const pushBase = (u: unknown) => {
     const s = typeof u === "string" ? u.trim().replace(/\/$/, "") : "";
@@ -727,18 +771,7 @@ export async function tryRecoverQuickVideoFromComfy(
   const { saveGalleryBinary } = await import("@/lib/local-store");
   const saved = saveGalleryBinary(userId, "mp4", bytes, `quick_${runId}`);
 
-  let prevMeta: Record<string, unknown> = {};
-  if (run.galleryItemId) {
-    try {
-      const prev = await prisma.galleryItem.findUnique({
-        where: { id: run.galleryItemId },
-        select: { metaJson: true },
-      });
-      prevMeta = JSON.parse(prev?.metaJson || "{}") as Record<string, unknown>;
-    } catch {
-      prevMeta = {};
-    }
-  }
+  const prevMeta = galleryMeta;
 
   const galleryData = {
     resultUrl: saved.publicUrl,

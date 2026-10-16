@@ -276,6 +276,14 @@ export async function startTgUndressGeneration(opts: {
           });
         }
       } catch (e) {
+        const { isLostComfyConnection } = await import("@/lib/comfy-client");
+        if (isLostComfyConnection(e)) {
+          console.warn(
+            "[undress] connection lost, leaving generation pending:",
+            e instanceof Error ? e.message.slice(0, 160) : e,
+          );
+          throw e;
+        }
         console.error("[undress] job failed:", e);
         if (funnelPaidAmt > 0) {
           const { creditFunnelBalance } = await import(

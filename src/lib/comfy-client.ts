@@ -31,6 +31,18 @@ export function isTransientComfyError(err: unknown): boolean {
   );
 }
 
+/**
+ * Process restart or tunnel drop while Comfy may still be rendering.
+ * Not a model error — caller should leave the user job pending.
+ */
+export function isLostComfyConnection(err: unknown): boolean {
+  if (isTransientComfyError(err)) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /aborted|terminated|other side closed|fetch failed|ECONNABORTED|socket closed/i.test(
+    msg,
+  );
+}
+
 /** Comfy validation: class type not loaded (restart / import race). */
 export function isMissingNodeTypeError(msg: string): boolean {
   return /missing_node_type|Node\s+'[^']+'\s+not found/i.test(msg || "");

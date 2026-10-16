@@ -1,9 +1,12 @@
 /**
  * Extra Metalnode GPUs alongside primary (:8188).
- * Keys live in Railway env; tunnels map to local :8189 / :8190 / :8191.
+ * Keys live in Railway env; tunnels map to local :8189 / :8190 / :8191 / :8192.
  *
  * Policy: when only primary is live, leave fleet keys empty / genPreferred off.
  * Fleet cards are optional overflow — not preferred while single-GPU.
+ * `gpu2` is the second user card (METALNODE_SSH_KEY_GPU2). Same user pools as
+ * primary, not preferred: a free primary still takes the job, this card takes
+ * the next one while primary is busy. Never the lab pool.
  * `ownerlab` (pool lab) is Owner Lab only — never genPreferred, never user funnel.
  */
 import type { GpuPool } from "@/lib/gpu/types";
@@ -43,6 +46,15 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     sshPort: 22022,
     keyEnv: "METALNODE_SSH_KEY_BMSERV1",
     keyPath: "/tmp/metalnode_key_bmserv1",
+    pool: "any",
+  },
+  {
+    key: "gpu2",
+    label: "Metalnode GPU2",
+    localPort: 8192,
+    sshPort: 22026,
+    keyEnv: "METALNODE_SSH_KEY_GPU2",
+    keyPath: "/tmp/metalnode_key_gpu2",
     pool: "any",
   },
   {

@@ -8,6 +8,7 @@ export type OpsSettings = {
   loadMode: boolean;
   loadMessageRu: string;
   loadMessageEn: string;
+  videoFrozen: boolean;
   lastBroadcastAt: Date | null;
   pricesJson: string;
   sloJson: string;
@@ -51,6 +52,7 @@ export async function getOpsSettings(): Promise<OpsSettings> {
     maintenanceMessageRu: row.maintenanceMessageRu || DEFAULT_MAINT_RU,
     maintenanceMessageEn: row.maintenanceMessageEn || DEFAULT_MAINT_EN,
     loadMode: row.loadMode,
+    videoFrozen: Boolean((row as { videoFrozen?: boolean }).videoFrozen),
     loadMessageRu: row.loadMessageRu || DEFAULT_LOAD_RU,
     loadMessageEn: row.loadMessageEn || DEFAULT_LOAD_EN,
     lastBroadcastAt: row.lastBroadcastAt,

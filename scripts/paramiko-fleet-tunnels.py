@@ -4,7 +4,7 @@
 Env METALNODE_FLEET_JSON — JSON array:
   [{"localPort":8189,"sshPort":22031,"keyPath":"/tmp/metalnode_key_bmserv4","host":"...","sshUser":"root"}, ...]
 
-Or defaults for bmserv4/bmserv1 when key files exist.
+Or defaults for the extra cards when key files exist.
 """
 from __future__ import annotations
 
@@ -45,6 +45,14 @@ def default_fleet() -> list[dict]:
             "localPort": 8190,
             "sshPort": 22022,
             "keyPath": "/tmp/metalnode_key_bmserv1",
+            "host": host,
+            "sshUser": user,
+        },
+        {
+            "name": "gpu2",
+            "localPort": 8192,
+            "sshPort": 22026,
+            "keyPath": "/tmp/metalnode_key_gpu2",
             "host": host,
             "sshUser": user,
         },

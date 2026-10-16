@@ -1213,6 +1213,10 @@ model OpsSetting {
   loadMode               Boolean  @default(false)
   loadMessageRu          String   @default("")
   loadMessageEn          String   @default("")
+  /// User video generation paused. Photos stay open.
+  videoFrozen            Boolean  @default(false)
+  /// User ids who were in the video queue or tried to start video while frozen.
+  videoFreezeAudienceJson String  @default("[]")
   lastBroadcastAt        DateTime?
   pricesJson             String   @default("{}")
   /// SLO baselines JSON (wait/run ms per function)

@@ -421,6 +421,14 @@ export async function handleFunnelV2EditText(opts: {
           successKind: "funnel_v2_photo",
         });
       } catch (e) {
+        const { isLostComfyConnection } = await import("@/lib/comfy-client");
+        if (isLostComfyConnection(e)) {
+          console.warn(
+            "[peach] funnel edit detached, will resume:",
+            e instanceof Error ? e.message.slice(0, 160) : e,
+          );
+          throw e;
+        }
         const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
         await creditFunnelBalance(opts.userId, price).catch(() => undefined);
         const msg = e instanceof Error ? e.message : String(e);

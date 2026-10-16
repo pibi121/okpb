@@ -107,6 +107,14 @@ async function markReady(
   } catch {
     prev = {};
   }
+  if (prev.videoFrozenRefund === true) return;
+  if (
+    prev.ownerLab !== true &&
+    (existing.kind === "video" || existing.kind === "film")
+  ) {
+    const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
+    if (await isVideoFrozen()) return;
+  }
   await prisma.galleryItem.update({
     where: { id: itemId },
     data: {
@@ -295,6 +303,14 @@ async function runPhotoJob(itemId: string, userId: string, opts: PhotoPayload) {
       await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
     }
   }
+  const { isLostComfyConnection } = await import("@/lib/comfy-client");
+  if (isLostComfyConnection(lastErr)) {
+    console.warn(
+      `[peach] photo job ${itemId} detached, will resume:`,
+      lastErr instanceof Error ? lastErr.message.slice(0, 160) : lastErr,
+    );
+    throw lastErr;
+  }
   const msg = lastErr instanceof Error ? lastErr.message : "ошибка генерации";
   console.error("[peach] photo job failed:", lastErr);
   await markError(itemId, userId, msg, { jobAction: "photo" });
@@ -349,6 +365,14 @@ async function runClipJob(itemId: string, userId: string, opts: ClipPayload) {
       await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
     }
   }
+  const { isLostComfyConnection } = await import("@/lib/comfy-client");
+  if (isLostComfyConnection(lastErr)) {
+    console.warn(
+      `[peach] clip job ${itemId} detached, will resume:`,
+      lastErr instanceof Error ? lastErr.message.slice(0, 160) : lastErr,
+    );
+    throw lastErr;
+  }
   const msg = lastErr instanceof Error ? lastErr.message : "ошибка клипа";
   console.error("[peach] clip job failed:", lastErr);
   await markError(itemId, userId, msg, { jobAction: "clip" });
@@ -367,6 +391,14 @@ async function runFilmJob(itemId: string, userId: string, opts: FilmPayload) {
       meta: { ...out.meta, localKey: saved.relKey, engine: out.engine },
     });
   } catch (e) {
+    const { isLostComfyConnection } = await import("@/lib/comfy-client");
+    if (isLostComfyConnection(e)) {
+      console.warn(
+        `[peach] film job ${itemId} detached, will resume:`,
+        e instanceof Error ? e.message.slice(0, 160) : e,
+      );
+      throw e;
+    }
     const msg = e instanceof Error ? e.message : "ошибка фильма";
     console.error("[peach] film job failed:", e);
     await markError(itemId, userId, msg, { jobAction: "film" });
@@ -437,6 +469,8 @@ export async function enqueuePhotoJob(userId: string, opts: PhotoPayload) {
 }
 
 export async function enqueueClipJob(userId: string, opts: ClipPayload) {
+  const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+  await assertVideoGenerationOpen(userId);
   const item = await createPendingItem({
     userId,
     kind: "video",
@@ -464,6 +498,8 @@ export async function enqueueClipJob(userId: string, opts: ClipPayload) {
 }
 
 export async function enqueueFilmJob(userId: string, opts: FilmPayload) {
+  const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+  await assertVideoGenerationOpen(userId);
   const n = Math.min(Math.max(opts.sceneCount ?? 2, 2), 4);
   const item = await createPendingItem({
     userId,
@@ -602,6 +638,8 @@ export async function enqueueAnimateJob(
     dialogue?: string;
   },
 ) {
+  const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+  await assertVideoGenerationOpen(userId);
   const still = await prisma.galleryItem.findFirst({
     where: { id: stillId, userId, kind: "photo" },
   });
@@ -638,6 +676,8 @@ export async function enqueueTemplateStitchJob(
   clipResultUrls: string[],
   opts?: { withMusic?: boolean; musicNote?: string },
 ) {
+  const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+  await assertVideoGenerationOpen(userId);
   if (clipResultUrls.length < 2) {
     throw new Error("Нужно минимум два готовых ролика");
   }

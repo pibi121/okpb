@@ -1082,6 +1082,16 @@ async function beginGeneration(
     },
   });
 
+  if (kind !== "photo") {
+    const { isVideoFrozen, noteVideoFreezeAttempt, VIDEO_FREEZE_BROADCAST } =
+      await import("@/lib/ops/video-freeze");
+    if (await isVideoFrozen()) {
+      await noteVideoFreezeAttempt(userId);
+      await tgSendMessage(chatId, VIDEO_FREEZE_BROADCAST, mainMenuExtra(locale));
+      return;
+    }
+  }
+
   await tgSendMessage(chatId, t("gen_starting", locale), genStartingExtra(locale));
 
   try {

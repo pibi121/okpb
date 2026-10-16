@@ -746,6 +746,14 @@ export async function runFunnelV2PhotoGen(opts: {
             await markFunnelV2BlurOffered(opts.userId);
           }
         } catch (e) {
+          const { isLostComfyConnection } = await import("@/lib/comfy-client");
+          if (isLostComfyConnection(e)) {
+            console.warn(
+              "[peach] funnel photo detached, will resume:",
+              e instanceof Error ? e.message.slice(0, 160) : e,
+            );
+            throw e;
+          }
           const msg = e instanceof Error ? e.message : String(e);
           if (useBlur) {
             try {

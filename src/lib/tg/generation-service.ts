@@ -54,6 +54,29 @@ async function assertGenerationOpen(userId: string) {
   if (!gate.ok) throw new Error(gate.message);
 }
 
+async function assertVideoOpen(userId: string) {
+  await assertGenerationOpen(userId);
+  const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+  await assertVideoGenerationOpen(userId);
+}
+
+async function videoDeliverBlocked(itemId: string): Promise<boolean> {
+  const fresh = await prisma.galleryItem.findUnique({
+    where: { id: itemId },
+    select: { metaJson: true },
+  });
+  let meta: { videoFrozenRefund?: boolean; ownerLab?: boolean } = {};
+  try {
+    meta = JSON.parse(fresh?.metaJson || "{}") as typeof meta;
+  } catch {
+    return false;
+  }
+  if (meta.videoFrozenRefund === true) return true;
+  if (meta.ownerLab === true) return false;
+  const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
+  return isVideoFrozen();
+}
+
 function injectSpeech(plan: QuickVideoShotsPlan, line: string): QuickVideoShotsPlan {
   const text = line.trim().slice(0, 500);
   if (!text || !plan.shots.length) return plan;
@@ -136,7 +159,7 @@ export async function startTgLoraI2vGeneration(opts: {
   speechLine?: string;
   speechFills?: SpeechSlotFill[];
 }): Promise<TgGenerateResult> {
-  await assertGenerationOpen(opts.userId);
+  await assertVideoOpen(opts.userId);
   const tpl = await prisma.loraI2vTemplate.findFirst({
     where: { id: opts.templateId, tgPublished: true },
   });
@@ -391,6 +414,7 @@ function enqueueLoraI2vJob(opts: {
           localBytesFromResultUrl(previewUrl) ||
           localBytesFromResultUrl("/tg/catalog/video-1.mp4");
         if (!bytes?.length) throw new Error("mock preview missing");
+        if (await videoDeliverBlocked(itemId)) return;
         const saved = saveGalleryBinary(
           userId,
           "mp4",
@@ -510,6 +534,7 @@ function enqueueLoraI2vJob(opts: {
           engine = clip.engine || engine;
 
           if (shots.length === 1) {
+            if (await videoDeliverBlocked(itemId)) return;
             const saved = saveGalleryBinary(
               userId,
               "mp4",
@@ -578,6 +603,7 @@ function enqueueLoraI2vJob(opts: {
             ? stitchErr
             : new Error("Склейка шотов вернула пустой файл");
         }
+        if (await videoDeliverBlocked(itemId)) return;
         const saved = saveGalleryBinary(
           userId,
           "mp4",
@@ -612,6 +638,14 @@ function enqueueLoraI2vJob(opts: {
         }
       }
     } catch (e) {
+      const { isLostComfyConnection } = await import("@/lib/comfy-client");
+      if (isLostComfyConnection(e)) {
+        console.warn(
+          "[peach] lora_i2v detached, will resume:",
+          e instanceof Error ? e.message.slice(0, 160) : e,
+        );
+        throw e;
+      }
       const msg = e instanceof Error ? e.message : "ошибка создания видео";
       console.error("[peach] lora_i2v job failed:", e);
       let charged = 0;
@@ -701,7 +735,7 @@ export async function startTgVideoGeneration(opts: {
    */
   secondIdentityBytes?: Buffer | null;
 }): Promise<TgGenerateResult> {
-  await assertGenerationOpen(opts.userId);
+  await assertVideoOpen(opts.userId);
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
     userId: opts.userId,

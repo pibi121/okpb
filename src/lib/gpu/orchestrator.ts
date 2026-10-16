@@ -278,6 +278,7 @@ export async function runTrackedGpuJob(
       const beatTimer = setInterval(() => {
         void writeBeat();
       }, beatMs);
+      let detached = false;
       try {
         await fn();
         if (!store.failed) {
@@ -304,24 +305,33 @@ export async function runTrackedGpuJob(
           });
         }
       } catch (e) {
-        if (!store.failed) {
+        const { isLostComfyConnection } = await import("@/lib/comfy-client");
+        if (isLostComfyConnection(e)) {
+          // Deploy/tunnel drop. Comfy may still be rendering this prompt.
+          // Leave the ledger row running so the next process can deliver it.
+          detached = true;
+          console.warn(
+            `[peach] gpu job ${job.id} detached (connection lost), leaving it running`,
+          );
+        } else if (!store.failed) {
           await noteGpuJobError(
             e instanceof Error ? e.message : String(e),
             { thrown: true },
           );
         }
-        throw e;
       } finally {
         clearInterval(beatTimer);
-        await prisma.gpuWorker
-          .update({
-            where: { id: worker.id },
-            data: {
-              currentJobId: null,
-              status: "online",
-            },
-          })
-          .catch(() => undefined);
+        if (!detached) {
+          await prisma.gpuWorker
+            .update({
+              where: { id: worker.id },
+              data: {
+                currentJobId: null,
+                status: "online",
+              },
+            })
+            .catch(() => undefined);
+        }
       }
     });
   } finally {

@@ -473,6 +473,14 @@ async function runFunnelV2VideoGen(opts: {
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (!user) return;
 
+  const { isVideoFrozen, noteVideoFreezeAttempt, VIDEO_FREEZE_BROADCAST } =
+    await import("@/lib/ops/video-freeze");
+  if (await isVideoFrozen()) {
+    await noteVideoFreezeAttempt(opts.userId);
+    await tgSendMessage(opts.chatId, VIDEO_FREEZE_BROADCAST);
+    return;
+  }
+
   const rows = await listVideoRows(opts.userId, opts.locale);
   const row = rows.find((r) => r.id === opts.templateId && r.kind === opts.kind);
   if (!row) {

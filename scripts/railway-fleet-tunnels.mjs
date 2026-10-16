@@ -1,5 +1,5 @@
 ﻿/**
- * Materialize fleet SSH keys and keep Paramiko forwards for bmserv4/bmserv1.
+ * Materialize fleet SSH keys and keep Paramiko forwards for extra GPUs.
  * Started by comfy-tunnel-watchdog alongside primary :8188 tunnel.
  */
 import { spawn, spawnSync } from "node:child_process";
@@ -25,6 +25,13 @@ const FLEET = [
     sshPort: 22022,
     keyEnv: "METALNODE_SSH_KEY_BMSERV1",
     keyPath: "/tmp/metalnode_key_bmserv1",
+  },
+  {
+    name: "gpu2",
+    localPort: 8192,
+    sshPort: 22026,
+    keyEnv: "METALNODE_SSH_KEY_GPU2",
+    keyPath: "/tmp/metalnode_key_gpu2",
   },
   {
     name: "ownerlab",
@@ -106,7 +113,7 @@ export function fleetTunnelAlive() {
 export async function ensureFleetTunnels() {
   const ready = materializeFleetKeys();
   if (!ready.length) {
-    log("no METALNODE_SSH_KEY_BMSERV*/OWNERLAB — skip fleet tunnels");
+    log("no fleet SSH keys — skip fleet tunnels");
     return { ok: false, reason: "no_keys" };
   }
 

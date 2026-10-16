@@ -83,8 +83,16 @@ export async function register() {
 
       // Mark orphaned running GpuJobs after redeploy + heal pending gallery
       // (error + refund + TG notify), including already-stuck pendings.
+      // Jobs that already have a Comfy prompt stay running: the new process
+      // keeps polling and delivers the file. Do not free that card.
       try {
         const { prisma } = await import("@/lib/db");
+        const { resumeInflightUserGenerations } = await import(
+          "@/lib/gpu/resume-inflight"
+        );
+        await resumeInflightUserGenerations().catch((e) =>
+          console.error("[peach] resume inflight:", e),
+        );
         const { sweepStaleGpuJobs } = await import("@/lib/gpu/worker-admin");
         const stale = await sweepStaleGpuJobs();
         const { recoverOrphanedGpuWork } = await import(
@@ -98,8 +106,27 @@ export async function register() {
             `[peach] gpu jobs: stale=${stale} orphanedJobs=${orphans.jobsHealed} galleryHealed=${orphans.galleryHealed}`,
           );
         }
+        const stillRunning = await prisma.gpuJob.findMany({
+          where: { status: { in: ["queued", "assigned", "running"] } },
+          select: { id: true, metaJson: true },
+        });
+        const keepIds = stillRunning
+          .filter((j) => {
+            try {
+              const meta = JSON.parse(j.metaJson || "{}") as {
+                comfyPromptId?: unknown;
+              };
+              return typeof meta.comfyPromptId === "string" && meta.comfyPromptId;
+            } catch {
+              return false;
+            }
+          })
+          .map((j) => j.id);
         await prisma.gpuWorker.updateMany({
-          where: { currentJobId: { not: null } },
+          where: {
+            currentJobId: { not: null },
+            ...(keepIds.length ? { NOT: { currentJobId: { in: keepIds } } } : {}),
+          },
           data: { currentJobId: null, status: "online" },
         });
       } catch (e) {

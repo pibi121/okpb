@@ -493,6 +493,30 @@ async function runQuickVideoJob(runId: string, userId: string) {
     outEngine = out.engine;
   }
 
+  if (run.galleryItemId) {
+    const fresh = await prisma.galleryItem.findUnique({
+      where: { id: run.galleryItemId },
+      select: { metaJson: true },
+    });
+    try {
+      const meta = JSON.parse(fresh?.metaJson || "{}") as {
+        videoFrozenRefund?: boolean;
+        ownerLab?: boolean;
+      };
+      if (meta.videoFrozenRefund === true || meta.ownerLab !== true) {
+        const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
+        if (meta.videoFrozenRefund === true || (await isVideoFrozen())) {
+          console.log(
+            `[peach] quick video ${runId} closed by video freeze, skip deliver`,
+          );
+          return;
+        }
+      }
+    } catch {
+      /* deliver */
+    }
+  }
+
   const saved = saveGalleryBinary(userId, "mp4", outBytes, `quick_${runId}`);
 
   const storyH3 =
@@ -723,6 +747,25 @@ export async function tryRecoverQuickVideoFromComfy(
     }
   }
   if (!bytes?.length) return false;
+  if (run.galleryItemId) {
+    const prev = await prisma.galleryItem.findUnique({
+      where: { id: run.galleryItemId },
+      select: { metaJson: true },
+    });
+    try {
+      const meta = JSON.parse(prev?.metaJson || "{}") as {
+        videoFrozenRefund?: boolean;
+        ownerLab?: boolean;
+      };
+      if (meta.videoFrozenRefund === true) return false;
+      if (meta.ownerLab !== true) {
+        const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
+        if (await isVideoFrozen()) return false;
+      }
+    } catch {
+      /* continue */
+    }
+  }
 
   const { saveGalleryBinary } = await import("@/lib/local-store");
   const saved = saveGalleryBinary(userId, "mp4", bytes, `quick_${runId}`);
@@ -840,6 +883,24 @@ export async function requeueQuickVideoAfterHeal(
     where: { id: runId, userId },
   });
   if (!run || run.status === "ready") return false;
+  const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
+  if (await isVideoFrozen()) {
+    let ownerLab = false;
+    if (run.galleryItemId) {
+      const item = await prisma.galleryItem.findUnique({
+        where: { id: run.galleryItemId },
+        select: { metaJson: true },
+      });
+      try {
+        ownerLab =
+          (JSON.parse(item?.metaJson || "{}") as { ownerLab?: boolean })
+            .ownerLab === true;
+      } catch {
+        ownerLab = false;
+      }
+    }
+    if (!ownerLab) return false;
+  }
 
   await prisma.quickVideoRun.update({
     where: { id: runId },
@@ -999,8 +1060,25 @@ export function enqueueQuickVideoJob(
   opts?: { useOwnerLab?: boolean },
 ) {
   if (activeQuickVideoJobs.has(runId)) return;
-  activeQuickVideoJobs.add(runId);
   const useOwnerLab = Boolean(opts?.useOwnerLab);
+  if (!useOwnerLab) {
+    void (async () => {
+      const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
+      if (await isVideoFrozen()) return;
+      activeQuickVideoJobs.add(runId);
+      await startQueuedQuickVideo(runId, userId, useOwnerLab);
+    })();
+    return;
+  }
+  activeQuickVideoJobs.add(runId);
+  void startQueuedQuickVideo(runId, userId, useOwnerLab);
+}
+
+async function startQueuedQuickVideo(
+  runId: string,
+  userId: string,
+  useOwnerLab: boolean,
+) {
   void (async () => {
     const { ownerLabPoolOr } = await import("@/lib/gpu/fleet");
     const pool = useOwnerLab ? ownerLabPoolOr("video") : "video";
@@ -1037,6 +1115,14 @@ export function enqueueQuickVideoJob(
           }
           await runQuickVideoJob(runId, userId);
         } catch (e) {
+          const { isLostComfyConnection } = await import("@/lib/comfy-client");
+          if (isLostComfyConnection(e)) {
+            console.warn(
+              `[peach] quick video ${runId} detached, will resume:`,
+              e instanceof Error ? e.message.slice(0, 160) : e,
+            );
+            throw e;
+          }
           const msg = e instanceof Error ? e.message : String(e);
           console.error("[peach] quick video failed:", msg);
           await markQuickVideoRunError(runId, userId, msg);
@@ -1163,6 +1249,22 @@ export async function retryQuickVideoRun(userId: string, runId: string) {
   });
   if (!run) throw new Error("run not found");
   if (run.status === "ready") throw new Error("Видео уже готово");
+  const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+  let retryOwnerLab = false;
+  if (run.galleryItemId) {
+    const item = await prisma.galleryItem.findUnique({
+      where: { id: run.galleryItemId },
+      select: { metaJson: true },
+    });
+    try {
+      retryOwnerLab =
+        (JSON.parse(item?.metaJson || "{}") as { ownerLab?: boolean })
+          .ownerLab === true;
+    } catch {
+      retryOwnerLab = false;
+    }
+  }
+  if (!retryOwnerLab) await assertVideoGenerationOpen(userId);
   await prisma.quickVideoRun.update({
     where: { id: runId },
     data: { status: "busy", error: null, updatedAt: new Date() },
@@ -1226,6 +1328,10 @@ export async function startQuickVideoRun(opts: {
   /** Peach Lab routes only — pin to Owner Lab GPU when configured. */
   useOwnerLab?: boolean;
 }) {
+  if (!opts.useOwnerLab) {
+    const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
+    await assertVideoGenerationOpen(opts.userId);
+  }
   const legacyPrompt = opts.prompt?.trim() || "";
   const hasShots = !!opts.shotsPlan?.shots?.some((s) => s.legoQuery.trim());
   if (!hasShots && legacyPrompt.length < 8) {

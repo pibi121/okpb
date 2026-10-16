@@ -3,8 +3,8 @@
  * Keys live in Railway env; tunnels map to local :8189 / :8190 / :8191.
  *
  * Policy: when only primary is live, leave fleet keys empty / genPreferred off.
- * `gpu2` (22026 → :8191) is user photo/video preferred when keyed — keeps primary
- * free for LoRA train / heavy overflow.
+ * `gpu2` (22026 → :8191) is soft-preferred for user photo/video when keyed;
+ * pickWorker spills to primary when GPU2 is busy (no hard-pin).
  * Legacy `ownerlab` lab-only pool stays opt-in via OWNERLAB_GPU_ENABLED=1.
  */
 import type { GpuPool } from "@/lib/gpu/types";

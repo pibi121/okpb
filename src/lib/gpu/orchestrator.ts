@@ -225,11 +225,36 @@ export async function runTrackedGpuJob(
   await acquireGpuSlot();
   try {
     // Re-pick if the chosen card became busy while we waited for a slot.
+    // Soft-prefer may return primary when GPU2 holds currentJobId.
     if (worker.currentJobId) {
       worker = await pickWorker(pool, {
         providers: opts?.providers,
         excludeProviders: opts?.excludeProviders,
       });
+    }
+    // Skip duplicate runners for the same gallery/QV ref (healer requeue race).
+    if (opts?.refType && opts?.refId) {
+      const sibling = await prisma.gpuJob.findFirst({
+        where: {
+          id: { not: job.id },
+          refType: opts.refType,
+          refId: opts.refId,
+          status: { in: ["assigned", "running"] },
+        },
+        select: { id: true },
+      });
+      if (sibling) {
+        await prisma.gpuJob.update({
+          where: { id: job.id },
+          data: {
+            status: "error",
+            stage: "error",
+            error: `duplicate skipped — ${sibling.id} already running`,
+            finishedAt: new Date(),
+          },
+        });
+        return;
+      }
     }
     const startedAt = new Date();
     const waitMs = Math.max(0, startedAt.getTime() - queuedAt.getTime());

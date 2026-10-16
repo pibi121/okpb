@@ -334,16 +334,15 @@ export async function pickWorker(
     } else {
       live = live.filter((w) => w.pool !== "lab");
     }
-    // When GPU2 (genPreferred) is up, pin user photo/video there so primary can train.
-    if (pool === "photo" || pool === "video" || pool === "any") {
-      const preferredKeys = FLEET_EXTRA_GPUS.filter(
-        (g) => g.genPreferred && fleetConfigured(g),
-      ).map((g) => g.key);
-      if (preferredKeys.length) {
-        const preferredLive = live.filter((w) => preferredKeys.includes(w.key));
-        if (preferredLive.length) live = preferredLive;
-      }
-    }
+    // Soft-prefer GPU2 (genPreferred): keep primary in the candidate set so we
+    // spill when preferred is busy — hard-pin used to stack every job on GPU2
+    // while primary sat idle (stale timeouts / photo queue).
+    const preferredKeys =
+      pool === "photo" || pool === "video" || pool === "any"
+        ? FLEET_EXTRA_GPUS.filter((g) => g.genPreferred && fleetConfigured(g)).map(
+            (g) => g.key,
+          )
+        : ([] as string[]);
     if (allow?.length) {
       live = live.filter((w) => allow.includes(w.provider.toLowerCase()));
     }
@@ -388,10 +387,7 @@ export async function pickWorker(
         );
         if (burstH3) return burstH3;
       }
-      if (pool === "photo" || pool === "video" || pool === "any") {
-        const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(
-          (g) => g.key,
-        );
+      if (preferredKeys.length) {
         const prefer = pool_.find((w) => preferredKeys.includes(w.key));
         if (prefer) return prefer;
       }
@@ -404,7 +400,13 @@ export async function pickWorker(
       return pool_[0]!;
     };
 
-    if (free.length) return pickFrom(free);
+    if (free.length) {
+      // Prefer a free genPreferred card; otherwise spill to any free worker.
+      const freePreferred = preferredKeys.length
+        ? free.filter((w) => preferredKeys.includes(w.key))
+        : [];
+      return pickFrom(freePreferred.length ? freePreferred : free);
+    }
 
     const restricted = Boolean(allow?.length || deny.length);
     // providers:["metalnode"] (undress): wait for Metalnode — do not spill to RunPod.
@@ -418,7 +420,9 @@ export async function pickWorker(
 
     // Single live GPU: must share (serial via slots). Multi-GPU: wait for a free card.
     if (live.length <= 1 || Date.now() >= deadline) {
-      return pickFrom(live);
+      // Prefer a card that is not already holding a ledger job (avoid stacking).
+      const notHeld = live.filter((w) => !w.currentJobId);
+      return pickFrom(notHeld.length ? notHeld : live);
     }
     await new Promise((r) => setTimeout(r, 1_200));
   }

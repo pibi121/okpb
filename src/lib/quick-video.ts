@@ -1002,59 +1002,75 @@ export function enqueueQuickVideoJob(
   activeQuickVideoJobs.add(runId);
   const useOwnerLab = Boolean(opts?.useOwnerLab);
   void (async () => {
-    const { ownerLabPoolOr } = await import("@/lib/gpu/fleet");
-    const pool = useOwnerLab ? ownerLabPoolOr("video") : "video";
-    void enqueueGpuJob(
-      async () => {
-        try {
-          const run = await prisma.quickVideoRun.findFirst({
-            where: { id: runId, userId },
-            select: { galleryItemId: true },
-          });
-          if (run?.galleryItemId) {
-            const item = await prisma.galleryItem.findUnique({
-              where: { id: run.galleryItemId },
+    try {
+      const already = await prisma.gpuJob.findFirst({
+        where: {
+          refType: "quickVideoRun",
+          refId: runId,
+          status: { in: ["assigned", "running"] },
+        },
+        select: { id: true },
+      });
+      if (already) {
+        console.log(
+          `[peach] skip quick-video enqueue ${runId} — job ${already.id} already running`,
+        );
+        return;
+      }
+      const { ownerLabPoolOr } = await import("@/lib/gpu/fleet");
+      const pool = useOwnerLab ? ownerLabPoolOr("video") : "video";
+      await enqueueGpuJob(
+        async () => {
+          try {
+            const run = await prisma.quickVideoRun.findFirst({
+              where: { id: runId, userId },
+              select: { galleryItemId: true },
             });
-            let meta: Record<string, unknown> = {};
-            try {
-              meta = JSON.parse(item?.metaJson || "{}") as Record<
-                string,
-                unknown
-              >;
-            } catch {
-              /* ignore */
+            if (run?.galleryItemId) {
+              const item = await prisma.galleryItem.findUnique({
+                where: { id: run.galleryItemId },
+              });
+              let meta: Record<string, unknown> = {};
+              try {
+                meta = JSON.parse(item?.metaJson || "{}") as Record<
+                  string,
+                  unknown
+                >;
+              } catch {
+                /* ignore */
+              }
+              await prisma.galleryItem.update({
+                where: { id: run.galleryItemId },
+                data: {
+                  metaJson: JSON.stringify({
+                    ...meta,
+                    gpuEnqueuedAt: new Date().toISOString(),
+                    ...(useOwnerLab ? { ownerLab: true } : {}),
+                  }),
+                },
+              });
             }
-            await prisma.galleryItem.update({
-              where: { id: run.galleryItemId },
-              data: {
-                metaJson: JSON.stringify({
-                  ...meta,
-                  gpuEnqueuedAt: new Date().toISOString(),
-                  ...(useOwnerLab ? { ownerLab: true } : {}),
-                }),
-              },
-            });
+            await runQuickVideoJob(runId, userId);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error("[peach] quick video failed:", msg);
+            await markQuickVideoRunError(runId, userId, msg);
           }
-          await runQuickVideoJob(runId, userId);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          console.error("[peach] quick video failed:", msg);
-          await markQuickVideoRunError(runId, userId, msg);
-        } finally {
-          activeQuickVideoJobs.delete(runId);
-        }
-      },
-      {
-        kind: "video",
-        pool,
-        userId,
-        refType: "quickVideoRun",
-        refId: runId,
-        title: `quick-video ${runId}`,
-        providers: useOwnerLab ? ["metalnode"] : undefined,
-        meta: useOwnerLab ? { ownerLab: true } : undefined,
-      },
-    );
+        },
+        {
+          kind: "video",
+          pool,
+          userId,
+          refType: "quickVideoRun",
+          refId: runId,
+          title: `quick-video ${runId}`,
+          providers: useOwnerLab ? ["metalnode"] : undefined,
+          meta: useOwnerLab ? { ownerLab: true } : undefined,
+        },
+      );
+    } finally {
+      activeQuickVideoJobs.delete(runId);
+    }
   })();
 }
 

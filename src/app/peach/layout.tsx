@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { PeachSidebar } from "@/components/peach-sidebar";
@@ -12,6 +13,7 @@ export default async function PeachLayout({
 }: {
   children: React.ReactNode;
 }) {
+  await connection();
   const stub = await maintenanceStubText();
   if (stub) {
     return <p className="px-6 py-16 text-center text-base text-foreground">{stub}</p>;

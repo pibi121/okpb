@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { connection } from "next/server";
 import { maintenanceStubText } from "@/lib/ops/maintenance-stub";
 import "./miniapp.css";
 
@@ -17,6 +18,7 @@ export const viewport: Viewport = {
 };
 
 export default async function TgRootLayout({ children }: { children: React.ReactNode }) {
+  await connection();
   const stub = await maintenanceStubText();
   return (
     <>

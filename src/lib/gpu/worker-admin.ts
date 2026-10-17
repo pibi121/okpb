@@ -150,6 +150,10 @@ export async function deleteManualWorker(id: string) {
   return { ok: true, message: `Карта «${row.label}» удалена` };
 }
 
+/** Live waiter heartbeat. A long film may still be rendering past the 60 min hold. */
+const STALE_VIDEO_LIVE_BEAT_MS = 90_000;
+const STALE_VIDEO_LIVE_CAP_MS = 120 * 60_000;
+
 /** Soft budgets by pool — fail hung ledger rows so кабинет не врёт «в работе 13 мин». */
 function staleRunLimitMs(kind: string, pool: string) {
   const k = `${kind} ${pool}`.toLowerCase();
@@ -203,9 +207,25 @@ export async function sweepStaleGpuJobs(): Promise<number> {
 
     if (job.refType === "quickVideoRun" && job.refId) {
       try {
-        const { tryRecoverQuickVideoRunById } = await import(
-          "@/lib/quick-video"
-        );
+        let jobMeta: Record<string, unknown> = {};
+        try {
+          jobMeta = JSON.parse(job.metaJson || "{}") as Record<string, unknown>;
+        } catch {
+          jobMeta = {};
+        }
+        const beatRaw = jobMeta.lastBeatAt;
+        const beatAt =
+          typeof beatRaw === "string" ? Date.parse(beatRaw) : Number.NaN;
+        const beatFresh =
+          Number.isFinite(beatAt) && now - beatAt < STALE_VIDEO_LIVE_BEAT_MS;
+        if (beatFresh && now - anchor < STALE_VIDEO_LIVE_CAP_MS) {
+          continue;
+        }
+
+        const {
+          tryRecoverQuickVideoRunById,
+          requeueQuickVideoAfterHeal,
+        } = await import("@/lib/quick-video");
         const recovered = await tryRecoverQuickVideoRunById(
           job.refId,
           job.userId,
@@ -232,6 +252,45 @@ export async function sweepStaleGpuJobs(): Promise<number> {
               .catch(() => undefined);
           }
           continue;
+        }
+
+        const healRequeue = Number(jobMeta.healRequeue || 0) || 0;
+        let userId = job.userId;
+        if (!userId) {
+          const run = await prisma.quickVideoRun.findUnique({
+            where: { id: job.refId },
+            select: { userId: true },
+          });
+          userId = run?.userId ?? null;
+        }
+        if (healRequeue < 1 && userId) {
+          await prisma.gpuJob.update({
+            where: { id: job.id },
+            data: {
+              status: "error",
+              stage: "error",
+              error: `stale requeue after ${mins} min`,
+              finishedAt: new Date(),
+              runMs: job.startedAt
+                ? Math.max(0, now - job.startedAt.getTime())
+                : null,
+              metaJson: JSON.stringify({
+                ...jobMeta,
+                healRequeue: 1,
+                healRequeuedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          if (job.workerId) {
+            await prisma.gpuWorker
+              .update({
+                where: { id: job.workerId },
+                data: { currentJobId: null, status: "online" },
+              })
+              .catch(() => undefined);
+          }
+          const requeued = await requeueQuickVideoAfterHeal(job.refId, userId);
+          if (requeued) continue;
         }
       } catch {
         /* fall through to fail */

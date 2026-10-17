@@ -973,8 +973,8 @@ export async function requeueQuickVideoAfterHeal(
     data: { status: "busy", error: null, updatedAt: new Date() },
   });
 
+  let meta: Record<string, unknown> = {};
   if (run.galleryItemId) {
-    let meta: Record<string, unknown> = {};
     try {
       const item = await prisma.galleryItem.findUnique({
         where: { id: run.galleryItemId },
@@ -984,26 +984,32 @@ export async function requeueQuickVideoAfterHeal(
     } catch {
       meta = {};
     }
+    meta = {
+      ...meta,
+      status: "pending",
+      error: undefined,
+      orphanHealedAt: undefined,
+      orphanReason: undefined,
+      healRequeue: (Number(meta.healRequeue) || 0) + 1,
+      healRequeuedAt: new Date().toISOString(),
+      quickVideoRunId: runId,
+    };
     await prisma.galleryItem.update({
       where: { id: run.galleryItemId },
       data: {
         resultUrl: GALLERY_PLACEHOLDER_URL,
-        metaJson: JSON.stringify({
-          ...meta,
-          status: "pending",
-          error: undefined,
-          orphanHealedAt: undefined,
-          orphanReason: undefined,
-          healRequeuedAt: new Date().toISOString(),
-          quickVideoRunId: runId,
-        }),
+        metaJson: JSON.stringify(meta),
       },
     });
+  } else {
+    meta = { healRequeue: 1 };
   }
 
-  enqueueQuickVideoJob(runId, userId, {
+  const started = enqueueQuickVideoJob(runId, userId, {
     useOwnerLab: Boolean(meta.ownerLab),
+    healRequeue: Number(meta.healRequeue) || 1,
   });
+  if (!started) return false;
   console.log(`[peach] healer requeued quick-video ${runId}`);
   return true;
 }
@@ -1127,27 +1133,30 @@ const activeQuickVideoJobs = new Set<string>();
 export function enqueueQuickVideoJob(
   runId: string,
   userId: string,
-  opts?: { useOwnerLab?: boolean },
-) {
-  if (activeQuickVideoJobs.has(runId)) return;
+  opts?: { useOwnerLab?: boolean; healRequeue?: number },
+): boolean {
+  if (activeQuickVideoJobs.has(runId)) return false;
   const useOwnerLab = Boolean(opts?.useOwnerLab);
+  const healRequeue = Math.max(0, Number(opts?.healRequeue) || 0);
   if (!useOwnerLab) {
     void (async () => {
       const { isVideoFrozen } = await import("@/lib/ops/video-freeze");
       if (await isVideoFrozen()) return;
       activeQuickVideoJobs.add(runId);
-      await startQueuedQuickVideo(runId, userId, useOwnerLab);
+      await startQueuedQuickVideo(runId, userId, useOwnerLab, healRequeue);
     })();
-    return;
+    return true;
   }
   activeQuickVideoJobs.add(runId);
-  void startQueuedQuickVideo(runId, userId, useOwnerLab);
+  void startQueuedQuickVideo(runId, userId, useOwnerLab, healRequeue);
+  return true;
 }
 
 async function startQueuedQuickVideo(
   runId: string,
   userId: string,
   useOwnerLab: boolean,
+  healRequeue = 0,
 ) {
   void (async () => {
     const { ownerLabPoolOr } = await import("@/lib/gpu/fleet");
@@ -1208,7 +1217,10 @@ async function startQueuedQuickVideo(
         refId: runId,
         title: `quick-video ${runId}`,
         providers: useOwnerLab ? ["metalnode"] : undefined,
-        meta: useOwnerLab ? { ownerLab: true } : undefined,
+        meta: {
+          ...(useOwnerLab ? { ownerLab: true } : {}),
+          ...(healRequeue > 0 ? { healRequeue } : {}),
+        },
       },
     );
   })();

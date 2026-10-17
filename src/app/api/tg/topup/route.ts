@@ -58,19 +58,28 @@ export async function POST(req: Request) {
   const method = String(body.method || "") as TopupPaymentMethodId;
   if (!isActiveTopupMethod(method)) {
     return NextResponse.json(
-      { error: "bad_method", message: "Unknown payment method" },
+      {
+        error: "bad_method",
+        message: "Этот способ оплаты сейчас недоступен. Выбери другой.",
+      },
       { status: 400 },
     );
   }
   if (isCasheraTopupMethod(method) && !casheraConfigured()) {
     return NextResponse.json(
-      { error: "payments_offline", message: "Cashera keys not configured" },
+      {
+        error: "payments_offline",
+        message: "Этот способ оплаты сейчас недоступен. Выбери другой.",
+      },
       { status: 503 },
     );
   }
   if (isStreampayMethodId(method) && !streampayConfigured()) {
     return NextResponse.json(
-      { error: "payments_offline", message: "StreamPay keys not configured" },
+      {
+        error: "payments_offline",
+        message: "Этот способ оплаты сейчас недоступен. Выбери другой.",
+      },
       { status: 503 },
     );
   }
@@ -111,8 +120,16 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[api/tg/topup]", e);
+    const locale = body.locale === "en" ? "en" : "ru";
     return NextResponse.json(
-      { error: userFacingTgError(e, "payment_failed") },
+      {
+        error: userFacingTgError(
+          e,
+          locale === "en"
+            ? "Could not create payment. Try again in a minute."
+            : "Не удалось создать платёж. Попробуй ещё раз через минуту.",
+        ),
+      },
       { status: 502 },
     );
   }

@@ -14,6 +14,7 @@ import {
   tgSendVideo,
 } from "@/lib/tg/telegram-api";
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
+import { userFacingFailure } from "@/lib/tg/user-facing-error";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
 import {
   debitFunnelBalance,
@@ -692,8 +693,14 @@ async function runFunnelV2VideoGen(opts: {
       await tgSendMessage(opts.chatId, e.message);
       return;
     }
-    const msg = e instanceof Error ? e.message : String(e);
-    await tgSendMessage(opts.chatId, `Не удалось запустить видео: ${msg}`);
+    await tgSendMessage(
+      opts.chatId,
+      userFacingFailure(
+        e,
+        "Не удалось запустить видео. Попробуй ещё раз.",
+        "Не удалось запустить видео: ",
+      ),
+    );
   }
 }
 

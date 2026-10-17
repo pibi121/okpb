@@ -8,6 +8,7 @@ import { getPhotoTemplate } from "@/lib/photo-template";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import { limits } from "@/lib/rate-limit";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 async function tgPlatformUserId(userId: string): Promise<string | null> {
   const acc = await prisma.platformAccount.findFirst({
@@ -168,6 +169,14 @@ export async function POST(req: Request) {
         }),
       )
       .catch(() => undefined);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: userFacingTgError(
+          msg,
+          "Не получилось запустить. Попробуй ещё раз.",
+        ),
+      },
+      { status: 500 },
+    );
   }
 }

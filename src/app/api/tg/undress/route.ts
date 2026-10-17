@@ -9,6 +9,7 @@ import {
 import { startTgUndressGeneration } from "@/lib/tg/undress-service";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { limits } from "@/lib/rate-limit";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 async function tgPlatformUserId(userId: string): Promise<string | null> {
   const acc = await prisma.platformAccount.findFirst({
@@ -137,6 +138,14 @@ export async function POST(req: Request) {
     }
     const msg = e instanceof Error ? e.message : String(e);
     const status = /Недостаточно|free_race/i.test(msg) ? 402 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      {
+        error: userFacingTgError(
+          msg,
+          "Не удалось начать. Попробуй ещё раз.",
+        ),
+      },
+      { status },
+    );
   }
 }

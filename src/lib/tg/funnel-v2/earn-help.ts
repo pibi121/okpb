@@ -9,6 +9,7 @@ import { tgRulesArticleUrl, tgAffiliateAttributionNote } from "@/lib/tg/rules";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { tgSupportContact } from "@/lib/tg/support";
 import { setTgSession } from "@/lib/tg/session";
+import { userFacingFailure } from "@/lib/tg/user-facing-error";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
 
 export async function showHelpInPlaceProxy(chatId: number, locale: TgLocale) {
@@ -200,8 +201,14 @@ export async function handleFunnelV2EarnNewLabel(opts: {
       },
     );
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await tgSendMessage(opts.chatId, `Не удалось создать: ${msg}`);
+    await tgSendMessage(
+      opts.chatId,
+      userFacingFailure(
+        e,
+        "Не удалось создать ссылку. Попробуй ещё раз.",
+        "Не удалось создать: ",
+      ),
+    );
   }
   void opts.locale;
 }

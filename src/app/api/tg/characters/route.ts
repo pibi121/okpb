@@ -13,6 +13,7 @@ import { startLoraTrainingForUser } from "@/lib/tg/lora-onboard";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { hasRealCharacterLora } from "@/lib/tg/studio-cast";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 /** Create personal character (LoRA candidate). */
 export async function POST(req: Request) {
@@ -103,8 +104,14 @@ export async function PUT(req: Request) {
   }
 
   if (!added) {
+    const raw = errors[0] || "upload failed";
     return NextResponse.json(
-      { error: errors[0] || "upload failed", errors },
+      {
+        error: userFacingTgError(
+          raw,
+          "Не удалось загрузить фото. Пришли другое.",
+        ),
+      },
       { status: 400 },
     );
   }
@@ -159,10 +166,12 @@ export async function PATCH(req: Request) {
           : 400;
     const msg =
       result.error === "train_start_failed"
-        ? result.detail ||
-          (locale === "en"
-            ? "Training failed to start — try again"
-            : "Не удалось запустить обучение — попробуй ещё раз")
+        ? userFacingTgError(
+            result.detail,
+            locale === "en"
+              ? "Training failed to start — try again"
+              : "Не удалось запустить обучение — попробуй ещё раз",
+          )
         : result.error === "need_photos"
           ? locale === "en"
             ? `Need more photos (have ${result.photoCount ?? 0})`
@@ -171,7 +180,21 @@ export async function PATCH(req: Request) {
             ? locale === "en"
               ? "Already trained"
               : "Уже обучен"
-            : result.error;
+            : result.error === "insufficient"
+              ? locale === "en"
+                ? `Not enough balance (need ${result.price ?? "?"}₽, you have ${result.balance ?? 0}₽).`
+                : `Недостаточно средств (нужно ${result.price ?? "?"}₽, на балансе ${result.balance ?? 0}₽).`
+              : result.error === "debit_failed"
+                ? locale === "en"
+                  ? "Couldn't charge the balance. Try again."
+                  : "Не удалось списать с баланса. Попробуй ещё раз."
+                : result.error === "not_found"
+                  ? locale === "en"
+                    ? "Character not found."
+                    : "Персонаж не найден."
+                  : locale === "en"
+                    ? "Couldn't start training. Try again."
+                    : "Не удалось запустить обучение. Попробуй ещё раз.";
     if (
       result.error === "train_start_failed" ||
       result.error === "debit_failed"
@@ -180,7 +203,7 @@ export async function PATCH(req: Request) {
         .then(({ reportOpsError }) =>
           reportOpsError({
             kind: result.error === "debit_failed" ? "payment" : "lora",
-            message: String(msg || result.detail || result.error),
+            message: String(result.detail || result.error),
             userId,
             stage: "miniapp_lora_train",
             refType: "character",

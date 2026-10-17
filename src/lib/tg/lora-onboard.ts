@@ -13,6 +13,7 @@ import { enqueueTgOutbox } from "@/lib/tg/session";
 import type { TgLocale } from "@/lib/tg/i18n";
 import { t, tFormat } from "@/lib/tg/i18n";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
+import { isUserReadableCopy } from "@/lib/tg/user-facing-error";
 import { GEN_CB, OB_CB } from "@/lib/tg/generation-flow";
 import { tgMiniAppUrl } from "@/lib/tg/miniapp-url";
 import { TG_MIN_LORA_PHOTOS } from "@/lib/tg/character-service";
@@ -298,11 +299,16 @@ export async function startLoraTrainingForUser(opts: {
       where: { id: opts.characterId },
       data: { loraStatus: "lookbook_ready" },
     });
-    const detail = (kicked.detail || "").slice(0, 180);
+    const detail = (kicked.detail || "").trim();
+    const human = isUserReadableCopy(detail);
     const failText =
       opts.locale === "en"
-        ? `Training failed to start${detail ? `: ${detail}` : ""}. Balance refunded — try again.`
-        : `Не удалось запустить обучение${detail ? `: ${detail}` : ""}. Средства возвращены — попробуй ещё раз.`;
+        ? human
+          ? `Training failed to start: ${detail.slice(0, 180)}. Balance refunded — try again.`
+          : "Training failed to start. Balance refunded — try again."
+        : human
+          ? `Не удалось запустить обучение: ${detail.slice(0, 180)}. Средства возвращены — попробуй ещё раз.`
+          : "Не удалось запустить обучение. Средства возвращены — попробуй ещё раз.";
     if (opts.chatId) {
       await tgSendMessage(opts.chatId, failText);
     } else if (platformUserId) {

@@ -1304,6 +1304,11 @@ PlaVER`,
 
   lb_back_btn: { ru: "◀️ К персонажу", en: "◀️ Back to character" },
 
+  template_not_found: {
+    ru: "Шаблон не найден. Открой список ещё раз.",
+    en: "Template not found. Open the list again.",
+  },
+
   templates_empty: {
     ru: "Шаблоны скоро появятся. Пока открой маркетплейс 👇",
     en: "Templates coming soon. Open the marketplace 👇",

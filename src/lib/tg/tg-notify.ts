@@ -151,24 +151,30 @@ export async function notifyTelegramGenerationError(
   const acc = await hasTelegramAccount(userId);
   if (!acc) return;
   const { publicComfyErrorMessage } = await import("@/lib/comfy-client");
+  const { isUserReadableCopy, userFacingTgError } = await import(
+    "@/lib/tg/user-facing-error"
+  );
   const ourFault =
-    /ECONN|ETIMEDOUT|8188|недоступен|timeout|туннель|GPU|Comfy|Ollama|socket hang|ENOSPC|no space left|missing_node|orphan/i.test(
+    /ECONN|ETIMEDOUT|8188|недоступен|timeout|туннель|GPU|Comfy|Ollama|socket hang|ENOSPC|no space left|missing_node|orphan|CUDA|OutOfMemory|KSampler|traceback/i.test(
       message,
     );
+  const fallback =
+    acc.locale === "en"
+      ? "Something went wrong. Please try again in a minute."
+      : "Что-то пошло не так. Попробуй ещё раз чуть позже.";
   let text: string;
   if (ourFault) {
     const { formatNotice } = await import("@/lib/ops/notices");
     text =
       (await formatNotice("gen_fail_our_fault", acc.locale)) ||
       publicComfyErrorMessage(message, acc.locale);
+  } else if (isUserReadableCopy(message)) {
+    const { tFormat } = await import("@/lib/tg/i18n");
+    text = tFormat("gen_error", acc.locale, {
+      msg: userFacingTgError(message, fallback).slice(0, 180),
+    });
   } else {
-    // Never leak internal Comfy JSON / node class names to the user.
-    if (/Comfy|MiniMax|node_type|safetensors|Metalnode|RunPod/i.test(message)) {
-      text = publicComfyErrorMessage(message, acc.locale);
-    } else {
-      const { tFormat } = await import("@/lib/tg/i18n");
-      text = tFormat("gen_error", acc.locale, { msg: message.slice(0, 180) });
-    }
+    text = userFacingTgError(message, fallback);
   }
   const refunded = Math.max(0, Math.round(Number(opts?.refunded) || 0));
   if (refunded > 0) {

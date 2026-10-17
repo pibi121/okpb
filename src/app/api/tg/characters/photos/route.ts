@@ -14,6 +14,7 @@ import {
 import { prisma } from "@/lib/db";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { limits } from "@/lib/rate-limit";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -177,7 +178,12 @@ export async function POST(req: Request) {
         .catch(() => undefined);
     }
     return NextResponse.json(
-      { error: first, errors },
+      {
+        error: userFacingTgError(
+          first,
+          "Не удалось загрузить фото. Пришли другое.",
+        ),
+      },
       { status: 400 },
     );
   }
@@ -196,7 +202,13 @@ export async function POST(req: Request) {
     minPhotos: TG_MIN_LORA_PHOTOS,
     maxPhotos: TG_MAX_LORA_PHOTOS,
     trainPrice: loraTrainPeaches(),
-    ...(errors.length ? { partialErrors: errors } : {}),
+    ...(errors.length
+      ? {
+          partialErrors: errors.map((err) =>
+            userFacingTgError(err, "Не удалось загрузить фото. Пришли другое."),
+          ),
+        }
+      : {}),
   });
 }
 

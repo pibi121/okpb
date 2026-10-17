@@ -76,6 +76,11 @@ import {
   type TgLocale,
 } from "@/lib/tg/i18n";
 import {
+  isUserReadableCopy,
+  userFacingFailure,
+  userFacingTgError,
+} from "@/lib/tg/user-facing-error";
+import {
   getTgSession,
   parsePending,
   setTgSession,
@@ -1193,9 +1198,17 @@ async function beginGeneration(
           }),
         )
         .catch(() => undefined);
+      const shown = userFacingTgError(
+        msg,
+        locale === "en"
+          ? "Couldn't start. Please try again in a minute."
+          : "Не получилось запустить. Попробуй ещё раз через минуту.",
+      );
       await tgSendMessage(
         chatId,
-        tFormat("gen_error", locale, { msg }),
+        isUserReadableCopy(msg)
+          ? tFormat("gen_error", locale, { msg: shown.slice(0, 180) })
+          : shown,
         mainMenuExtra(locale),
       );
     }
@@ -1224,7 +1237,7 @@ async function handleWebAppData(
   if (data.action === "pick_cast" && data.characterId) {
     const cast = await getStudioCast(data.characterId);
     if (!cast) {
-      await tgSendMessage(chatId, tFormat("gen_error", locale, { msg: "cast not found" }));
+      await tgSendMessage(chatId, t("char_not_found", locale));
       return;
     }
     await setActiveTgCharacter(platformUserId, cast.id);
@@ -1257,7 +1270,7 @@ async function handleWebAppData(
       where: { id: data.characterId, userId },
     });
     if (!ch) {
-      await tgSendMessage(chatId, tFormat("gen_error", locale, { msg: "character not found" }));
+      await tgSendMessage(chatId, t("char_not_found", locale));
       return;
     }
     await setActiveTgCharacter(platformUserId, ch.id);
@@ -1269,7 +1282,7 @@ async function handleWebAppData(
 
   const meta = await loadTemplateMeta(userId, data.kind, data.templateId);
   if (!meta) {
-    await tgSendMessage(chatId, tFormat("gen_error", locale, { msg: "template not found" }));
+    await tgSendMessage(chatId, t("template_not_found", locale));
     return;
   }
 
@@ -1395,12 +1408,12 @@ async function handleGenerationCallback(
       useCachedIds,
     );
     if (!row) {
-      await tgSendMessage(chatId, tFormat("gen_error", locale, { msg: "template not found" }));
+      await tgSendMessage(chatId, t("template_not_found", locale));
       return true;
     }
     const meta = await loadTemplateMeta(userId, kind, row.id);
     if (!meta) {
-      await tgSendMessage(chatId, tFormat("gen_error", locale, { msg: "template not found" }));
+      await tgSendMessage(chatId, t("template_not_found", locale));
       return true;
     }
     await showTemplateConfirm(
@@ -2585,7 +2598,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           return;
         }
         const msgText = e instanceof Error ? e.message : String(e);
-        if (/Недостаточно (персиков|средств)|free_race/i.test(msgText)) {
+        if (/Недостаточно (персиков|средств)/i.test(msgText)) {
           await tgSendMessage(chatId, msgText, {
             reply_markup: {
               inline_keyboard: [
@@ -2593,12 +2606,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
               ],
             },
           });
-        } else {
+        } else if (/free_race/i.test(msgText)) {
           await tgSendMessage(
             chatId,
             locale === "en"
-              ? `Could not start undress: ${msgText}`
-              : `Не удалось начать раздевание: ${msgText}`,
+              ? "Couldn't start. Please try again."
+              : "Не получилось начать. Попробуй ещё раз.",
+          );
+        } else {
+          await tgSendMessage(
+            chatId,
+            userFacingFailure(
+              msgText,
+              locale === "en"
+                ? "Couldn't start undress. Please try again."
+                : "Не удалось начать раздевание. Попробуй ещё раз.",
+              locale === "en"
+                ? "Could not start undress: "
+                : "Не удалось начать раздевание: ",
+            ),
           );
         }
       }
@@ -2722,7 +2748,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         return;
       }
       const msgText = e instanceof Error ? e.message : String(e);
-      if (/Недостаточно (персиков|средств)|free_race/i.test(msgText)) {
+      if (/Недостаточно (персиков|средств)/i.test(msgText)) {
         await tgSendMessage(chatId, msgText, {
           reply_markup: {
             inline_keyboard: [
@@ -2730,12 +2756,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
             ],
           },
         });
-      } else {
+      } else if (/free_race/i.test(msgText)) {
         await tgSendMessage(
           chatId,
           locale === "en"
-            ? `Could not start undress: ${msgText}`
-            : `Не удалось начать раздевание: ${msgText}`,
+            ? "Couldn't start. Please try again."
+            : "Не получилось начать. Попробуй ещё раз.",
+        );
+      } else {
+        await tgSendMessage(
+          chatId,
+          userFacingFailure(
+            msgText,
+            locale === "en"
+              ? "Couldn't start undress. Please try again."
+              : "Не удалось начать раздевание. Попробуй ещё раз.",
+            locale === "en"
+              ? "Could not start undress: "
+              : "Не удалось начать раздевание: ",
+          ),
         );
       }
     }

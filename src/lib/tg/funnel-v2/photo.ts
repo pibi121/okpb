@@ -15,6 +15,7 @@ import {
   tgSendVideo,
 } from "@/lib/tg/telegram-api";
 import { setTgSession, parsePending, getTgSession } from "@/lib/tg/session";
+import { userFacingFailure, userFacingTgError } from "@/lib/tg/user-facing-error";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
 import {
   debitFunnelBalance,
@@ -521,8 +522,14 @@ export async function runFunnelV2PhotoGen(opts: {
       });
       return;
     }
-    const msg = e instanceof Error ? e.message : String(e);
-    await tgSendMessage(opts.chatId, `Не удалось загрузить фото: ${msg}`);
+    await tgSendMessage(
+      opts.chatId,
+      userFacingFailure(
+        e,
+        "Не удалось загрузить фото. Пришли его ещё раз.",
+        "Не удалось загрузить фото: ",
+      ),
+    );
     return;
   }
 
@@ -798,9 +805,13 @@ export async function runFunnelV2PhotoGen(opts: {
               }),
             },
           });
-          await tgSendMessage(chatId, `Ошибка генерации: ${msg}`).catch(
-            () => undefined,
-          );
+          await tgSendMessage(
+            chatId,
+            userFacingTgError(
+              msg,
+              "Не получилось собрать фото. Попробуй ещё раз.",
+            ),
+          ).catch(() => undefined);
         }
       },
       {
@@ -834,8 +845,14 @@ export async function runFunnelV2PhotoGen(opts: {
       await tgSendMessage(opts.chatId, e.message);
       return;
     }
-    const msg = e instanceof Error ? e.message : String(e);
-    await tgSendMessage(opts.chatId, `Не удалось запустить: ${msg}`);
+    await tgSendMessage(
+      opts.chatId,
+      userFacingFailure(
+        e,
+        "Не удалось запустить. Попробуй ещё раз.",
+        "Не удалось запустить: ",
+      ),
+    );
   }
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 import {
   createPartnerLink,
   getPartnerDashboard,
@@ -102,6 +103,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: userFacingTgError(
+          msg,
+          "Не получилось. Попробуй ещё раз.",
+        ),
+      },
+      { status: 400 },
+    );
   }
 }

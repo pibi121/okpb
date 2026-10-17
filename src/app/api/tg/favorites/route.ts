@@ -4,6 +4,7 @@ import {
   listFavoriteCastIds,
   toggleFavoriteCast,
 } from "@/lib/tg/cast-favorites";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 
 export async function GET(req: Request) {
   const userId = await resolveTgApiUserId(req);
@@ -26,6 +27,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ...result, favoriteCastIds });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: userFacingTgError(msg, "Не получилось. Попробуй ещё раз."),
+      },
+      { status: 400 },
+    );
   }
 }

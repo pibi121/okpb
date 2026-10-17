@@ -6,6 +6,7 @@ import {
   isHiddenFromTgMiniAppGallery,
 } from "@/lib/gallery-meta";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
+import { userFacingTgError } from "@/lib/tg/user-facing-error";
 import { cleanupLegacyTgGalleryItems } from "@/lib/tg/tg-gallery-cleanup";
 
 /** TG Mini App gallery — user's generated photos & videos. */
@@ -30,7 +31,14 @@ export async function GET(req: Request) {
     ) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    return NextResponse.json({ item: mapGalleryItem(row) });
+    const item = mapGalleryItem(row);
+    if (item.error) {
+      item.error = userFacingTgError(
+        item.error,
+        "Не получилось собрать. Попробуй ещё раз.",
+      );
+    }
+    return NextResponse.json({ item });
   }
 
   const items = await prisma.galleryItem.findMany({

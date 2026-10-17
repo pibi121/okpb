@@ -7,6 +7,7 @@ import type { TgLocale } from "@/lib/tg/i18n";
 import { videoPeachesForSec } from "@/lib/tg-pricing";
 import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
 import { tgSendMessage } from "@/lib/tg/telegram-api";
+import { userFacingFailure, userFacingTgError } from "@/lib/tg/user-facing-error";
 import { setTgSession } from "@/lib/tg/session";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
 import {
@@ -268,8 +269,14 @@ export async function startFunnelV2Animate(opts: {
       await tgSendMessage(opts.chatId, e.message);
       return;
     }
-    const msg = e instanceof Error ? e.message : String(e);
-    await tgSendMessage(opts.chatId, `Не удалось запустить оживление: ${msg}`);
+    await tgSendMessage(
+      opts.chatId,
+      userFacingFailure(
+        e,
+        "Не удалось запустить оживление. Попробуй ещё раз.",
+        "Не удалось запустить оживление: ",
+      ),
+    );
   }
 }
 
@@ -478,9 +485,13 @@ export async function handleFunnelV2EditText(opts: {
             }),
           },
         });
-        await tgSendMessage(chatId, `Ошибка редактирования: ${msg}`).catch(
-          () => undefined,
-        );
+        await tgSendMessage(
+          chatId,
+          userFacingTgError(
+            msg,
+            "Не получилось отредактировать фото. Попробуй ещё раз.",
+          ),
+        ).catch(() => undefined);
       }
     },
     {

@@ -861,6 +861,56 @@ function isHeavyComfyFailure(err: unknown): boolean {
   );
 }
 
+function isCudaOom(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /OutOfMemory|CUDA out of memory|ran out of memory/i.test(msg);
+}
+
+/** Below this, the next sampler alloc dies even if the new job itself is small. */
+const MIN_VRAM_FREE_BYTES = 4 * 1024 * 1024 * 1024;
+
+async function comfyVramFreeBytes(): Promise<number | null> {
+  try {
+    const res = await comfyRequest("/system_stats", undefined, 15_000);
+    if (res.status < 200 || res.status >= 300) return null;
+    const data = JSON.parse(res.body.toString("utf8") || "{}") as {
+      devices?: Array<{ vram_free?: number }>;
+    };
+    // vram_free is CUDA free plus cache that can be reused.
+    // torch_vram_free is only the unused slice inside the reserved pool and
+    // stays tiny even when the card has tens of GB free — do not use it.
+    const free = data.devices
+      ?.map((d) => d.vram_free)
+      .find((n) => typeof n === "number" && Number.isFinite(n) && n >= 0);
+    return typeof free === "number" ? free : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Previous job often leaves weights cached. CUDA then reports a few MiB free
+ * while this process barely holds anything, and the next 96 MiB alloc dies.
+ * Unload only when the queue is idle so a neighbor's run is not killed.
+ * Do not requeue until free memory actually comes back.
+ */
+async function ensureVramHeadroom(): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const free = await comfyVramFreeBytes();
+    if (free == null || free >= MIN_VRAM_FREE_BYTES) return;
+    console.warn(
+      `[peach] vram free ${Math.round(free / (1024 * 1024))} MiB before queue, unloading`,
+    );
+    const freed = await comfyFreeMemory();
+    const deadline = Date.now() + (freed ? 18_000 : 8_000);
+    while (Date.now() < deadline) {
+      await sleep(3_000);
+      const again = await comfyVramFreeBytes();
+      if (again == null || again >= MIN_VRAM_FREE_BYTES) return;
+    }
+  }
+}
+
 export async function runComfyAndDownload(
   graph: Record<string, unknown>,
   clientId = "peachbitch",
@@ -871,8 +921,10 @@ export async function runComfyAndDownload(
   let lastErr: unknown;
   let loraRecoveries = 0;
   let heavyRecoveries = 0;
+  let oomRecoveries = 0;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
+      await ensureVramHeadroom();
       if (!promptId) {
         promptId = await withTransientRetry("queue", () =>
           comfyQueuePrompt(graph, clientId),
@@ -891,8 +943,21 @@ export async function runComfyAndDownload(
         promptId = null;
         continue;
       }
-      // Timeout / blank job error / OOM: recover safely, then re-queue once.
-      if (isHeavyComfyFailure(e) && heavyRecoveries < 1) {
+      // OOM: drop the cached weights, then try again. One pass is not enough
+      // when the card stays full after the first /free.
+      if (isCudaOom(e) && oomRecoveries < 2) {
+        oomRecoveries += 1;
+        console.warn(
+          `[peach] comfy oom retry ${oomRecoveries}/2:`,
+          e instanceof Error ? e.message.slice(0, 180) : e,
+        );
+        await safeRecoverAfterHeavyFailure(promptId);
+        promptId = null;
+        await ensureComfyReady(20, 1000);
+        continue;
+      }
+      // Timeout / blank job error: recover safely, then re-queue once.
+      if (!isCudaOom(e) && isHeavyComfyFailure(e) && heavyRecoveries < 1) {
         heavyRecoveries += 1;
         console.warn(
           `[peach] comfy heavy retry after:`,
@@ -946,8 +1011,10 @@ export async function runComfyJob(
   let promptId: string | null = null;
   let lastErr: unknown;
   let heavyRecoveries = 0;
+  let oomRecoveries = 0;
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
+      await ensureVramHeadroom();
       if (!promptId) {
         promptId = await withTransientRetry("queue", () =>
           comfyQueuePrompt(graph, clientId, definitions),
@@ -974,7 +1041,18 @@ export async function runComfyJob(
         await ensureComfyNodeTypes(requiredNodes, 20, 3000).catch(() => undefined);
         continue;
       }
-      if (isHeavyComfyFailure(e) && heavyRecoveries < 1) {
+      if (isCudaOom(e) && oomRecoveries < 2) {
+        oomRecoveries += 1;
+        console.warn(
+          `[peach] comfy job oom retry ${oomRecoveries}/2:`,
+          msg.slice(0, 180),
+        );
+        await safeRecoverAfterHeavyFailure(promptId);
+        promptId = null;
+        await ensureComfyReady(20, 1000);
+        continue;
+      }
+      if (!isCudaOom(e) && isHeavyComfyFailure(e) && heavyRecoveries < 1) {
         heavyRecoveries += 1;
         console.warn(
           `[peach] comfy job heavy retry after:`,
@@ -1039,24 +1117,27 @@ export async function comfyFreeMemory(opts?: {
       return false;
     }
   }
-  try {
-    await comfyRequest(
-      "/free",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unload_models: true, free_memory: true }),
-      },
-      60_000,
-    );
-    return true;
-  } catch (e) {
-    console.warn(
-      "[peach] comfy /free failed:",
-      e instanceof Error ? e.message.slice(0, 160) : e,
-    );
-    return false;
+  const body = JSON.stringify({ unload_models: true, free_memory: true });
+  for (const path of ["/free", "/api/free"]) {
+    try {
+      const res = await comfyRequest(
+        path,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        },
+        60_000,
+      );
+      if (res.status >= 200 && res.status < 300) return true;
+    } catch (e) {
+      console.warn(
+        "[peach] comfy free failed:",
+        e instanceof Error ? e.message.slice(0, 160) : e,
+      );
+    }
   }
+  return false;
 }
 
 export async function comfyInterrupt(): Promise<void> {

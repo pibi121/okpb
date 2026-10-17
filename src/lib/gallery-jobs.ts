@@ -313,9 +313,46 @@ async function runPhotoJob(itemId: string, userId: string, opts: PhotoPayload) {
   }
   const msg = lastErr instanceof Error ? lastErr.message : "ошибка генерации";
   console.error("[peach] photo job failed:", lastErr);
-  await markError(itemId, userId, msg, { jobAction: "photo" });
+  let refunded = 0;
+  try {
+    const prev = await prisma.galleryItem.findFirst({
+      where: { id: itemId, userId },
+      select: { metaJson: true },
+    });
+    const prevMeta = JSON.parse(prev?.metaJson || "{}") as {
+      chargedPeaches?: number;
+      refundedPeaches?: number;
+      funnelV2?: boolean;
+      source?: string;
+    };
+    const charged = Number(prevMeta.chargedPeaches) || 0;
+    const already = Number(prevMeta.refundedPeaches) || 0;
+    if (charged > 0 && !already) {
+      const funnel =
+        prevMeta.funnelV2 === true || prevMeta.source === "funnel_v2";
+      if (funnel) {
+        const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
+        await creditFunnelBalance(userId, charged);
+      } else {
+        const { creditPeaches } = await import("@/lib/tg/wallet");
+        await creditPeaches(userId, charged, "tg_photo_refund", {
+          galleryItemId: itemId,
+          reason: "generation_failed",
+        });
+      }
+      refunded = charged;
+    }
+  } catch (err) {
+    console.error("[peach] photo refund failed:", err);
+  }
+  await markError(itemId, userId, msg, {
+    jobAction: "photo",
+    ...(refunded > 0 ? { refundedPeaches: refunded } : {}),
+  });
   const { notifyTelegramGenerationError } = await import("@/lib/tg/tg-notify");
-  await notifyTelegramGenerationError(userId, msg).catch(() => undefined);
+  await notifyTelegramGenerationError(userId, msg, { refunded }).catch(
+    () => undefined,
+  );
 }
 
 async function runClipJob(itemId: string, userId: string, opts: ClipPayload) {

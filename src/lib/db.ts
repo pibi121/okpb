@@ -57,6 +57,11 @@ function getPrisma(): PrismaClient {
 
 export const prisma = getPrisma();
 
+/** Prod cutover: Postgres URL. File URL stays the SQLite path. */
+export function isFileDatabase(): boolean {
+  return (process.env.DATABASE_URL || "").startsWith("file:");
+}
+
 /** SQLite / Prisma engine wedged for a moment. Safe to retry the same read. */
 export function isTransientDbError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err || "");
@@ -66,7 +71,11 @@ export function isTransientDbError(err: unknown): boolean {
       : "";
   return (
     code === "P1008" ||
-    /Socket timeout|database is locked|SQLITE_BUSY|Timeout exceeded/i.test(msg)
+    code === "P1001" ||
+    code === "P1017" ||
+    /Socket timeout|database is locked|SQLITE_BUSY|Timeout exceeded|Connection terminated|ECONNRESET|ECONNREFUSED/i.test(
+      msg,
+    )
   );
 }
 

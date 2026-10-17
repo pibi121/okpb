@@ -7,7 +7,13 @@ import fs from "fs";
 import { ensureDataDirs } from "../src/lib/paths";
 
 ensureDataDirs();
-console.log("[railway] data dirs OK:", process.env.DATABASE_URL || "(default)");
+const dbUrl = process.env.DATABASE_URL || "";
+const dbKind = dbUrl.startsWith("postgres")
+  ? "postgres"
+  : dbUrl.startsWith("file:")
+    ? "sqlite"
+    : "unset";
+console.log("[railway] data dirs OK:", dbKind);
 
 const pyCandidates = [
   process.env.AGE_GATE_PYTHON,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { prisma } from "@/lib/db";
+import { isFileDatabase, prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -97,6 +97,9 @@ export async function POST(req: NextRequest) {
 
     if (action !== "import_db") {
       return NextResponse.json({ error: "unsupported multipart action" }, { status: 400 });
+    }
+    if (!isFileDatabase()) {
+      return NextResponse.json({ error: "sqlite import disabled" }, { status: 400 });
     }
     const file = form.get("db");
     if (!(file instanceof File) || file.size < 1000) {
@@ -1608,10 +1611,12 @@ export async function POST(req: NextRequest) {
       emergency,
       targetFreeMb: emergency ? 120 : 80,
     });
-    try {
-      await prisma.$executeRawUnsafe("VACUUM");
-    } catch (e) {
-      console.error("[bootstrap] VACUUM failed", e);
+    if (isFileDatabase()) {
+      try {
+        await prisma.$executeRawUnsafe("VACUUM");
+      } catch (e) {
+        console.error("[bootstrap] VACUUM failed", e);
+      }
     }
 
     return NextResponse.json({

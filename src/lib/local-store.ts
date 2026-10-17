@@ -9,6 +9,7 @@ import {
 } from "./paths";
 import { freeGalleryDisk } from "@/lib/disk-hygiene";
 import { stripMediaMetadata } from "@/lib/strip-media-metadata";
+import { isFileDatabase } from "@/lib/db";
 
 export function saveGalleryBinary(
   userId: string,
@@ -77,6 +78,7 @@ let lastBackupAt = 0;
  * copying prod.db on every call locks Railway SQLite for seconds and cascades P1008.
  */
 export function backupDatabase(reason = "auto"): string | null {
+  if (!isFileDatabase()) return null;
   if (backupInFlight) return null;
   const now = Date.now();
   if (lastBackupAt > 0 && now - lastBackupAt < BACKUP_MIN_INTERVAL_MS) {

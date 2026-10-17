@@ -83,7 +83,56 @@ const DEMO_PARTNER_BY_TG: Record<string, DemoPartnerRow> = {
       },
     ],
   },
-};
+  /**
+   * produsai — main link stays real (no slug overlay).
+   * Extra links: demo counters from @dmitriy_9118 avg rates
+   * (click→start ≈100%, start→pay ≈15.6%, avg check ≈354₽, 50% share).
+   * Totals = real main + demo links.
+   */
+  "6919297903": {
+    referrals: 421,
+    purchases: 52,
+    purchaseGrossPeaches: 20148,
+    commissionPeaches: 10074,
+    balancePeaches: 10074,
+    totalEarnedPeaches: 10074,
+    commissionPct: 50,
+    links: [
+      {
+        slug: "threads_1",
+        clicks: 70,
+        signups: 70,
+        purchases: 11,
+        purchaseGrossPeaches: 3894,
+        commissionPeaches: 1947,
+      },
+      {
+        slug: "yutsh",
+        clicks: 147,
+        signups: 147,
+        purchases: 23,
+        purchaseGrossPeaches: 8142,
+        commissionPeaches: 4071,
+      },
+      {
+        slug: "nk",
+        clicks: 32,
+        signups: 32,
+        purchases: 5,
+        purchaseGrossPeaches: 1770,
+        commissionPeaches: 885,
+      },
+      {
+        slug: "posev_1",
+        clicks: 0,
+        signups: 0,
+        purchases: 0,
+        purchaseGrossPeaches: 0,
+        commissionPeaches: 0,
+      },
+    ],
+  },
+}
 
 export function parsePartnerRefPayload(payload: string | undefined): {
   code?: string;

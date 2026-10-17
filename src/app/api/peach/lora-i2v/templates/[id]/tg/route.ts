@@ -6,6 +6,7 @@ import {
   unpublishLoraI2vTemplateFromTg,
   updateLoraI2vTemplateTgMeta,
 } from "@/lib/lora-i2v-template";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,9 @@ const patchSchema = z.object({
 });
 
 export async function POST(req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await ctx.params;
@@ -40,6 +44,9 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await ctx.params;
@@ -59,6 +66,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await ctx.params;

@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { deleteTemplatePack, getOwnedPack, toPublicPack, updateTemplatePack } from "@/lib/template-pack";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await params;
@@ -26,6 +30,9 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await params;
@@ -41,6 +48,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await params;

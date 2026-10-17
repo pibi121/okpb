@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { limits } from "@/lib/rate-limit";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -48,6 +49,9 @@ async function assertOwnedDraft(userId: string, characterId: string) {
 
 /** List training photos for Mini App grid. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -82,6 +86,9 @@ export async function GET(req: Request) {
  * Avoids Telegram WebView FormData / multipart failures.
  */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -214,6 +221,9 @@ export async function POST(req: Request) {
 
 /** Delete one training photo. */
 export async function DELETE(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

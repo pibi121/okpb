@@ -13,6 +13,7 @@ import {
   sumStoryH3ShotsSec,
 } from "@/lib/story-h3-prompt";
 import { getQuickVideoRun } from "@/lib/quick-video";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -37,6 +38,9 @@ const schema = z.object({
 
 /** Restore Lab shot rows from a previous stitch (sourceRunIds + storyShots). */
 export async function GET(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 
@@ -121,6 +125,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

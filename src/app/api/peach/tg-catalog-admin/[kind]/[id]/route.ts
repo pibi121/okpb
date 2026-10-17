@@ -29,6 +29,7 @@ import {
   parseStoryH3Template,
   serializeStoryH3Template,
 } from "@/lib/story-h3-prompt";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -74,6 +75,9 @@ async function assertLab() {
 
 /** Editable prompt payload for TG catalog modal. */
 export async function GET(_req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
 
@@ -166,6 +170,9 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
 

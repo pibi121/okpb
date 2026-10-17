@@ -3,10 +3,14 @@ import fs from "fs";
 import path from "path";
 import { requireUser } from "@/lib/auth";
 import type { VideoLegoFile } from "@/lib/prompt-lego-core";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 const FILE = path.join(process.cwd(), "presets", "prompt_lego_video.json");
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   if (!fs.existsSync(FILE)) {
@@ -17,6 +21,9 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const body = (await req.json()) as { catalog?: VideoLegoFile };

@@ -5,6 +5,7 @@ import {
   createSocialTemplate,
   listSocialTemplates,
 } from "@/lib/social-templates";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,9 @@ const createSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const publishedOnly = req.nextUrl.searchParams.get("published") === "1";
@@ -27,6 +31,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   try {

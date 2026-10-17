@@ -8,6 +8,7 @@ import {
   type QuickVideoSlotRole,
 } from "@/lib/quick-video-prompt";
 import { videoOrientationSchema } from "@/lib/video-orientation";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -118,6 +119,9 @@ function parseCustomCharacters(raw: FormDataEntryValue | null) {
 }
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const runs = await listQuickVideoRuns(user.id);
@@ -125,6 +129,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

@@ -9,9 +9,13 @@ import {
   TG_MAX_CHARACTER_PHOTOS,
 } from "@/lib/tg/character-service";
 import { prisma } from "@/lib/db";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 /** List user's saved video-ref characters (🎬). */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,6 +33,9 @@ export async function GET(req: Request) {
 
 /** Create empty video-ref character slot for uploads. */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -40,6 +47,9 @@ export async function POST(req: Request) {
 
 /** Upload identity ref photo (multipart). */
 export async function PUT(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -9,6 +9,7 @@ import {
   setRunCharacters,
   updateRunFrame,
 } from "@/lib/template-play";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -42,6 +43,9 @@ const schema = z.discriminatedUnion("action", [
 ]);
 
 export async function POST(req: NextRequest, { params }: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { runId } = await params;

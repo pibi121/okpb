@@ -29,6 +29,8 @@ function methodLabel(method: string, locale: TgLocale): string {
 }
 
 export async function tickTopupReminders(): Promise<number> {
+  const { maintenanceStubText } = await import("@/lib/ops/maintenance-stub");
+  if (await maintenanceStubText()) return 0;
   const now = Date.now();
   const oldest = new Date(now - MAX_AGE_MS);
   const firstCutoff = new Date(now - FIRST_AFTER_MS);

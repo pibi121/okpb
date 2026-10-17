@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 import { listStudioCasts } from "@/lib/tg/studio-cast";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { ensureTgBootstrap } from "@/lib/tg/tg-bootstrap";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   await ensureTgBootstrap();
   const url = new URL(req.url);
   const locale = normalizeLocale(url.searchParams.get("locale"));

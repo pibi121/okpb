@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { getSocialTemplateInternal } from "@/lib/social-templates";
 import { composeSocialWardrobeLLM } from "@/lib/social-wardrobe-llm";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,9 @@ const schema = z.object({
 
 /** Text-only preview: expand wardrobe note → English Krea block (LLM or fallback). */
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   try {

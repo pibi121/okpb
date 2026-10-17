@@ -6,6 +6,7 @@ import {
   saveLoraI2vLabDraft,
   type LoraI2vLabDraft,
 } from "@/lib/lora-i2v-lab-draft";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,9 @@ export const runtime = "nodejs";
  * Never rebuilds gallery unless recover is requested — lab opens empty by default.
  */
 export async function GET(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 
@@ -45,6 +49,9 @@ export async function GET(req: NextRequest) {
 
 /** Client autosave mirror on server (survives browser wipe). */
 export async function PUT(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   try {

@@ -18,6 +18,7 @@ import {
   loadFunnelKeyboardSettings,
   saveFunnelKeyboardSettings,
 } from "@/lib/tg/funnel-v2/keyboard-settings";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -53,6 +54,9 @@ async function assertLab() {
  * Списки: только шаблоны «по 1 фото» (без LoRA).
  */
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
 
@@ -235,6 +239,9 @@ const batchSchema = z.object({
 
 /** Batch save — только Funnel v2; tgPublished не меняем. */
 export async function PATCH(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
 

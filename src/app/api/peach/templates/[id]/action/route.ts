@@ -14,6 +14,7 @@ import {
   updateTemplateFrame,
   animateTemplateFrame,
 } from "@/lib/template-pack";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -76,6 +77,9 @@ const actionSchema = z.discriminatedUnion("action", [
 ]);
 
 export async function POST(req: NextRequest, { params }: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await params;
@@ -151,6 +155,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await params;

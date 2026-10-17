@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listPendingPartnerWithdrawals } from "@/lib/tg/partner-admin";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Future admin: list withdrawal requests. Auth = bootstrap secret. */
 export async function GET(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   if (process.env.BOOTSTRAP_ADMIN_ENABLED !== "1") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

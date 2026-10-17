@@ -15,9 +15,13 @@ import {
 import { buildTgTrainProgress } from "@/lib/tg/train-progress";
 import { tgSupportUrl } from "@/lib/tg/support";
 import { getPrimaryBotUsername } from "@/lib/tg/bot-config";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 /** Mini App profile: balance, characters, studio cast, promos. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

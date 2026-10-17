@@ -8,8 +8,12 @@ import {
   partnerStartLink,
   requestPartnerWithdrawal,
 } from "@/lib/tg/partner-program";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -60,6 +64,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

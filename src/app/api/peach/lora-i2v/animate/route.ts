@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { enqueueAnimateJob } from "@/lib/gallery-jobs";
 import { galleryStatus, GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -17,6 +18,9 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

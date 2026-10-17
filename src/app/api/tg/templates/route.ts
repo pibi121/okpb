@@ -18,6 +18,7 @@ import {
 import { extractSpeechSlots, templateHasSpeech } from "@/lib/speech-slots";
 import { resolveTgCatalogAssetUrl } from "@/lib/tg/catalog-asset-url";
 import { shuffleInPlace } from "@/lib/tg/feed-order";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 function videoTitle(
   row: { title: string; titleEn?: string },
@@ -45,6 +46,9 @@ function kickPreviewHygieneOnce() {
 
 /** Templates feed for TG Mini App. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   kickPreviewHygieneOnce();
 
   const userId = await resolveTgApiUserId(req);

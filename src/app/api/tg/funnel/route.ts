@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import { trackFunnelEvent } from "@/lib/ops/funnel-track";
 import { getFunnelStep } from "@/lib/ops/funnel-catalog";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

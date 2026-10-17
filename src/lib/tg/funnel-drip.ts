@@ -109,6 +109,8 @@ let lastFunnelPollAt = 0;
 
 /** Background: rules nudges + Funnel v2 blur nudges. */
 export async function pollTgFunnelDrips(limit = 25): Promise<void> {
+  const { maintenanceStubText } = await import("@/lib/ops/maintenance-stub");
+  if (await maintenanceStubText()) return;
   if (funnelPollBusy) return;
   if (Date.now() - lastFunnelPollAt < 15_000) return;
   funnelPollBusy = true;

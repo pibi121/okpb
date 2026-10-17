@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import { parseLookbook, type LookbookValues } from "@/lib/lookbook";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 const patchSchema = z.object({
   characterId: z.string().min(1),
@@ -11,6 +12,9 @@ const patchSchema = z.object({
 
 /** GET lookbook for a personal TG character. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,6 +46,9 @@ export async function GET(req: Request) {
 
 /** PATCH body lookbook fields for a personal TG character. */
 export async function PATCH(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -6,10 +6,14 @@ import {
   listLoraI2vTemplatesForLab,
 } from "@/lib/lora-i2v-template";
 import { prisma } from "@/lib/db";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const templates = await listLoraI2vTemplatesForLab(user.id);
@@ -48,6 +52,9 @@ const createSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { maintenanceStubText } from "@/lib/ops/maintenance-stub";
 import "./miniapp.css";
 
 export const metadata: Metadata = {
@@ -15,11 +16,18 @@ export const viewport: Viewport = {
   themeColor: "#070708",
 };
 
-export default function TgRootLayout({ children }: { children: React.ReactNode }) {
+export default async function TgRootLayout({ children }: { children: React.ReactNode }) {
+  const stub = await maintenanceStubText();
   return (
     <>
       <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
-      <div className="tg-app">{children}</div>
+      <div className="tg-app">
+        {stub ? (
+          <p className="px-6 py-16 text-center text-base text-foreground">{stub}</p>
+        ) : (
+          children
+        )}
+      </div>
     </>
   );
 }

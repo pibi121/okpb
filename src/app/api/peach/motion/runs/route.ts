@@ -4,11 +4,15 @@ import { requireUser } from "@/lib/auth";
 import { enqueueMotionRun, listMotionRuns } from "@/lib/motion-templates";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { prisma } from "@/lib/db";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
 
 export async function GET(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const templateId = req.nextUrl.searchParams.get("templateId") || undefined;
@@ -25,6 +29,9 @@ const jsonSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

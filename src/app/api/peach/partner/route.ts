@@ -7,8 +7,12 @@ import {
   partnerStartLink,
   requestPartnerWithdrawal,
 } from "@/lib/tg/partner-program";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const dash = await getPartnerDashboard(user.id);
@@ -32,6 +36,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const body = (await req.json()) as {

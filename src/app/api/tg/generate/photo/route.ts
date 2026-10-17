@@ -9,6 +9,7 @@ import { normalizeLocale } from "@/lib/tg/i18n";
 import { getBalancePeaches } from "@/lib/tg/wallet";
 import { limits } from "@/lib/rate-limit";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 async function tgPlatformUserId(userId: string): Promise<string | null> {
   const acc = await prisma.platformAccount.findFirst({
@@ -20,6 +21,9 @@ async function tgPlatformUserId(userId: string): Promise<string | null> {
 
 /** Start studio-cast photo generation from Mini App. */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

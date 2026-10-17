@@ -18,6 +18,7 @@ import {
   emptyLookbook,
   parseLookbook,
 } from "@/lib/lookbook";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -87,6 +88,9 @@ function parseBodyLookbook(raw: FormDataEntryValue | null) {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

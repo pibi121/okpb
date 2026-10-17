@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { labAccess } from "@/lib/ops/roles";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { copyAssetToTgCatalog } from "@/lib/tg/tg-publish";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -25,6 +26,9 @@ async function assertLab() {
 
 /** Upload preview image/video for Lab 2.0 transfer UI. */
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
   const user = gate.user!;

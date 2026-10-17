@@ -8,12 +8,16 @@ import {
 import { notifyTgLoraTrainingComplete } from "@/lib/tg/lora-onboard";
 import { buildTgTrainProgress } from "@/lib/tg/train-progress";
 import { readTrainMeta } from "@/lib/character-dataset";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /** Refresh GPU train status + return progress for Mini App. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

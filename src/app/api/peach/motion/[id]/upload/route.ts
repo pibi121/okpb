@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { prisma } from "@/lib/db";
 import { updateMotionTemplate } from "@/lib/motion-templates";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -11,6 +12,9 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /** Upload driving video or reference still from the user's PC into a motion template. */
 export async function POST(req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await ctx.params;

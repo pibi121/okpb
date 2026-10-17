@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runTgBootstrapNow } from "@/lib/tg/tg-bootstrap";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 function authorized(req: Request): boolean {
   const secret = process.env.TG_BOOTSTRAP_SECRET?.trim();
@@ -11,6 +12,9 @@ function authorized(req: Request): boolean {
 
 /** Manual / deploy-time TG catalog seed (studio casts + templates). */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   if (!authorized(req)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -20,5 +24,8 @@ export async function POST(req: Request) {
 
 /** GET also seeds (for easy curl after deploy). */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   return POST(req);
 }

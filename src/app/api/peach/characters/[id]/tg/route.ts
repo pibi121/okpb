@@ -7,6 +7,7 @@ import {
   publishCharacterToTg,
   unpublishCharacterFromTg,
 } from "@/lib/tg/tg-publish";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,9 @@ async function loadOwned(id: string, userId: string) {
 
 /** Publish character into TG Mini App cast vitrine. */
 export async function POST(req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await ctx.params;
@@ -75,6 +79,9 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
 /** Remove from TG cast vitrine. */
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { id } = await ctx.params;

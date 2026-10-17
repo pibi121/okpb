@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ensureBuiltinPresets } from "@/lib/ensure-builtin-presets";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 const saveSchema = z.object({
   slug: z.string().min(2).max(64),
@@ -13,6 +14,9 @@ const saveSchema = z.object({
 });
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   await ensureBuiltinPresets();
@@ -24,6 +28,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const data = saveSchema.parse(await req.json());

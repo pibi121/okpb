@@ -10,6 +10,7 @@ import { startTgUndressGeneration } from "@/lib/tg/undress-service";
 import { normalizeLocale } from "@/lib/tg/i18n";
 import { limits } from "@/lib/rate-limit";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 async function tgPlatformUserId(userId: string): Promise<string | null> {
   const acc = await prisma.platformAccount.findFirst({
@@ -20,6 +21,9 @@ async function tgPlatformUserId(userId: string): Promise<string | null> {
 }
 
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,6 +40,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

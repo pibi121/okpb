@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
 import { requireUser } from "@/lib/auth";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 const RATINGS_PATH = path.join(process.cwd(), "data", "pose-eval-ratings.json");
 
@@ -89,6 +90,9 @@ function readJson<T>(file: string, fallback: T): T {
 }
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 
@@ -146,6 +150,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

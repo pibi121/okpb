@@ -14,9 +14,13 @@ import { normalizeLocale } from "@/lib/tg/i18n";
 import { loraTrainPeaches } from "@/lib/tg-pricing";
 import { hasRealCharacterLora } from "@/lib/tg/studio-cast";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 /** Create personal character (LoRA candidate). */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,6 +43,9 @@ export async function POST(req: Request) {
 
 /** Upload LoRA training photo(s) (multipart: file or file[]). */
 export async function PUT(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -131,6 +138,9 @@ export async function PUT(req: Request) {
 
 /** Start LoRA training (debit + GPU). */
 export async function PATCH(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

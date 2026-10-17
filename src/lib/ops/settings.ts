@@ -23,8 +23,11 @@ export type OpsSettings = {
   tgFunnelV2LiveAt: string | null;
 };
 
-const DEFAULT_MAINT_RU =
-  "Сейчас идут технические работы. Генерации временно недоступны — напишем, как всё заработает.";
+/** Shown to people while OpsSetting.maintenance is on. */
+export const MAINTENANCE_STUB_TEXT =
+  "🤖 Ведутся технические работы. Сервис скоро заработает!";
+
+const DEFAULT_MAINT_RU = MAINTENANCE_STUB_TEXT;
 const DEFAULT_MAINT_EN =
   "We're doing a short maintenance. Generations are paused — we'll message you when we're back.";
 const DEFAULT_LOAD_RU =
@@ -104,10 +107,6 @@ export function opsMessage(
   slot: "maintenance" | "load",
   locale: TgLocale,
 ): string {
-  if (slot === "maintenance") {
-    return locale === "en"
-      ? settings.maintenanceMessageEn
-      : settings.maintenanceMessageRu;
-  }
+  if (slot === "maintenance") return MAINTENANCE_STUB_TEXT;
   return locale === "en" ? settings.loadMessageEn : settings.loadMessageRu;
 }

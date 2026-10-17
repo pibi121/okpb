@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { comfyBaseUrl } from "@/lib/metalnode-config";
 import { BUILD_VERSION } from "@/lib/gpu/types";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 async function pingComfy(): Promise<boolean> {
   try {
@@ -17,6 +18,9 @@ async function pingComfy(): Promise<boolean> {
 
 /** Quick prod deploy check — curl /api/tg/version after Railway deploy. */
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   // Scrub author identity from stored templates (lookbook/LoRA leakage).
   void import("@/lib/tg/migrate-template-identity")
     .then((m) => m.migrateTemplateIdentityHygiene())

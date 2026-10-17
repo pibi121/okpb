@@ -1749,6 +1749,14 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
     return;
   }
 
+  const { maintenanceStubText } = await import("@/lib/ops/maintenance-stub");
+  const maintenanceText = await maintenanceStubText();
+  if (maintenanceText) {
+    await tgAnswerCallbackQuery(cq.id);
+    await tgSendMessage(chatId, maintenanceText);
+    return;
+  }
+
   const platformUserId = String(chatId);
   let user;
   try {
@@ -2138,6 +2146,13 @@ export async function handleTgCallbackQuery(cq: TgCallbackQuery) {
 export async function handleTgMessage(msg: TgUpdateMessage) {
   // Partners / community groups: never create users or reply.
   if (!isPrivateChat(msg.chat)) return;
+
+  const { maintenanceStubText } = await import("@/lib/ops/maintenance-stub");
+  const maintenanceText = await maintenanceStubText();
+  if (maintenanceText) {
+    await tgSendMessage(msg.chat.id, maintenanceText);
+    return;
+  }
 
   await ensureCopyOverlay();
   await import("@/lib/ops/prices")

@@ -4,6 +4,7 @@ import { enqueuePhotoJob } from "@/lib/gallery-jobs";
 import { getTgPhotoTemplateForGeneration } from "@/lib/tg-photo-template-lab";
 import type { PhotoManualSlot } from "@/lib/photo-refs-shared";
 import { kreaStillSize } from "@/lib/video-orientation";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -14,6 +15,9 @@ function extFromName(name: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

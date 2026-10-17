@@ -14,11 +14,15 @@ import {
 } from "@/lib/tg/topup-payments";
 import { createStreampayTopupPayment } from "@/lib/tg/streampay-topup";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
 /** Mini App: quote + methods. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,6 +46,9 @@ export async function GET(req: Request) {
 
 /** Mini App: create Cashera / StreamPay payment and return payment_url. */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

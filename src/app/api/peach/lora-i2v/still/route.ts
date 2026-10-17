@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { enqueuePhotoJob } from "@/lib/gallery-jobs";
 import { enqueuePhotoEditLabJob } from "@/lib/photo-edit-lab";
 import { kreaStillSize } from "@/lib/video-orientation";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -29,6 +30,9 @@ const jsonSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

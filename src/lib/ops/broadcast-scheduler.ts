@@ -41,6 +41,8 @@ function releaseLock() {
 }
 
 export async function tickScheduledBroadcasts(): Promise<number> {
+  const { maintenanceStubText } = await import("@/lib/ops/maintenance-stub");
+  if (await maintenanceStubText()) return 0;
   if (!tryLock()) return 0;
   let started = 0;
   try {

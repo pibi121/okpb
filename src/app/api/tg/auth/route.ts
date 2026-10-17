@@ -8,9 +8,13 @@ import { findOrCreateTelegramUser } from "@/lib/tg/user";
 import { createSession } from "@/lib/auth";
 import { TG_PROMO } from "@/lib/tg-pricing";
 import { listActiveBotTokens } from "@/lib/tg/bot-registry";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 /** Mini App / bot: exchange initData for web session cookie (any active dual bot token). */
 export async function POST(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const body = (await req.json().catch(() => ({}))) as {
     initData?: string;
     startPayload?: string;

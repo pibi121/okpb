@@ -230,6 +230,8 @@ async function patchMeta(
 
 /** Move deferred videos onto the GPU once that user has no photos left. */
 export async function promoteDeferredUserVideos(): Promise<void> {
+  const { maintenanceStubText } = await import("@/lib/ops/maintenance-stub");
+  if (await maintenanceStubText()) return;
   const items = await prisma.galleryItem.findMany({
     where: {
       kind: "video",

@@ -8,6 +8,7 @@ import {
   startSocialRun,
 } from "@/lib/social-ref2v";
 import { socialOrientationSchema } from "@/lib/video-orientation";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -23,6 +24,9 @@ const startSchema = z.object({
 });
 
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const runs = await listSocialRuns(user.id);
@@ -30,6 +34,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   try {

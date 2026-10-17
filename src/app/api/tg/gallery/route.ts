@@ -8,9 +8,13 @@ import {
 import { resolveTgApiUserId } from "@/lib/tg/resolve-api-user";
 import { userFacingTgError } from "@/lib/tg/user-facing-error";
 import { cleanupLegacyTgGalleryItems } from "@/lib/tg/tg-gallery-cleanup";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 /** TG Mini App gallery — user's generated photos & videos. */
 export async function GET(req: Request) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const userId = await resolveTgApiUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

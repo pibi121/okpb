@@ -9,6 +9,7 @@ import {
   priceForPhotoTemplateTier,
   priceForQuickVideoTemplate,
 } from "@/lib/template-pricing";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,9 @@ function previewMissing(videoUrl: string, imageUrl: string, kind: string): boole
 
 /** Lab: all TG template formats (photo / video / video-from-photo). */
 export async function GET() {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const row = await prisma.user.findUnique({

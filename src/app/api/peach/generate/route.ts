@@ -14,6 +14,7 @@ import {
   type QuickVideoSlotRole,
 } from "@/lib/quick-video-prompt";
 import type { PhotoManualSlot } from "@/lib/photo-refs-shared";
+import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -223,6 +224,9 @@ async function handlePhotoMultipart(userId: string, form: FormData) {
 }
 
 export async function POST(req: NextRequest) {
+  const maintenanceBlock = await maintenanceApiBlock();
+  if (maintenanceBlock) return maintenanceBlock;
+
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 

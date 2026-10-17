@@ -2967,6 +2967,9 @@ async function flushTgOutboxOnce() {
             caption: payload.caption,
             token,
             extra: funnelMediaExtra,
+            galleryItemId: payload.galleryItemId
+              ? String(payload.galleryItemId)
+              : undefined,
           });
           payload.mediaSent = true;
           await persistPayload(payload);

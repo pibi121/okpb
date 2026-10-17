@@ -513,6 +513,13 @@ async function runFunnelV2VideoGen(opts: {
     return;
   }
 
+  const { decideUserVideo } = await import("@/lib/gpu/user-gen-limit");
+  const videoGate = await decideUserVideo(opts.userId);
+  if (videoGate.action === "reject") {
+    await tgSendMessage(opts.chatId, videoGate.message);
+    return;
+  }
+
   const deb = await debitFunnelBalance(opts.userId, row.price);
   if (!deb.ok) {
     await tgSendMessage(opts.chatId, "Недостаточно средств на балансе.");
@@ -526,6 +533,7 @@ async function runFunnelV2VideoGen(opts: {
     ),
   );
 
+  let bridgedPeaches = false;
   try {
     const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
     trackFunnelEventBg({
@@ -571,14 +579,28 @@ async function runFunnelV2VideoGen(opts: {
         },
       });
       const { enqueueAnimateJob } = await import("@/lib/gallery-jobs");
-      const item = await enqueueAnimateJob(
-        opts.userId,
-        stillItem.id,
-        tpl.i2vPrompt || "cinematic motion",
-        false,
-        tpl.i2vPrompt || undefined,
-        tpl.durationSec || 6,
-      );
+      const { decideUserVideo, throwIfRejected, withUserGenLock, tellUserGenText, USER_GEN_TEXT } =
+        await import("@/lib/gpu/user-gen-limit");
+      const item = await withUserGenLock(opts.userId, async () => {
+        const plan = await decideUserVideo(opts.userId);
+        throwIfRejected(plan);
+        const created = await enqueueAnimateJob(
+          opts.userId,
+          stillItem.id,
+          tpl.i2vPrompt || "cinematic motion",
+          false,
+          tpl.i2vPrompt || undefined,
+          tpl.durationSec || 6,
+          { deferGpu: plan.action === "defer" },
+        );
+        if (plan.action === "defer") {
+          await tellUserGenText(opts.userId, USER_GEN_TEXT.videoAfterPhotos);
+        } else {
+          const { waitForUserGpuJob } = await import("@/lib/gpu/user-gen-limit");
+          await waitForUserGpuJob("galleryItem", created.id);
+        }
+        return created;
+      });
       await prisma.galleryItem.update({
         where: { id: item.id },
         data: {
@@ -630,6 +652,7 @@ async function runFunnelV2VideoGen(opts: {
     await creditPeaches(opts.userId, row.price, "funnel_v2_video_bridge", {
       templateId: opts.templateId,
     });
+    bridgedPeaches = true;
     const { startTgVideoGeneration } = await import(
       "@/lib/tg/generation-service"
     );
@@ -657,7 +680,18 @@ async function runFunnelV2VideoGen(opts: {
     }
   } catch (e) {
     const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
+    const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+    if (isUserGenLimitError(e) && bridgedPeaches) {
+      const { debitPeaches } = await import("@/lib/tg/wallet");
+      await debitPeaches(opts.userId, row.price, "funnel_v2_video_bridge_undo", {
+        templateId: opts.templateId,
+      }).catch(() => undefined);
+    }
     await creditFunnelBalance(opts.userId, row.price).catch(() => undefined);
+    if (isUserGenLimitError(e)) {
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     await tgSendMessage(opts.chatId, `Не удалось запустить видео: ${msg}`);
   }

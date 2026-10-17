@@ -134,6 +134,13 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+    if (isUserGenLimitError(e)) {
+      return NextResponse.json(
+        { error: "user_gen_limit", message: e.message },
+        { status: 409 },
+      );
+    }
     if (e instanceof AgeGateBlockedError) {
       const { recordAgeGateBlock } = await import("@/lib/age-gate-review");
       await recordAgeGateBlock({

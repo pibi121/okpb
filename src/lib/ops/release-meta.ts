@@ -34,17 +34,20 @@ function readMetaFile(): Partial<ReleaseMeta> | null {
 
 export function resolveReleaseMeta(): ReleaseMeta {
   const file = readMetaFile();
-  const sha = (
+  const envSha = (
     process.env.RAILWAY_GIT_COMMIT_SHA?.trim() ||
     process.env.GIT_COMMIT_SHA?.trim() ||
     process.env.COMMIT_SHA?.trim() ||
-    file?.sha ||
     ""
   ).trim();
+  const fileSha = (file?.sha || "").trim();
+  const sha = (envSha || fileSha).trim();
+  // A leftover release-meta.json must not supply the subject of a different commit.
+  const fileMatches = !envSha || !fileSha || envSha === fileSha;
   const message = (
     process.env.RAILWAY_GIT_COMMIT_MESSAGE?.trim() ||
     process.env.GIT_COMMIT_MESSAGE?.trim() ||
-    file?.message ||
+    (fileMatches ? file?.message : "") ||
     ""
   )
     .trim()
@@ -52,7 +55,7 @@ export function resolveReleaseMeta(): ReleaseMeta {
   const branch = (
     process.env.RAILWAY_GIT_BRANCH?.trim() ||
     process.env.GIT_BRANCH?.trim() ||
-    file?.branch ||
+    (fileMatches ? file?.branch : "") ||
     ""
   ).trim();
   return {

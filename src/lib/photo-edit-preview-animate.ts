@@ -85,6 +85,7 @@ export async function enqueuePhotoEditAnimatePreview(opts: {
   templateId?: string;
   i2vPrompt: string;
   durationSec: number;
+  deferGpu?: boolean;
 }) {
   const prompt = opts.i2vPrompt.trim();
   if (prompt.length < 2) throw new Error("Нужен промпт оживления");
@@ -109,6 +110,7 @@ export async function enqueuePhotoEditAnimatePreview(opts: {
     false,
     prompt,
     durationSec,
+    opts.deferGpu ? { deferGpu: true } : undefined,
   );
 
   return {

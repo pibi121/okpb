@@ -526,6 +526,13 @@ export async function runFunnelV2PhotoGen(opts: {
     return;
   }
 
+  const { decideUserPhoto } = await import("@/lib/gpu/user-gen-limit");
+  const photoGate = await decideUserPhoto(opts.userId);
+  if (photoGate.action === "reject") {
+    await tgSendMessage(opts.chatId, photoGate.message);
+    return;
+  }
+
   if (!useBlur) {
     const deb = await debitFunnelBalance(opts.userId, price);
     if (!deb.ok) {
@@ -813,6 +820,20 @@ export async function runFunnelV2PhotoGen(opts: {
       },
     );
   } catch (e) {
+    const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+    if (isUserGenLimitError(e)) {
+      if (!useBlur) {
+        const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
+        await creditFunnelBalance(opts.userId, price).catch(() => undefined);
+      } else {
+        await prisma.user.update({
+          where: { id: opts.userId },
+          data: { tgFunnelV2BlurTrialsUsed: { decrement: 1 } },
+        }).catch(() => undefined);
+      }
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     await tgSendMessage(opts.chatId, `Не удалось запустить: ${msg}`);
   }

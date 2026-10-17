@@ -1397,6 +1397,10 @@ export async function startQuickVideoRun(opts: {
   customCharacters?: Array<{ id: string; name: string }>;
   /** Peach Lab routes only — pin to Owner Lab GPU when configured. */
   useOwnerLab?: boolean;
+  /** Paid and recorded, but do not take a GPU until the user's photos finish. */
+  deferGpu?: boolean;
+  /** Start the GPU row in this call. Default waits until the HTTP response. */
+  enqueueNow?: boolean;
 }) {
   if (!opts.useOwnerLab) {
     const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
@@ -1545,7 +1549,7 @@ export async function startQuickVideoRun(opts: {
       durationSec,
       width: size.width,
       height: size.height,
-      status: "busy",
+      status: opts.deferGpu ? "deferred" : "busy",
     },
   });
 
@@ -1576,6 +1580,7 @@ export async function startQuickVideoRun(opts: {
         storyModelName: opts.storyModelName || undefined,
         bodyLookbook: opts.bodyLookbook || undefined,
         ...(opts.useOwnerLab ? { ownerLab: true } : {}),
+        ...(opts.deferGpu ? { gpuDeferred: true } : {}),
       }),
     },
   });
@@ -1586,11 +1591,15 @@ export async function startQuickVideoRun(opts: {
   });
   backupDatabase("quick-video-pending");
 
-  scheduleGpu(() => {
-    enqueueQuickVideoJob(run.id, opts.userId, {
-      useOwnerLab: Boolean(opts.useOwnerLab),
-    });
-  });
+  if (!opts.deferGpu) {
+    const kick = () => {
+      enqueueQuickVideoJob(run.id, opts.userId, {
+        useOwnerLab: Boolean(opts.useOwnerLab),
+      });
+    };
+    if (opts.enqueueNow) kick();
+    else scheduleGpu(kick);
+  }
 
   return getQuickVideoRun(opts.userId, run.id);
 }

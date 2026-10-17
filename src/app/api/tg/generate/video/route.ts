@@ -173,7 +173,11 @@ export async function POST(req: Request) {
       ok: true,
       galleryItemId: result.galleryItemId,
       runId: result.runId,
-      message: locale === "en" ? "Video started" : "Видео генерируется",
+      message: result.deferred
+        ? "Сейчас доделаю фото и приступлю к видео."
+        : locale === "en"
+          ? "Video started"
+          : "Видео генерируется",
       characterId,
     });
   } catch (e) {
@@ -197,6 +201,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: e.message, code: e.code, ageGate: e.result },
         { status: 400 },
+      );
+    }
+    const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+    if (isUserGenLimitError(e)) {
+      return NextResponse.json(
+        { error: "user_gen_limit", message: e.message },
+        { status: 409 },
       );
     }
     if (e instanceof AgeGateBlockedError) {

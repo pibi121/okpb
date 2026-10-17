@@ -191,6 +191,13 @@ export async function startFunnelV2Animate(opts: {
     }
   }
 
+  const { decideUserVideo } = await import("@/lib/gpu/user-gen-limit");
+  const videoGate = await decideUserVideo(opts.userId);
+  if (videoGate.action === "reject") {
+    await tgSendMessage(opts.chatId, videoGate.message);
+    return;
+  }
+
   const deb = await debitFunnelBalance(opts.userId, price);
   if (!deb.ok) {
     await tgSendMessage(opts.chatId, "Недостаточно средств на балансе.");
@@ -205,12 +212,26 @@ export async function startFunnelV2Animate(opts: {
   );
 
   try {
-    const { item } = await enqueuePhotoEditAnimatePreview({
-      userId: opts.userId,
-      stillItemId: opts.galleryItemId,
-      templateId: templateId || undefined,
-      i2vPrompt: prompt,
-      durationSec: sec,
+    const { withUserGenLock, decideUserVideo, throwIfRejected, tellUserGenText, USER_GEN_TEXT } =
+      await import("@/lib/gpu/user-gen-limit");
+    const { item } = await withUserGenLock(opts.userId, async () => {
+      const plan = await decideUserVideo(opts.userId);
+      throwIfRejected(plan);
+      const created = await enqueuePhotoEditAnimatePreview({
+        userId: opts.userId,
+        stillItemId: opts.galleryItemId,
+        templateId: templateId || undefined,
+        i2vPrompt: prompt,
+        durationSec: sec,
+        deferGpu: plan.action === "defer",
+      });
+      if (plan.action === "defer") {
+        await tellUserGenText(opts.userId, USER_GEN_TEXT.videoAfterPhotos);
+      } else {
+        const { waitForUserGpuJob } = await import("@/lib/gpu/user-gen-limit");
+        await waitForUserGpuJob("galleryItem", created.item.id);
+      }
+      return created;
     });
 
     await prisma.galleryItem.update({
@@ -241,7 +262,12 @@ export async function startFunnelV2Animate(opts: {
     });
   } catch (e) {
     const { creditFunnelBalance } = await import("@/lib/tg/funnel-v2/mode");
+    const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
     await creditFunnelBalance(opts.userId, price).catch(() => undefined);
+    if (isUserGenLimitError(e)) {
+      await tgSendMessage(opts.chatId, e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     await tgSendMessage(opts.chatId, `Не удалось запустить оживление: ${msg}`);
   }
@@ -327,6 +353,13 @@ export async function handleFunnelV2EditText(opts: {
   });
   if (!still?.resultUrl) {
     await tgSendMessage(opts.chatId, "Исходное фото не найдено.");
+    return;
+  }
+
+  const { decideUserPhoto } = await import("@/lib/gpu/user-gen-limit");
+  const photoGate = await decideUserPhoto(opts.userId);
+  if (photoGate.action === "reject") {
+    await tgSendMessage(opts.chatId, photoGate.message);
     return;
   }
 

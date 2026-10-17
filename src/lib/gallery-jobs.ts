@@ -468,7 +468,11 @@ export async function enqueuePhotoJob(userId: string, opts: PhotoPayload) {
   return item;
 }
 
-export async function enqueueClipJob(userId: string, opts: ClipPayload) {
+export async function enqueueClipJob(
+  userId: string,
+  opts: ClipPayload,
+  flags?: { deferGpu?: boolean },
+) {
   const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
   await assertVideoGenerationOpen(userId);
   const item = await createPendingItem({
@@ -484,8 +488,29 @@ export async function enqueueClipJob(userId: string, opts: ClipPayload) {
       durationSec: opts.durationSec,
       templatePackId: opts.templatePackId,
       templateFrameId: opts.templateFrameId,
+      ...(flags?.deferGpu
+        ? {
+            gpuDeferred: true,
+            deferClip: {
+              userId,
+              characterId: opts.characterId || null,
+              title: opts.title,
+              plot: opts.plot,
+              stillId: opts.stillId,
+              withMusic: !!opts.withMusic,
+              durationSec: opts.durationSec,
+              composedPrompt: opts.composedPrompt,
+              poseId: opts.poseId,
+              dialogue: opts.dialogue,
+              templatePackId: opts.templatePackId,
+              templateFrameId: opts.templateFrameId,
+              templateRunFrameId: opts.templateRunFrameId,
+            },
+          }
+        : {}),
     },
   });
+  if (flags?.deferGpu) return item;
   scheduleJob(() => runClipJob(item.id, userId, opts), {
     kind: "clip",
     pool: "video",
@@ -636,6 +661,7 @@ export async function enqueueAnimateJob(
     poseId?: string | null;
     templateRunFrameId?: string;
     dialogue?: string;
+    deferGpu?: boolean;
   },
 ) {
   const { assertVideoGenerationOpen } = await import("@/lib/ops/video-freeze");
@@ -667,6 +693,26 @@ export async function enqueueAnimateJob(
     templateFrameId: attach?.templateFrameId,
     templateRunFrameId: attach?.templateRunFrameId,
     title: `Animate: ${still.title || "photo"}`,
+  }, attach?.deferGpu ? { deferGpu: true } : undefined);
+}
+
+export function kickDeferredClipJob(
+  itemId: string,
+  userId: string,
+  meta: Record<string, unknown>,
+) {
+  const raw = meta.deferClip;
+  if (!raw || typeof raw !== "object") {
+    throw new Error("deferred clip has no payload");
+  }
+  const clip = raw as ClipPayload;
+  scheduleJob(() => runClipJob(itemId, userId, { ...clip, userId }), {
+    kind: "clip",
+    pool: "video",
+    userId,
+    refType: "galleryItem",
+    refId: itemId,
+    title: clip.title,
   });
 }
 

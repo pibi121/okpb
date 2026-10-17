@@ -103,6 +103,21 @@ export async function ensureFleetWorkers() {
       },
     });
   }
+  // A card that already existed as «waiting for a key» keeps pending_provider
+  // on upsert. Heartbeat skips that status, so the admin stays «not live»
+  // after the key appears. Promote those rows so the next ping can mark them online.
+  const keyed = FLEET_EXTRA_GPUS.filter((g) => fleetConfigured(g)).map((g) => g.key);
+  if (keyed.length) {
+    await prisma.gpuWorker.updateMany({
+      where: {
+        key: { in: keyed },
+        enabled: true,
+        status: "pending_provider",
+        NOT: { comfyUrl: "" },
+      },
+      data: { status: "unknown" },
+    });
+  }
 }
 
 /** Placeholder slots so /ops/load shows future pools before provider keys exist. */
@@ -231,7 +246,10 @@ export async function heartbeatAllWorkers() {
   const { readTunnelStatusFile } = await import("@/lib/gpu/tunnel-status");
   const tunnel = readTunnelStatusFile();
   for (const w of workers) {
-    if (w.status === "pending_provider" || !w.comfyUrl) continue;
+    // pending_provider + a real Comfy URL means the key just appeared.
+    // Ping it; only skip placeholders that are still disabled or have no URL.
+    if (!w.comfyUrl) continue;
+    if (w.status === "pending_provider" && !w.enabled) continue;
     const ping = await pingWorkerComfy(w.comfyUrl);
     const busyJob = w.currentJobId
       ? await prisma.gpuJob.findFirst({

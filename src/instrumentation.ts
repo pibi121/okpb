@@ -11,6 +11,9 @@ export async function register() {
       await heartbeatAllWorkers().catch(() => undefined);
       setInterval(() => {
         void heartbeatAllWorkers().catch(() => undefined);
+        void import("@/lib/gpu/user-gen-limit")
+          .then(({ promoteDeferredUserVideos }) => promoteDeferredUserVideos())
+          .catch((e) => console.error("[peach] deferred video promote:", e));
       }, 10_000);
     })
     .catch((e) => console.error("[peach] gpu workers boot:", e));

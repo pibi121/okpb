@@ -14,6 +14,7 @@ Force-push в `main` нельзя. Если push отклонён — снова
 
 После успешного `git push` в `main`: `node scripts/ops-notify-release.mjs --kind commit`
 (пишет `infra/release-meta.json` локально; в git не коммитить).
+Перед каждой заливкой, даже без нового коммита: `node scripts/ensure-release-meta.mjs` — перезаписывает этот файл из текущего git HEAD, иначе Telegram покажет старый коммит.
 Деплой на прод: `railway up --detach --no-gitignore`
 (`--no-gitignore` нужен, иначе gitignore выкинет release-meta; секреты режет `.railwayignore`).
 После SUCCESS уведомление «Деплой» уходит само при старте web; запасной вызов: `node scripts/ops-notify-release.mjs --kind deploy`.

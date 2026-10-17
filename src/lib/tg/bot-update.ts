@@ -1092,7 +1092,28 @@ async function beginGeneration(
     }
   }
 
-  await tgSendMessage(chatId, t("gen_starting", locale), genStartingExtra(locale));
+  const { decideUserPhoto, decideUserVideo } = await import(
+    "@/lib/gpu/user-gen-limit"
+  );
+  let holdStarting = false;
+  if (kind === "photo") {
+    const gate = await decideUserPhoto(userId);
+    if (gate.action === "reject") {
+      await tgSendMessage(chatId, gate.message, mainMenuExtra(locale));
+      return;
+    }
+  } else {
+    const gate = await decideUserVideo(userId);
+    if (gate.action === "reject") {
+      await tgSendMessage(chatId, gate.message, mainMenuExtra(locale));
+      return;
+    }
+    holdStarting = gate.action === "defer";
+  }
+
+  if (!holdStarting) {
+    await tgSendMessage(chatId, t("gen_starting", locale), genStartingExtra(locale));
+  }
 
   try {
     if (kind === "photo") {
@@ -1146,6 +1167,12 @@ async function beginGeneration(
         error: e,
         fallbackExtra: mainMenuExtra(locale) as Record<string, unknown>,
       });
+      await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
+      return;
+    }
+    const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+    if (isUserGenLimitError(e)) {
+      await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
       await setTgSession(platformUserId, { chatState: "idle", clearPending: true });
       return;
     }
@@ -2499,6 +2526,12 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         }
         throw e;
       }
+      const { decideUserPhoto } = await import("@/lib/gpu/user-gen-limit");
+      const photoGate = await decideUserPhoto(user.id);
+      if (photoGate.action === "reject") {
+        await tgSendMessage(chatId, photoGate.message, mainMenuExtra(locale));
+        return;
+      }
       await tgSendMessage(chatId, t("undress_busy", locale));
       await setTgSession(platformUserId, {
         chatState: "idle",
@@ -2515,6 +2548,11 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           locale,
         });
       } catch (e) {
+        const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+        if (isUserGenLimitError(e)) {
+          await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
+          return;
+        }
         const { AgeGateBlockedError, AgeGateUncertainError } = await import(
           "@/lib/age-gate"
         );
@@ -2625,6 +2663,12 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
       }
       throw e;
     }
+    const { decideUserPhoto } = await import("@/lib/gpu/user-gen-limit");
+    const photoGate = await decideUserPhoto(user.id);
+    if (photoGate.action === "reject") {
+      await tgSendMessage(chatId, photoGate.message, mainMenuExtra(locale));
+      return;
+    }
     await tgSendMessage(chatId, t("undress_busy", locale));
     await setTgSession(platformUserId, {
       chatState: "idle",
@@ -2641,6 +2685,11 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         locale,
       });
     } catch (e) {
+      const { isUserGenLimitError } = await import("@/lib/gpu/user-gen-limit");
+      if (isUserGenLimitError(e)) {
+        await tgSendMessage(chatId, e.message, mainMenuExtra(locale));
+        return;
+      }
       const { AgeGateBlockedError, AgeGateUncertainError } = await import(
         "@/lib/age-gate"
       );

@@ -60,6 +60,8 @@ export type OpsTelegramState = {
   /** Last notified commit / deploy shas (dedupe). */
   lastCommitNotifySha?: string;
   lastDeployNotifySha?: string;
+  /** Railway deployment id of the last «Деплой» message. Same commit can ship twice. */
+  lastDeployNotifyId?: string;
 };
 
 type ChatInfo = {
@@ -137,6 +139,8 @@ export function saveOpsTelegramState(patch: Partial<OpsTelegramState>) {
       patch.lastCommitNotifySha ?? prev?.lastCommitNotifySha,
     lastDeployNotifySha:
       patch.lastDeployNotifySha ?? prev?.lastDeployNotifySha,
+    lastDeployNotifyId:
+      patch.lastDeployNotifyId ?? prev?.lastDeployNotifyId,
   };
   writeState(next);
   return next;
@@ -816,6 +820,8 @@ export type OpsReleaseNotifyOpts = {
   branch?: string;
   /** When the event happened (defaults to now) */
   at?: Date | string;
+  /** Railway deployment id. A new id sends again even when the git sha is unchanged. */
+  deploymentId?: string;
   /** Skip dedupe (force resend) */
   force?: boolean;
 };
@@ -835,6 +841,12 @@ export async function notifyOpsRelease(
   const sha = (opts.sha || "").trim();
   if (!sha) return { sent: false, detail: "no sha" };
 
+  const deploymentId = (
+    opts.deploymentId ||
+    (opts.kind === "deploy" ? process.env.RAILWAY_DEPLOYMENT_ID : "") ||
+    ""
+  ).trim();
+
   const state = readState();
   if (!opts.force) {
     if (
@@ -844,12 +856,13 @@ export async function notifyOpsRelease(
     ) {
       return { sent: false, detail: "commit already notified" };
     }
-    if (
-      opts.kind === "deploy" &&
-      state?.lastDeployNotifySha &&
-      state.lastDeployNotifySha === sha
-    ) {
-      return { sent: false, detail: "deploy already notified" };
+    if (opts.kind === "deploy") {
+      if (deploymentId && state?.lastDeployNotifyId === deploymentId) {
+        return { sent: false, detail: "deploy already notified" };
+      }
+      if (!deploymentId && state?.lastDeployNotifySha === sha) {
+        return { sent: false, detail: "deploy already notified" };
+      }
     }
   }
 
@@ -866,6 +879,9 @@ export async function notifyOpsRelease(
       : "",
     opts.branch ? `Ветка: ${escHtml(opts.branch)}` : "",
     `Изменения: ${escHtml((opts.message || "—").trim().slice(0, 500))}`,
+    deploymentId
+      ? `Заливка: <code>${escHtml(deploymentId.slice(0, 8))}</code>`
+      : "",
     formatMsk(when) + " МСК",
   ]
     .filter(Boolean)
@@ -874,15 +890,19 @@ export async function notifyOpsRelease(
   await sendOpsTelegram("deploys", text);
   saveOpsTelegramState(
     opts.kind === "deploy"
-      ? { lastDeployNotifySha: sha }
+      ? {
+          lastDeployNotifySha: sha,
+          ...(deploymentId ? { lastDeployNotifyId: deploymentId } : {}),
+        }
       : { lastCommitNotifySha: sha },
   );
   return { sent: true, detail: "ok" };
 }
 
 /**
- * On Railway boot: notify «Деплои» once per new git sha.
- * Reads Railway git env + optional infra/release-meta.json written before `railway up`.
+ * On Railway boot: one «Деплой» message per deployment id.
+ * Commit text comes from Railway git env or infra/release-meta.json
+ * (refreshed from git HEAD before upload). The clock is this boot.
  */
 export async function notifyOpsDeployOnBoot(): Promise<void> {
   if (!opsTelegramConfigured()) return;
@@ -901,7 +921,9 @@ export async function notifyOpsDeployOnBoot(): Promise<void> {
       message: meta.message,
       buildVersion: meta.buildVersion,
       branch: meta.branch,
-      at: meta.at,
+      // Boot clock, not the timestamp stored in release-meta.json.
+      // A CLI upload has no Railway git sha and otherwise replays an old file time.
+      at: new Date(),
     });
     console.log(`[ops-tg] deploy notify: ${r.detail}`);
   } catch (e) {

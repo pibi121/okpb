@@ -96,6 +96,8 @@ export type TgGenerateResult = {
   chargedPeaches: number;
   discountApplied?: boolean;
   freePhoto?: boolean;
+  /** Video was accepted but waits until this user's photos finish. */
+  deferred?: boolean;
 };
 
 export async function resolveTemplatePricePeaches(opts: {
@@ -159,6 +161,18 @@ export async function startTgLoraI2vGeneration(opts: {
   speechLine?: string;
   speechFills?: SpeechSlotFill[];
 }): Promise<TgGenerateResult> {
+  const { withUserGenLock } = await import("@/lib/gpu/user-gen-limit");
+  return withUserGenLock(opts.userId, () => startTgLoraI2vGenerationBody(opts));
+}
+
+async function startTgLoraI2vGenerationBody(opts: {
+  userId: string;
+  platformUserId: string;
+  templateId: string;
+  characterId: string;
+  speechLine?: string;
+  speechFills?: SpeechSlotFill[];
+}): Promise<TgGenerateResult> {
   await assertVideoOpen(opts.userId);
   const tpl = await prisma.loraI2vTemplate.findFirst({
     where: { id: opts.templateId, tgPublished: true },
@@ -208,6 +222,12 @@ export async function startTgLoraI2vGeneration(opts: {
   );
   price = discounted.peaches;
 
+  const { decideUserVideo, throwIfRejected, tellUserGenText, USER_GEN_TEXT, withUserGenLock } =
+    await import("@/lib/gpu/user-gen-limit");
+  const loraPlan = await withUserGenLock(opts.userId, () => decideUserVideo(opts.userId));
+  throwIfRejected(loraPlan);
+  const deferVideo = loraPlan.action === "defer";
+
   if (price > 0) {
     const paid = await debitPeaches(opts.userId, price, "tg_video", {
       templateId: opts.templateId,
@@ -242,31 +262,75 @@ export async function startTgLoraI2vGeneration(opts: {
         stillPrompt: tpl.stillPrompt,
         durationSec: tpl.durationSec,
         chargedPeaches: price,
+        ...(deferVideo ? { gpuDeferred: true } : {}),
       }),
     },
   });
 
-  void enqueueLoraI2vJob({
-    itemId: item.id,
-    userId: opts.userId,
-    title,
-    i2vPrompt,
-    speechFills: fills,
-    tpl,
-    character,
-  });
-
-  void import("@/lib/tg/tg-notify")
-    .then(({ maybeNotifyVideoQueueSlow }) =>
-      maybeNotifyVideoQueueSlow(opts.userId),
-    )
-    .catch(() => undefined);
+  if (!deferVideo) {
+    void enqueueLoraI2vJob({
+      itemId: item.id,
+      userId: opts.userId,
+      title,
+      i2vPrompt,
+      speechFills: fills,
+      tpl,
+      character,
+    });
+    const { waitForUserGpuJob } = await import("@/lib/gpu/user-gen-limit");
+    await waitForUserGpuJob("galleryItem", item.id);
+    void import("@/lib/tg/tg-notify")
+      .then(({ maybeNotifyVideoQueueSlow }) =>
+        maybeNotifyVideoQueueSlow(opts.userId),
+      )
+      .catch(() => undefined);
+  } else {
+    await tellUserGenText(opts.userId, USER_GEN_TEXT.videoAfterPhotos);
+  }
 
   return {
     galleryItemId: item.id,
     chargedPeaches: price,
     discountApplied: discounted.discountApplied,
+    deferred: deferVideo,
   };
+}
+
+/** Put a paid, photo-waiting LoRA i2v onto the GPU. Does not charge again. */
+export async function startDeferredLoraItem(itemId: string) {
+  const item = await prisma.galleryItem.findUnique({ where: { id: itemId } });
+  if (!item) return;
+  const active = await prisma.gpuJob.findFirst({
+    where: {
+      refType: "galleryItem",
+      refId: itemId,
+      status: { in: ["queued", "assigned", "running"] },
+    },
+    select: { id: true },
+  });
+  if (active) return;
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(item.metaJson || "{}") as Record<string, unknown>;
+  } catch {
+    meta = {};
+  }
+  const templateId = String(meta.loraI2vTemplateId || "");
+  if (!templateId || !item.characterId) return;
+  const tpl = await prisma.loraI2vTemplate.findFirst({ where: { id: templateId } });
+  const character = await prisma.character.findFirst({
+    where: { id: item.characterId },
+  });
+  if (!tpl || !character) return;
+  void enqueueLoraI2vJob({
+    itemId: item.id,
+    userId: item.userId,
+    title: item.title || tpl.title,
+    i2vPrompt: item.prompt || tpl.i2vPrompt,
+    speechFills: [],
+    tpl,
+    character,
+  });
 }
 
 /** Resume pending/error lora_i2v gallery item without charging again. */
@@ -365,6 +429,7 @@ export async function resumePendingLoraI2vJobs() {
       continue;
     }
     if (meta.jobAction !== "lora_i2v") continue;
+    if (meta.gpuDeferred === true) continue;
     if (meta.status && meta.status !== "pending") continue;
     const templateId = String(meta.loraI2vTemplateId || "");
     const characterId = String(item.characterId || "");
@@ -743,6 +808,19 @@ export async function startTgVideoGeneration(opts: {
    */
   secondIdentityBytes?: Buffer | null;
 }): Promise<TgGenerateResult> {
+  const { withUserGenLock } = await import("@/lib/gpu/user-gen-limit");
+  return withUserGenLock(opts.userId, () => startTgVideoGenerationBody(opts));
+}
+
+async function startTgVideoGenerationBody(opts: {
+  userId: string;
+  platformUserId: string;
+  templateId: string;
+  characterId: string;
+  speechLine?: string;
+  speechFills?: SpeechSlotFill[];
+  secondIdentityBytes?: Buffer | null;
+}): Promise<TgGenerateResult> {
   await assertVideoOpen(opts.userId);
   const { trackFunnelEventBg } = await import("@/lib/ops/funnel-track");
   trackFunnelEventBg({
@@ -802,6 +880,12 @@ export async function startTgVideoGeneration(opts: {
     user.tgFirstVideoDiscountUsed,
   );
   price = discounted.peaches;
+
+  const { decideUserVideo, throwIfRejected, tellUserGenText, USER_GEN_TEXT } =
+    await import("@/lib/gpu/user-gen-limit");
+  const videoPlan = await decideUserVideo(opts.userId);
+  throwIfRejected(videoPlan);
+  const deferVideo = videoPlan.action === "defer";
 
   if (price > 0) {
     const paid = await debitPeaches(opts.userId, price, "tg_video", {
@@ -1034,6 +1118,8 @@ export async function startTgVideoGeneration(opts: {
     poseVideoBuffer,
     orientation: detail.orientation,
     durationSec: storyTpl?.totalDurationSec || detail.durationSec,
+    deferGpu: deferVideo,
+    enqueueNow: true,
   });
 
   const linked = await prisma.quickVideoRun.findFirst({
@@ -1048,21 +1134,40 @@ export async function startTgVideoGeneration(opts: {
     await patchGalleryChargedPeaches(linked.galleryItemId, price);
   }
 
-  void import("@/lib/tg/tg-notify")
-    .then(({ maybeNotifyVideoQueueSlow }) =>
-      maybeNotifyVideoQueueSlow(opts.userId),
-    )
-    .catch(() => undefined);
+  if (deferVideo) {
+    await tellUserGenText(opts.userId, USER_GEN_TEXT.videoAfterPhotos);
+  } else {
+    const { waitForUserGpuJob } = await import("@/lib/gpu/user-gen-limit");
+    await waitForUserGpuJob("quickVideoRun", run.id);
+    void import("@/lib/tg/tg-notify")
+      .then(({ maybeNotifyVideoQueueSlow }) =>
+        maybeNotifyVideoQueueSlow(opts.userId),
+      )
+      .catch(() => undefined);
+  }
 
   return {
     runId: run.id,
     galleryItemId: linked?.galleryItemId ?? undefined,
     chargedPeaches: price,
     discountApplied: discounted.discountApplied,
+    deferred: deferVideo,
   };
 }
 
 export async function startTgPhotoGeneration(opts: {
+  userId: string;
+  platformUserId: string;
+  templateId: string;
+  characterId: string;
+  studioDaily?: boolean;
+  loraWelcome?: boolean;
+}): Promise<TgGenerateResult> {
+  const { withUserGenLock } = await import("@/lib/gpu/user-gen-limit");
+  return withUserGenLock(opts.userId, () => startTgPhotoGenerationBody(opts));
+}
+
+async function startTgPhotoGenerationBody(opts: {
   userId: string;
   platformUserId: string;
   templateId: string;
@@ -1103,6 +1208,12 @@ export async function startTgPhotoGeneration(opts: {
     isStudioCast: isStudioCastCharacter(character),
   });
   const freePhoto = false;
+
+  const { decideUserPhoto, throwIfRejected } = await import(
+    "@/lib/gpu/user-gen-limit"
+  );
+  const photoPlan = await decideUserPhoto(opts.userId);
+  throwIfRejected(photoPlan);
 
   if (price > 0) {
     const paid = await debitPeaches(opts.userId, price, "tg_photo", {
@@ -1204,6 +1315,9 @@ export async function startTgPhotoGeneration(opts: {
     );
     await patchGalleryChargedPeaches(item.id, price);
   }
+
+  const { waitForUserGpuJob } = await import("@/lib/gpu/user-gen-limit");
+  await waitForUserGpuJob("galleryItem", item.id);
 
   return {
     galleryItemId: item.id,

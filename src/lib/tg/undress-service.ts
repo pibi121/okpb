@@ -22,6 +22,31 @@ export async function startTgUndressGeneration(opts: {
   platformUserId: string;
   photoBytes: Buffer;
   locale: TgLocale;
+  funnelV2?: boolean;
+  funnelV2Blur?: boolean;
+  funnelChargedPeaches?: number;
+  unblurRecipe?: {
+    kind: "ud" | "tpl";
+    templateId: string;
+    photoUrl: string;
+    photoKey?: string;
+    price: number;
+    poseTitle: string;
+  };
+}): Promise<{
+  galleryItemId: string;
+  chargedPeaches: number;
+  usedFree: boolean;
+}> {
+  const { withUserGenLock } = await import("@/lib/gpu/user-gen-limit");
+  return withUserGenLock(opts.userId, () => startTgUndressGenerationBody(opts));
+}
+
+async function startTgUndressGenerationBody(opts: {
+  userId: string;
+  platformUserId: string;
+  photoBytes: Buffer;
+  locale: TgLocale;
   /** Funnel v2 result keyboard instead of classic undress CTAs */
   funnelV2?: boolean;
   /** Funnel v2 trial: apply tease blur; no paid result CTAs */
@@ -51,6 +76,13 @@ export async function startTgUndressGeneration(opts: {
   });
 
   await ensureUndressWelcome(opts.userId);
+
+  const { decideUserPhoto, throwIfRejected, withUserGenLock } = await import(
+    "@/lib/gpu/user-gen-limit"
+  );
+  await withUserGenLock(opts.userId, async () => {
+    throwIfRejected(await decideUserPhoto(opts.userId));
+  });
 
   const user = await prisma.user.findUnique({ where: { id: opts.userId } });
   if (!user) throw new Error("user not found");
@@ -359,6 +391,9 @@ export async function startTgUndressGeneration(opts: {
       },
     },
   );
+
+  const { waitForUserGpuJob } = await import("@/lib/gpu/user-gen-limit");
+  await waitForUserGpuJob("galleryItem", galleryItemId);
 
   return { galleryItemId, chargedPeaches, usedFree };
 }

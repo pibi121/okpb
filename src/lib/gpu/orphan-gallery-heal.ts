@@ -533,6 +533,7 @@ export async function recoverOrphanedGpuWork(opts?: {
   for (const item of candidates) {
     const meta = parseMeta(item.metaJson);
     if (meta.status !== "pending" && meta.status !== "busy") continue;
+    if (meta.gpuDeferred === true) continue;
     if (meta.orphanHealedAt) continue;
 
     const qvId =

@@ -256,6 +256,12 @@ export async function startTgLoraI2vGeneration(opts: {
     character,
   });
 
+  void import("@/lib/tg/tg-notify")
+    .then(({ maybeNotifyVideoQueueSlow }) =>
+      maybeNotifyVideoQueueSlow(opts.userId),
+    )
+    .catch(() => undefined);
+
   return {
     galleryItemId: item.id,
     chargedPeaches: price,
@@ -685,7 +691,9 @@ function enqueueLoraI2vJob(opts: {
         },
       });
       const { notifyTelegramGenerationError } = await import("@/lib/tg/tg-notify");
-      await notifyTelegramGenerationError(userId, msg).catch(() => undefined);
+      await notifyTelegramGenerationError(userId, msg, {
+        refunded: charged > 0 ? charged : 0,
+      }).catch(() => undefined);
       void import("@/lib/gpu/orchestrator")
         .then(async ({ noteGpuJobError, currentGpuJobId }) => {
           if (currentGpuJobId()) {
@@ -1039,6 +1047,12 @@ export async function startTgVideoGeneration(opts: {
     );
     await patchGalleryChargedPeaches(linked.galleryItemId, price);
   }
+
+  void import("@/lib/tg/tg-notify")
+    .then(({ maybeNotifyVideoQueueSlow }) =>
+      maybeNotifyVideoQueueSlow(opts.userId),
+    )
+    .catch(() => undefined);
 
   return {
     runId: run.id,

@@ -613,7 +613,7 @@ async function runQuickVideoJob(runId: string, userId: string) {
 function friendlyQuickVideoError(msg: string) {
   return userFacingTgError(
     msg,
-    "Не получилось собрать видео. Попробуй ещё раз через минуту — если списание было, средства вернутся.",
+    "Не получилось собрать видео. Попробуй ещё раз через минуту.",
   );
 }
 
@@ -1040,9 +1040,9 @@ async function markQuickVideoRunError(
       const { notifyTelegramGenerationError } = await import(
         "@/lib/tg/tg-notify"
       );
-      await notifyTelegramGenerationError(userId, friendly).catch(
-        () => undefined,
-      );
+      await notifyTelegramGenerationError(userId, friendly, {
+        refunded: 0,
+      }).catch(() => undefined);
     }
     return;
   }
@@ -1068,13 +1068,15 @@ async function markQuickVideoRunError(
   });
 
   const charged = Number(meta.chargedPeaches) || 0;
-  if (charged > 0 && !meta.refundedPeaches) {
+  let refunded = Math.max(0, Number(meta.refundedPeaches) || 0);
+  if (charged > 0 && !refunded) {
     const { creditPeaches } = await import("@/lib/tg/wallet");
     await creditPeaches(userId, charged, "tg_video_refund", {
       galleryItemId: run.galleryItemId,
       quickVideoRunId: runId,
       reason: "generation_failed",
     }).catch((err) => console.error("[peach] quick-video refund failed:", err));
+    refunded = charged;
     await prisma.galleryItem.update({
       where: { id: run.galleryItemId },
       data: {
@@ -1091,7 +1093,9 @@ async function markQuickVideoRunError(
 
   if (opts?.notify !== false) {
     const { notifyTelegramGenerationError } = await import("@/lib/tg/tg-notify");
-    await notifyTelegramGenerationError(userId, friendly).catch(() => undefined);
+    await notifyTelegramGenerationError(userId, friendly, {
+      refunded,
+    }).catch(() => undefined);
   }
   void import("@/lib/gpu/orchestrator")
     .then(async ({ noteGpuJobError, currentGpuJobId }) => {
@@ -1099,7 +1103,7 @@ async function markQuickVideoRunError(
         await noteGpuJobError(rawMsg, {
           runId,
           friendly,
-          refunded: charged || 0,
+          refunded,
         });
         return;
       }
@@ -1111,7 +1115,7 @@ async function markQuickVideoRunError(
         stage: "error",
         refType: "quickVideoRun",
         refId: runId,
-        meta: { runId, friendly, refunded: charged || 0 },
+        meta: { runId, friendly, refunded },
       });
     })
     .catch(() => undefined);

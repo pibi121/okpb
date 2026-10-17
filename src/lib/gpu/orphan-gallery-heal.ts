@@ -148,6 +148,7 @@ export async function failAbandonedGalleryItem(opts: {
       await notifyTelegramGenerationError(
         item.userId,
         `GPU orphaned after process restart: ${opts.reason}`,
+        { refunded: refunded ? charged : 0 },
       );
       opts.notifiedUserIds?.add(item.userId);
       next = {

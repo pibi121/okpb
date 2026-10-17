@@ -21,7 +21,8 @@ export async function register() {
       const tick = () => {
         try {
           if (diskAlmostFull()) {
-            const r = freeGalleryDisk({ emergency: false, targetFreeMb: 90 });
+            // Non-emergency: trash + prune DB backups only (never mass-delete gallery).
+            const r = freeGalleryDisk({ emergency: false, targetFreeMb: 2048 });
             if (r.deleted) {
               console.warn(
                 `[peach] disk hygiene: deleted ${r.deleted}, freed ${Math.round(r.freed / 1024 / 1024)}MB`,

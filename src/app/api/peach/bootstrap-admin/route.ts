@@ -1598,6 +1598,8 @@ export async function POST(req: NextRequest) {
         freed: 0,
         files: stats.files,
         largest: stats.largest,
+        categories: stats.categories,
+        volume: stats.volume,
       });
     }
 

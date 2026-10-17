@@ -28,7 +28,7 @@ export function saveGalleryBinary(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/ENOSPC|no space left/i.test(msg)) {
-      const r = freeGalleryDisk({ emergency: true, targetFreeMb: 100 });
+      const r = freeGalleryDisk({ emergency: true, targetFreeMb: 2048 });
       console.warn(
         `[peach] ENOSPC on gallery write — freed ${Math.round(r.freed / 1024 / 1024)}MB (${r.deleted} files), retrying`,
       );
@@ -65,7 +65,9 @@ export function resolveGalleryFile(relKey: string): string | null {
 }
 
 /** Min gap between SQLite file copies — full copyFileSync locks the volume. */
-const BACKUP_MIN_INTERVAL_MS = 10 * 60 * 1000;
+const BACKUP_MIN_INTERVAL_MS = 30 * 60 * 1000;
+/** Full prod.db clones eat the same ~10 GB volume as gallery — keep few. */
+const BACKUP_KEEP = 3;
 let backupInFlight = false;
 let lastBackupAt = 0;
 
@@ -90,13 +92,12 @@ export function backupDatabase(reason = "auto"): string | null {
     const dest = path.join(backupsRoot(), `dev-${stamp}-${safeReason}.db`);
     fs.copyFileSync(src, dest);
     lastBackupAt = Date.now();
-    // keep last 30 backups
     const files = fs
       .readdirSync(backupsRoot())
       .filter((f) => f.startsWith("dev-") && f.endsWith(".db"))
       .map((f) => ({ f, t: fs.statSync(path.join(backupsRoot(), f)).mtimeMs }))
       .sort((a, b) => b.t - a.t);
-    for (const old of files.slice(30)) {
+    for (const old of files.slice(BACKUP_KEEP)) {
       fs.unlinkSync(path.join(backupsRoot(), old.f));
     }
     return dest;

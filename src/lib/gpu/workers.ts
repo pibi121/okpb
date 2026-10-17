@@ -367,17 +367,21 @@ export async function pickWorker(
         (w.status === "online" || w.status === "unknown"),
     );
 
+    const pickLruMetalnode = (pool_: typeof live) => {
+      const metals = pool_
+        .filter((w) => w.provider === "metalnode")
+        .slice()
+        .sort((a, b) => {
+          const ta = a.updatedAt?.getTime?.() ?? 0;
+          const tb = b.updatedAt?.getTime?.() ?? 0;
+          if (ta !== tb) return ta - tb;
+          // Cold start / equal heartbeat: spread across keys (not sticky primary).
+          return a.key.localeCompare(b.key);
+        });
+      return metals[0] || null;
+    };
+
     const pickFrom = (pool_: typeof live) => {
-      // Prefer Metalnode for MiniMax H3 video; H3-ready RunPod is overflow only.
-      if (pool === "video") {
-        const metal = pool_.find((w) => w.provider === "metalnode");
-        if (metal) return metal;
-        const burstH3 = pool_.find(
-          (w) =>
-            w.provider === "runpod" && workerH3Ready(w.metaJson),
-        );
-        if (burstH3) return burstH3;
-      }
       if (pool === "photo" || pool === "video" || pool === "any") {
         const preferredKeys = FLEET_EXTRA_GPUS.filter((g) => g.genPreferred).map(
           (g) => g.key,
@@ -385,11 +389,19 @@ export async function pickWorker(
         const prefer = pool_.find((w) => preferredKeys.includes(w.key));
         if (prefer) return prefer;
       }
-      // Prefer Metalnode for photo / undress fidelity.
-      // Krea undress (Projector+Realism) stays Metalnode-only until RunPod has those weights.
-      if (pool === "photo") {
-        const metal = pool_.find((w) => w.provider === "metalnode");
+      // Prefer Metalnode for MiniMax H3 video / photo; among free cards use LRU
+      // so two live GPUs both take user work (not everything on primary).
+      // H3-ready RunPod remains overflow only.
+      if (pool === "video" || pool === "photo") {
+        const metal = pickLruMetalnode(pool_);
         if (metal) return metal;
+        if (pool === "video") {
+          const burstH3 = pool_.find(
+            (w) =>
+              w.provider === "runpod" && workerH3Ready(w.metaJson),
+          );
+          if (burstH3) return burstH3;
+        }
       }
       return pool_[0]!;
     };

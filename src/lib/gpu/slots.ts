@@ -17,10 +17,13 @@ let capEpoch = 0;
 
 async function liveWorkerCap(force = false): Promise<number> {
   if (!force && Date.now() - capAt < 5_000 && cachedCap >= 1) return cachedCap;
+  // User concurrency only — Owner Lab (pool lab) must not inflate the cap
+  // or two user jobs will fight over one Metalnode while lab sits idle.
   const rows = await prisma.gpuWorker.findMany({
     where: {
       enabled: true,
       status: { in: ["online", "busy", "unknown"] },
+      pool: { not: "lab" },
       NOT: { comfyUrl: "" },
     },
     select: { id: true },

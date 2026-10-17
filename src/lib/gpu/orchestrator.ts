@@ -218,18 +218,41 @@ export async function runTrackedGpuJob(
   });
 
   const { acquireGpuSlot, releaseGpuSlot } = await import("@/lib/gpu/slots");
-  let worker = await pickWorker(pool, {
-    providers: opts?.providers,
-    excludeProviders: opts?.excludeProviders,
-  });
   await acquireGpuSlot();
   try {
-    // Re-pick if the chosen card became busy while we waited for a slot.
-    if (worker.currentJobId) {
+    // Atomic claim: two waiters must not both stick the same free Metalnode.
+    let worker = await pickWorker(pool, {
+      providers: opts?.providers,
+      excludeProviders: opts?.excludeProviders,
+    });
+    for (let claimTry = 0; claimTry < 12; claimTry++) {
+      if (worker.currentJobId) {
+        worker = await pickWorker(pool, {
+          providers: opts?.providers,
+          excludeProviders: opts?.excludeProviders,
+        });
+      }
+      const claimed = await prisma.gpuWorker.updateMany({
+        where: {
+          id: worker.id,
+          currentJobId: null,
+          status: { in: ["online", "unknown", "busy"] },
+        },
+        data: { status: "busy", currentJobId: job.id },
+      });
+      if (claimed.count === 1) break;
+      await new Promise((r) => setTimeout(r, 200 + claimTry * 100));
       worker = await pickWorker(pool, {
         providers: opts?.providers,
         excludeProviders: opts?.excludeProviders,
       });
+      if (claimTry === 11) {
+        // Last resort: force-bind (single-GPU / stale currentJobId).
+        await prisma.gpuWorker.update({
+          where: { id: worker.id },
+          data: { status: "busy", currentJobId: job.id },
+        });
+      }
     }
     const startedAt = new Date();
     const waitMs = Math.max(0, startedAt.getTime() - queuedAt.getTime());
@@ -252,10 +275,6 @@ export async function runTrackedGpuJob(
           { at: startedAt.toISOString(), stage: "running" },
         ]),
       },
-    });
-    await prisma.gpuWorker.update({
-      where: { id: worker.id },
-      data: { status: "busy", currentJobId: job.id },
     });
 
     const store: JobStore = {

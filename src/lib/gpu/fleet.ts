@@ -5,8 +5,8 @@
  * Policy: when only primary is live, leave fleet keys empty / genPreferred off.
  * Fleet cards are optional overflow — not preferred while single-GPU.
  * `gpu2` is the second user card (METALNODE_SSH_KEY_GPU2). Same user pools as
- * primary, not preferred: a free primary still takes the job, this card takes
- * the next one while primary is busy. Never the lab pool.
+ * primary; pickWorker spreads free Metalnodes by LRU (not sticky primary).
+ * Never genPreferred. Never the lab pool.
  * `ownerlab` (pool lab) is Owner Lab only — never genPreferred, never user funnel.
  */
 import type { GpuPool } from "@/lib/gpu/types";

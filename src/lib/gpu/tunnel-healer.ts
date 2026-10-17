@@ -211,6 +211,16 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
 
     if (comfyUp && job.refType === "quickVideoRun" && job.refId) {
       try {
+        // Live waiter (between multi-shot clips Comfy queue is idle) — never
+        // recover/close before checking heartbeat. Recover used to grab shot-1
+        // and mark the whole film ready.
+        if (beatFresh && age < hardCapMs) {
+          console.log(
+            `[peach] tunnel-healer: defer ${job.id} — live beat, age ${mins}m`,
+          );
+          continue;
+        }
+
         const {
           tryRecoverQuickVideoRunById,
           requeueQuickVideoAfterHeal,
@@ -242,13 +252,6 @@ async function failStuckJobs(comfyUp: boolean, queueIdle: boolean | null) {
           }
           console.log(
             `[peach] tunnel-healer: recovered stuck quick-video ${job.refId} (job ${job.id})`,
-          );
-          continue;
-        }
-
-        if (beatFresh && age < hardCapMs) {
-          console.log(
-            `[peach] tunnel-healer: defer ${job.id} — live beat, age ${mins}m`,
           );
           continue;
         }

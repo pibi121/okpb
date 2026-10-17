@@ -687,6 +687,64 @@ export async function tryRecoverQuickVideoFromComfy(
   const promptId =
     typeof jobMeta.comfyPromptId === "string" ? jobMeta.comfyPromptId : "";
 
+  // Note: job may still be "running" when tunnel-healer calls us after a
+  // dead waiter — that is intentional for single-clip resume. Multi-shot
+  // and short-duration guards below prevent delivering shot-1 as the film.
+  const beatRaw = jobMeta.lastBeatAt;
+  const beatAt =
+    typeof beatRaw === "string" ? Date.parse(beatRaw) : Number.NaN;
+  if (
+    !opts?.force &&
+    Number.isFinite(beatAt) &&
+    Date.now() - beatAt < 90_000
+  ) {
+    console.log(
+      `[peach] skip recover quick-video ${runId} — live gpuJob beat`,
+    );
+    return false;
+  }
+
+  let galleryMeta: Record<string, unknown> = {};
+  if (run.galleryItemId) {
+    try {
+      const prev = await prisma.galleryItem.findUnique({
+        where: { id: run.galleryItemId },
+        select: { metaJson: true },
+      });
+      galleryMeta = JSON.parse(prev?.metaJson || "{}") as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      galleryMeta = {};
+    }
+  }
+  const {
+    normalizeStoryH3Shots,
+    parseStoryH3Template,
+    sumStoryH3ShotsSec,
+  } = await import("@/lib/story-h3-prompt");
+  const storyShots =
+    normalizeStoryH3Shots(galleryMeta.storyShots) ||
+    parseStoryH3Template(run.prompt)?.shots ||
+    undefined;
+  // One Comfy history/file is a single clip — never deliver as the full stitch.
+  if (!opts?.force && storyShots && storyShots.length >= 2) {
+    console.log(
+      `[peach] skip recover quick-video ${runId} — multi-shot story (${storyShots.length} clips), need full re-render/stitch`,
+    );
+    return false;
+  }
+
+  const expectedSec = (() => {
+    if (storyShots?.length === 1) return storyShots[0]!.durationSec;
+    if (storyShots && storyShots.length >= 2) {
+      return sumStoryH3ShotsSec(storyShots);
+    }
+    const d = Number(run.durationSec || galleryMeta.durationSec || 0);
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  })();
+
   const bases: string[] = [];
   const pushBase = (u: unknown) => {
     const s = typeof u === "string" ? u.trim().replace(/\/$/, "") : "";
@@ -747,13 +805,32 @@ export async function tryRecoverQuickVideoFromComfy(
     }
   }
   if (!bytes?.length) return false;
-  if (run.galleryItemId) {
-    const prev = await prisma.galleryItem.findUnique({
-      where: { id: run.galleryItemId },
-      select: { metaJson: true },
-    });
+
+  // Reject short Comfy clips (e.g. first shot of a longer planned run).
+  if (!opts?.force && expectedSec >= 6) {
     try {
-      const meta = JSON.parse(prev?.metaJson || "{}") as {
+      const probe = await probeMediaBuffer(bytes, ".mp4");
+      const actual = Number(probe.duration || 0);
+      const minOk = Math.max(4, expectedSec * 0.8 - 1);
+      if (actual > 0 && actual < minOk) {
+        console.warn(
+          `[peach] skip recover quick-video ${runId} — duration ${actual.toFixed(1)}s < min ${minOk.toFixed(1)}s (expected ~${expectedSec}s)`,
+        );
+        return false;
+      }
+    } catch (e) {
+      console.warn(
+        `[peach] recover probe failed for ${runId}:`,
+        e instanceof Error ? e.message : e,
+      );
+      // Without a probe, only allow short single-clip recovers.
+      if (expectedSec >= 12) return false;
+    }
+  }
+
+  if (run.galleryItemId) {
+    try {
+      const meta = galleryMeta as {
         videoFrozenRefund?: boolean;
         ownerLab?: boolean;
       };
@@ -770,18 +847,7 @@ export async function tryRecoverQuickVideoFromComfy(
   const { saveGalleryBinary } = await import("@/lib/local-store");
   const saved = saveGalleryBinary(userId, "mp4", bytes, `quick_${runId}`);
 
-  let prevMeta: Record<string, unknown> = {};
-  if (run.galleryItemId) {
-    try {
-      const prev = await prisma.galleryItem.findUnique({
-        where: { id: run.galleryItemId },
-        select: { metaJson: true },
-      });
-      prevMeta = JSON.parse(prev?.metaJson || "{}") as Record<string, unknown>;
-    } catch {
-      prevMeta = {};
-    }
-  }
+  const prevMeta = galleryMeta;
 
   const galleryData = {
     resultUrl: saved.publicUrl,

@@ -531,6 +531,27 @@ export async function createPartnerLink(
   });
 }
 
+/** Merchant settlement hold before partner commission is withdrawable. */
+export const PARTNER_COMMISSION_FREEZE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Balance minus commissions younger than the merchant freeze window. */
+export async function partnerWithdrawAvailablePeaches(
+  partnerId: string,
+  balancePeaches: number,
+): Promise<number> {
+  const since = new Date(Date.now() - PARTNER_COMMISSION_FREEZE_MS);
+  const frozenAgg = await prisma.partnerCommission.aggregate({
+    where: {
+      partnerId,
+      createdAt: { gt: since },
+      amountPeaches: { gt: 0 },
+    },
+    _sum: { amountPeaches: true },
+  });
+  const frozen = Math.max(0, frozenAgg._sum.amountPeaches || 0);
+  return Math.max(0, balancePeaches - frozen);
+}
+
 export async function requestPartnerWithdrawal(opts: {
   userId: string;
   amountPeaches: number;
@@ -548,10 +569,15 @@ export async function requestPartnerWithdrawal(opts: {
     throw new Error("Укажи реквизиты (USDT TRC20 / карта)");
   }
 
-  const pending = await prisma.partnerWithdrawal.count({
-    where: { partnerId: profile.id, status: "pending" },
-  });
-  if (pending > 0) throw new Error("Уже есть заявка на вывод — дождись обработки");
+  const available = await partnerWithdrawAvailablePeaches(
+    profile.id,
+    profile.balancePeaches,
+  );
+  if (opts.amountPeaches > available) {
+    throw new Error(
+      `К сожалению, сейчас можно создать заявку не больше ${available}₽. Мерчант замораживает оплаты на 3 суток — потом сумма доступна к выводу.`,
+    );
+  }
 
   return prisma.$transaction(async (tx) => {
     await tx.partnerProfile.update({

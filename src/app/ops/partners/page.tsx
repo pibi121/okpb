@@ -16,7 +16,12 @@ type W = {
   amountPeaches: number;
   volumeBonusPeaches?: number;
   payoutDetails: string;
-  partner: { code: string; user: { name: string | null } } | null;
+  createdAt?: string;
+  partner: {
+    id?: string;
+    code: string;
+    user: { name: string | null };
+  } | null;
 };
 
 export default function OpsPartnersPage() {
@@ -200,58 +205,114 @@ export default function OpsPartnersPage() {
         <h2 className="text-[11px] uppercase tracking-widest text-peach">
           Заявки на вывод
         </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Заявки по одной; у партнёра с несколькими — общая сумма к одному
+          переводу.
+        </p>
         {!pending.length ? (
           <p className="mt-2 text-sm text-zinc-500">Пусто</p>
         ) : null}
-        {pending.map((w) => (
-          <div
-            key={w.id}
-            className="mt-2 rounded-2xl border border-white/10 p-4 text-sm"
-          >
-            {w.partner?.user.name || "—"} · {w.partner?.code || "?"} ·{" "}
-            {w.amountPeaches}₽
-            <div className="text-zinc-500">{w.payoutDetails}</div>
-            <label className="mt-2 block text-xs text-zinc-400">
-              Премия за объём (в анонсе чата), ₽
-              <input
-                type="number"
-                min={0}
-                className="mt-1 block w-32 rounded-lg border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
-                value={draftBonus[w.id] ?? "0"}
-                onChange={(e) =>
-                  setDraftBonus((prev) => ({
-                    ...prev,
-                    [w.id]: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                className="text-peach"
-                onClick={() => void approve(w)}
-              >
-                Выплатил
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  opsFetch("/api/ops/partners", {
-                    method: "POST",
-                    body: JSON.stringify({ action: "reject", id: w.id }),
-                  })
-                    .then(() => load())
-                    .catch((e) =>
-                      setMsg(e instanceof Error ? e.message : "ошибка"),
-                    )
-                }
-              >
-                Отклонить
-              </button>
+        {(() => {
+          const groups = new Map<
+            string,
+            { key: string; label: string; code: string; items: W[]; total: number }
+          >();
+          for (const w of pending) {
+            const key = w.partner?.id || w.partner?.code || w.id;
+            const g = groups.get(key) || {
+              key,
+              label: w.partner?.user.name || "—",
+              code: w.partner?.code || "?",
+              items: [] as W[],
+              total: 0,
+            };
+            g.items.push(w);
+            g.total += w.amountPeaches;
+            groups.set(key, g);
+          }
+          return [...groups.values()].map((g) => (
+            <div
+              key={g.key}
+              className="mt-3 rounded-2xl border border-white/10 p-4 text-sm"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  {g.label} · <code>{g.code}</code>
+                  {g.items.length > 1 ? (
+                    <span className="ml-2 text-xs text-zinc-500">
+                      {g.items.length} заявки
+                    </span>
+                  ) : null}
+                </div>
+                <div className="text-base font-medium text-peach">
+                  Итого к переводу: {g.total}₽
+                </div>
+              </div>
+              <div className="mt-3 flex flex-col gap-3">
+                {g.items.map((w) => (
+                  <div
+                    key={w.id}
+                    className="rounded-xl border border-white/8 bg-black/20 p-3"
+                  >
+                    <div>
+                      Заявка · <b>{w.amountPeaches}₽</b>
+                      {w.createdAt ? (
+                        <span className="ml-2 text-xs text-zinc-500">
+                          {new Date(w.createdAt).toLocaleString("ru-RU")}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-zinc-500">{w.payoutDetails}</div>
+                    <label className="mt-2 block text-xs text-zinc-400">
+                      Премия за объём (в анонсе чата), ₽
+                      <input
+                        type="number"
+                        min={0}
+                        className="mt-1 block w-32 rounded-lg border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+                        value={draftBonus[w.id] ?? "0"}
+                        onChange={(e) =>
+                          setDraftBonus((prev) => ({
+                            ...prev,
+                            [w.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        className="text-peach"
+                        onClick={() => void approve(w)}
+                      >
+                        Выплатил
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          opsFetch("/api/ops/partners", {
+                            method: "POST",
+                            body: JSON.stringify({
+                              action: "reject",
+                              id: w.id,
+                            }),
+                          })
+                            .then(() => load())
+                            .catch((e) =>
+                              setMsg(
+                                e instanceof Error ? e.message : "ошибка",
+                              ),
+                            )
+                        }
+                      >
+                        Отклонить
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ));
+        })()}
       </section>
       <table className="w-full text-left text-sm">
         <thead className="text-[11px] uppercase tracking-widest text-zinc-500">

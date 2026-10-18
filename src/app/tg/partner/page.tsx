@@ -51,6 +51,9 @@ export default function TgPartnerPage() {
   const [withdrawDetails, setWithdrawDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  /** Errors/success for the withdraw form — shown inside that block, not page footer. */
+  const [withdrawMsg, setWithdrawMsg] = useState("");
+  const [withdrawMsgIsError, setWithdrawMsgIsError] = useState(false);
 
   const ru = locale === "ru";
 
@@ -89,7 +92,8 @@ export default function TgPartnerPage() {
 
   async function withdraw() {
     setBusy(true);
-    setMsg("");
+    setWithdrawMsg("");
+    setWithdrawMsgIsError(false);
     try {
       const res = await apiFetch("/api/tg/partner", {
         method: "POST",
@@ -105,9 +109,11 @@ export default function TgPartnerPage() {
       setWithdrawAmt("");
       setWithdrawDetails("");
       await load();
-      setMsg(ru ? "Заявка на вывод отправлена" : "Withdrawal requested");
+      setWithdrawMsgIsError(false);
+      setWithdrawMsg(ru ? "Заявка на вывод отправлена" : "Withdrawal requested");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "error");
+      setWithdrawMsgIsError(true);
+      setWithdrawMsg(e instanceof Error ? e.message : "error");
     } finally {
       setBusy(false);
     }
@@ -283,15 +289,30 @@ export default function TgPartnerPage() {
           style={{ width: "100%" }}
           placeholder="₽"
           value={withdrawAmt}
-          onChange={(e) => setWithdrawAmt(e.target.value)}
+          onChange={(e) => {
+            setWithdrawAmt(e.target.value);
+            if (withdrawMsg) setWithdrawMsg("");
+          }}
         />
         <textarea
           className="tg-input"
           style={{ width: "100%", marginTop: "0.5rem", minHeight: "4rem" }}
           placeholder={ru ? "Реквизиты" : "Payout details"}
           value={withdrawDetails}
-          onChange={(e) => setWithdrawDetails(e.target.value)}
+          onChange={(e) => {
+            setWithdrawDetails(e.target.value);
+            if (withdrawMsg) setWithdrawMsg("");
+          }}
         />
+        {withdrawMsg ? (
+          <p
+            className={withdrawMsgIsError ? "tg-error" : "tg-muted"}
+            style={{ marginTop: "0.65rem", whiteSpace: "pre-wrap" }}
+            role={withdrawMsgIsError ? "alert" : undefined}
+          >
+            {withdrawMsg}
+          </p>
+        ) : null}
         <button
           type="button"
           className="tg-primary-btn"

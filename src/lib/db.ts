@@ -31,9 +31,31 @@ function hasDelegates(client: PrismaClient | undefined): boolean {
   return REQUIRED_DELEGATES.every((k) => typeof c[k] !== "undefined");
 }
 
+/** Railway reports the host CPU count, so Prisma's default pool was 97 per process. */
+const PG_POOL_LIMIT = 8;
+
+function cappedDatabaseUrl(): string | undefined {
+  const raw = process.env.DATABASE_URL || "";
+  if (!raw.startsWith("postgres")) return undefined;
+  const qIndex = raw.indexOf("?");
+  const base = qIndex >= 0 ? raw.slice(0, qIndex) : raw;
+  const params = new URLSearchParams(qIndex >= 0 ? raw.slice(qIndex + 1) : "");
+  const current = Number(params.get("connection_limit") || "");
+  if (!Number.isFinite(current) || current <= 0 || current > PG_POOL_LIMIT) {
+    params.set("connection_limit", String(PG_POOL_LIMIT));
+  }
+  if (!params.get("pool_timeout")) params.set("pool_timeout", "10");
+  return `${base}?${params.toString()}`;
+}
+
 function createPrisma() {
+  const datasourceUrl = cappedDatabaseUrl();
+  if (datasourceUrl) {
+    console.log("[db] postgres pool limit", PG_POOL_LIMIT);
+  }
   return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    ...(datasourceUrl ? { datasourceUrl } : {}),
   });
 }
 
@@ -49,9 +71,7 @@ function getPrisma(): PrismaClient {
   }
 
   const next = createPrisma();
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = next;
-  }
+  globalForPrisma.prisma = next;
   return next;
 }
 
@@ -73,7 +93,8 @@ export function isTransientDbError(err: unknown): boolean {
     code === "P1008" ||
     code === "P1001" ||
     code === "P1017" ||
-    /Socket timeout|database is locked|SQLITE_BUSY|Timeout exceeded|Connection terminated|ECONNRESET|ECONNREFUSED/i.test(
+    code === "P2024" ||
+    /Socket timeout|database is locked|SQLITE_BUSY|Timeout exceeded|Connection terminated|ECONNRESET|ECONNREFUSED|Timed out fetching a new connection|connection pool|too many connections|remaining connection slots/i.test(
       msg,
     )
   );

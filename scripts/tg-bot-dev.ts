@@ -111,6 +111,15 @@ async function pollOneBot(bot: LiveBot) {
                     `[tg-bot @${bot.username}] message skipped (transient/expected):`,
                     msg.slice(0, 160),
                   );
+                  if (isTransientDbError(e) && u.message.chat?.id) {
+                    const { tgSendMessage } = await import(
+                      "../src/lib/tg/telegram-api"
+                    );
+                    await tgSendMessage(
+                      u.message.chat.id,
+                      "Связь на секунду пропала. Отправь сообщение ещё раз.",
+                    ).catch(() => undefined);
+                  }
                 } else {
                   console.error(`[tg-bot @${bot.username}] message error:`, e);
                   void reportOpsError({

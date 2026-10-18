@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { prisma, withDbRetry } from "@/lib/db";
 
 export type TgChatState =
   | "idle"
@@ -116,12 +116,14 @@ export type TgPending = {
 };
 
 export async function getTgSession(platformUserId: string) {
-  return prisma.platformAccount.findUnique({
-    where: {
-      platform_platformUserId: { platform: "telegram", platformUserId },
-    },
-    include: { user: true },
-  });
+  return withDbRetry(() =>
+    prisma.platformAccount.findUnique({
+      where: {
+        platform_platformUserId: { platform: "telegram", platformUserId },
+      },
+      include: { user: true },
+    }),
+  );
 }
 
 export function parsePending(raw: string): TgPending {
@@ -140,11 +142,13 @@ export async function setTgSession(
     clearPending?: boolean;
   },
 ) {
-  const acc = await prisma.platformAccount.findUnique({
-    where: {
-      platform_platformUserId: { platform: "telegram", platformUserId },
-    },
-  });
+  const acc = await withDbRetry(() =>
+    prisma.platformAccount.findUnique({
+      where: {
+        platform_platformUserId: { platform: "telegram", platformUserId },
+      },
+    }),
+  );
   if (!acc) return null;
 
   const prevPending = parsePending(acc.pendingJson);
@@ -207,13 +211,15 @@ export async function setTgSession(
     }
   }
 
-  return prisma.platformAccount.update({
-    where: { id: acc.id },
-    data: {
-      chatState: patch.chatState ?? acc.chatState,
-      pendingJson: JSON.stringify(pending),
-    },
-  });
+  return withDbRetry(() =>
+    prisma.platformAccount.update({
+      where: { id: acc.id },
+      data: {
+        chatState: patch.chatState ?? acc.chatState,
+        pendingJson: JSON.stringify(pending),
+      },
+    }),
+  );
 }
 
 async function resolveOutboxBotId(

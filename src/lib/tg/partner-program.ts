@@ -34,13 +34,14 @@ type DemoPartnerRow = {
 };
 
 const DEMO_PARTNER_BY_TG: Record<string, DemoPartnerRow> = {
+  // 2026-10-18 hold-withdraw test: real DB balance 10k / frozen 7k — keep UI aligned
   "8762393340": {
     referrals: 411,
     purchases: 63,
     purchaseGrossPeaches: 45394,
-    commissionPeaches: 22696,
-    balancePeaches: 22696,
-    totalEarnedPeaches: 22696,
+    commissionPeaches: 10000,
+    balancePeaches: 10000,
+    totalEarnedPeaches: 10000,
     commissionPct: 50,
   },
   // 2026-09-25…10-01 bumps; 2026-10-13: M2 (~+30% vs A) + repeats, 90% withdrawn; links L3

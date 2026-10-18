@@ -535,21 +535,46 @@ export async function createPartnerLink(
 /** Merchant settlement hold before partner commission is withdrawable. */
 export const PARTNER_COMMISSION_FREEZE_MS = 3 * 24 * 60 * 60 * 1000;
 
-/** Balance minus commissions younger than the merchant freeze window. */
-export async function partnerWithdrawAvailablePeaches(
-  partnerId: string,
-  balancePeaches: number,
-): Promise<number> {
+/** Raw sum of positive commissions younger than the freeze window (may exceed balance). */
+export async function partnerFrozenCommissionPeachesByIds(
+  partnerIds: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!partnerIds.length) return out;
   const since = new Date(Date.now() - PARTNER_COMMISSION_FREEZE_MS);
-  const frozenAgg = await prisma.partnerCommission.aggregate({
+  const rows = await prisma.partnerCommission.groupBy({
+    by: ["partnerId"],
     where: {
-      partnerId,
+      partnerId: { in: partnerIds },
       createdAt: { gt: since },
       amountPeaches: { gt: 0 },
     },
     _sum: { amountPeaches: true },
   });
-  const frozen = Math.max(0, frozenAgg._sum.amountPeaches || 0);
+  for (const r of rows) {
+    out.set(r.partnerId, Math.max(0, r._sum.amountPeaches || 0));
+  }
+  return out;
+}
+
+/** Part of balance still in merchant hold (≤ balance). */
+export function partnerHoldOnBalance(
+  balancePeaches: number,
+  frozenCommissions: number,
+): number {
+  return Math.min(
+    Math.max(0, balancePeaches),
+    Math.max(0, frozenCommissions),
+  );
+}
+
+/** Balance minus commissions younger than the merchant freeze window. */
+export async function partnerWithdrawAvailablePeaches(
+  partnerId: string,
+  balancePeaches: number,
+): Promise<number> {
+  const map = await partnerFrozenCommissionPeachesByIds([partnerId]);
+  const frozen = map.get(partnerId) || 0;
   return Math.max(0, balancePeaches - frozen);
 }
 

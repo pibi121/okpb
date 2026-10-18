@@ -9,6 +9,9 @@ type Partner = {
   balancePeaches: number;
   totalEarnedPeaches: number;
   commissionPct: number;
+  /** Real: part of balance from commissions younger than 3 days. */
+  holdPeaches?: number;
+  availablePeaches?: number;
   user: { name: string | null; email: string };
 };
 type W = {
@@ -320,6 +323,10 @@ export default function OpsPartnersPage() {
             <th className="py-2">Партнёр</th>
             <th className="py-2">Комиссия %</th>
             <th>Баланс</th>
+            <th title="Из баланса: комиссии младше 3 суток (мерчант)">
+              В холде
+            </th>
+            <th>Доступно</th>
             <th>Всего</th>
           </tr>
         </thead>
@@ -327,6 +334,11 @@ export default function OpsPartnersPage() {
           {partners.map((p) => {
             const dirty =
               Math.round(Number(draftPct[p.id])) !== p.commissionPct;
+            const hold = Number(p.holdPeaches) || 0;
+            const available =
+              typeof p.availablePeaches === "number"
+                ? p.availablePeaches
+                : Math.max(0, p.balancePeaches - hold);
             return (
               <tr key={p.id} className="border-t border-white/8">
                 <td className="py-2">
@@ -364,6 +376,10 @@ export default function OpsPartnersPage() {
                   </div>
                 </td>
                 <td>{p.balancePeaches}</td>
+                <td className={hold > 0 ? "text-amber-400/90" : "text-zinc-500"}>
+                  {hold}
+                </td>
+                <td>{available}</td>
                 <td>{p.totalEarnedPeaches}</td>
               </tr>
             );

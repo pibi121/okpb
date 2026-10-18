@@ -2,7 +2,11 @@ import { prisma } from "@/lib/db";
 import { jsonOk, jsonErr, withOps } from "@/lib/ops/http";
 import { listPendingPartnerWithdrawals } from "@/lib/tg/partner-admin";
 import { writeAudit } from "@/lib/ops/audit";
-import { clampPartnerCommissionPct } from "@/lib/tg/partner-program";
+import {
+  clampPartnerCommissionPct,
+  partnerFrozenCommissionPeachesByIds,
+  partnerHoldOnBalance,
+} from "@/lib/tg/partner-program";
 import { notifyPartnersChatPayout } from "@/lib/tg/partner-payout-notify";
 
 export async function GET() {
@@ -18,11 +22,24 @@ export async function GET() {
       }),
       listPendingPartnerWithdrawals(),
     ]);
+    const frozenById = await partnerFrozenCommissionPeachesByIds(
+      partners.map((p) => p.id),
+    );
     return jsonOk({
-      partners: partners.map((p) => ({
-        ...p,
-        createdAt: p.createdAt.toISOString(),
-      })),
+      partners: partners.map((p) => {
+        const frozenCommissions = frozenById.get(p.id) || 0;
+        const holdOnBalance = partnerHoldOnBalance(
+          p.balancePeaches,
+          frozenCommissions,
+        );
+        return {
+          ...p,
+          createdAt: p.createdAt.toISOString(),
+          /** Real: commissions &lt; 3d that still sit on current balance. */
+          holdPeaches: holdOnBalance,
+          availablePeaches: Math.max(0, p.balancePeaches - holdOnBalance),
+        };
+      }),
       pending: pending.map((w) => ({
         ...w,
         createdAt: w.createdAt.toISOString(),

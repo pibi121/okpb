@@ -143,6 +143,8 @@ export async function reportOpsError(opts: {
   refId?: string;
   timeline?: TimelineEvent[];
   autoRetry?: boolean;
+  /** How many automatic retries already happened. Defaults to 1 when autoRetry is set. */
+  autoRetryTimes?: number;
 }): Promise<void> {
   const message = (opts.message || "unknown").slice(0, 2000);
   if (isExpectedClientError(message)) return;
@@ -154,6 +156,9 @@ export async function reportOpsError(opts: {
     buildVersion: BUILD_VERSION,
   });
   const stack = (opts.stack || "").slice(0, 4000);
+  const autoRetryTimes = opts.autoRetry
+    ? Math.max(1, Math.min(5, Math.round(opts.autoRetryTimes || 1)))
+    : 0;
   const timelineJson = JSON.stringify((opts.timeline || []).slice(-40));
   try {
     const existing = await prisma.opsError.findUnique({
@@ -176,8 +181,8 @@ export async function reportOpsError(opts: {
           lastRefType: opts.refType || undefined,
           lastRefId: opts.refId || undefined,
           buildVersion: BUILD_VERSION,
-          autoRetryCount: opts.autoRetry
-            ? { increment: 1 }
+          autoRetryCount: autoRetryTimes
+            ? { increment: autoRetryTimes }
             : undefined,
         },
       });
@@ -201,7 +206,7 @@ export async function reportOpsError(opts: {
           lastRefType: opts.refType || "",
           lastRefId: opts.refId || "",
           buildVersion: BUILD_VERSION,
-          autoRetryCount: opts.autoRetry ? 1 : 0,
+          autoRetryCount: autoRetryTimes,
         },
       });
     }

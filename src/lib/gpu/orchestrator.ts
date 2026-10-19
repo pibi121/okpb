@@ -148,6 +148,8 @@ export async function noteGpuJobError(
           workerId: store.workerId,
           ...(meta || {}),
         },
+        autoRetry: Number(meta?.oomRetries) > 0,
+        autoRetryTimes: Number(meta?.oomRetries) || 0,
       }),
     )
     .catch(() => undefined);
@@ -333,10 +335,14 @@ export async function runTrackedGpuJob(
             `[peach] gpu job ${job.id} detached (connection lost), leaving it running`,
           );
         } else if (!store.failed) {
-          await noteGpuJobError(
-            e instanceof Error ? e.message : String(e),
-            { thrown: true },
-          );
+          const oomRetries =
+            e && typeof e === "object" && "oomRetries" in e
+              ? Number((e as { oomRetries?: unknown }).oomRetries) || 0
+              : 0;
+          await noteGpuJobError(e instanceof Error ? e.message : String(e), {
+            thrown: true,
+            ...(oomRetries > 0 ? { oomRetries } : {}),
+          });
         }
       } finally {
         clearInterval(beatTimer);

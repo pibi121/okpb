@@ -861,6 +861,12 @@ function isHeavyComfyFailure(err: unknown): boolean {
   );
 }
 
+function tagOomRetries(err: unknown, n: number) {
+  if (n > 0 && err && typeof err === "object") {
+    (err as { oomRetries?: number }).oomRetries = n;
+  }
+}
+
 function isCudaOom(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /OutOfMemory|CUDA out of memory|ran out of memory/i.test(msg);
@@ -890,25 +896,36 @@ async function comfyVramFreeBytes(): Promise<number | null> {
 
 /**
  * Previous job often leaves weights cached. CUDA then reports a few MiB free
- * while this process barely holds anything, and the next 96 MiB alloc dies.
- * Unload only when the queue is idle so a neighbor's run is not killed.
- * Do not requeue until free memory actually comes back.
+ * while this process barely holds anything, and the next small alloc dies.
+ * If another prompt is on this GPU, wait — do not /free it and do not start.
+ * When the queue is idle, unload and wait until at least 4 GiB is actually free.
+ * Starting anyway is what turned a full card into an immediate sampler OOM.
  */
 async function ensureVramHeadroom(): Promise<void> {
-  for (let i = 0; i < 3; i++) {
+  const deadline = Date.now() + 4 * 60_000;
+  let frees = 0;
+  while (Date.now() < deadline) {
     const free = await comfyVramFreeBytes();
     if (free == null || free >= MIN_VRAM_FREE_BYTES) return;
-    console.warn(
-      `[peach] vram free ${Math.round(free / (1024 * 1024))} MiB before queue, unloading`,
-    );
-    const freed = await comfyFreeMemory();
-    const deadline = Date.now() + (freed ? 18_000 : 8_000);
-    while (Date.now() < deadline) {
-      await sleep(3_000);
-      const again = await comfyVramFreeBytes();
-      if (again == null || again >= MIN_VRAM_FREE_BYTES) return;
+    const mib = Math.round(free / (1024 * 1024));
+    const foreign = await comfyHasForeignWork(null);
+    if (foreign) {
+      console.warn(
+        `[peach] vram free ${mib} MiB, other work on this GPU, waiting`,
+      );
+      await sleep(5_000);
+      continue;
     }
+    if (frees >= 2) break;
+    frees += 1;
+    console.warn(`[peach] vram free ${mib} MiB before queue, unloading`);
+    await comfyFreeMemory();
+    await sleep(8_000);
   }
+  const free = await comfyVramFreeBytes();
+  if (free == null || free >= MIN_VRAM_FREE_BYTES) return;
+  const mib = Math.round((free || 0) / (1024 * 1024));
+  throw new Error(`CUDA out of memory: ${mib} MiB free before start`);
 }
 
 export async function runComfyAndDownload(
@@ -976,7 +993,10 @@ export async function runComfyAndDownload(
         promptId = null;
         throw e;
       }
-      if (!isTransientComfyError(e) || attempt === 3) throw e;
+      if (!isTransientComfyError(e) || attempt === 3) {
+        tagOomRetries(e, oomRecoveries);
+        throw e;
+      }
       console.warn(
         `[peach] comfy still retry ${attempt + 1}/4:`,
         e instanceof Error ? e.message.slice(0, 160) : e,
@@ -986,7 +1006,11 @@ export async function runComfyAndDownload(
       // Keep promptId — job may still be running/finished on Metalnode after tunnel flap.
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  tagOomRetries(lastErr, oomRecoveries);
+  if (lastErr instanceof Error) throw lastErr;
+  const wrapped = new Error(String(lastErr));
+  tagOomRetries(wrapped, oomRecoveries);
+  throw wrapped;
 }
 
 export async function runComfyJob(
@@ -1063,7 +1087,10 @@ export async function runComfyJob(
         await ensureComfyReady(20, 1000);
         continue;
       }
-      if (!isTransientComfyError(e) || attempt === 5) throw e;
+      if (!isTransientComfyError(e) || attempt === 5) {
+        tagOomRetries(e, oomRecoveries);
+        throw e;
+      }
       console.warn(
         `[peach] comfy job retry ${attempt + 1}/6:`,
         msg.slice(0, 160),
@@ -1072,7 +1099,11 @@ export async function runComfyJob(
       await ensureComfyReady(15, 1000);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  tagOomRetries(lastErr, oomRecoveries);
+  if (lastErr instanceof Error) throw lastErr;
+  const wrapped = new Error(String(lastErr));
+  tagOomRetries(wrapped, oomRecoveries);
+  throw wrapped;
 }
 
 /**

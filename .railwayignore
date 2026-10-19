@@ -88,3 +88,8 @@ klein_fix_latest.png
 /tmp-undress-samples/
 /tmp-query-undress.js
 
+# local WIP prototypes — must not ship (missing deps like three)
+/src/app/tg/room/
+/src/lib/tg/miniapp/room-proto.tsx
+/vendor/
+

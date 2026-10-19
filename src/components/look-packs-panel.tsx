@@ -1,8 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  Lab2KeyboardPreview,
+  type PreviewButton,
+} from "@/components/lab2-keyboard-preview";
+import {
+  defaultFunnelKeyboardCatalog,
+  type FunnelKeyboardCatalog,
+  type TgButtonStyle,
+} from "@/lib/tg/funnel-v2/keyboard-layout";
 
 type Scene = { editPrompt: string };
+
+const BUTTON_STYLES: Array<{ id: TgButtonStyle; label: string }> = [
+  { id: "", label: "Обычная" },
+  { id: "primary", label: "Синяя" },
+  { id: "success", label: "Зелёная" },
+  { id: "danger", label: "Красная" },
+];
 
 type Pack = {
   id: string;
@@ -13,6 +29,8 @@ type Pack = {
   previewVideoUrl: string;
   funnelV2Published: boolean;
   sortOrder: number;
+  buttonStyle: TgButtonStyle;
+  rowBreak: boolean;
   scenes: Scene[];
   ready: boolean;
 };
@@ -29,6 +47,8 @@ const blank = (): Pack => ({
   previewVideoUrl: "",
   funnelV2Published: false,
   sortOrder: 0,
+  buttonStyle: "",
+  rowBreak: false,
   scenes: emptyScenes(),
   ready: false,
 });
@@ -39,12 +59,18 @@ export function LookPacksPanel() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+  const [keyboard, setKeyboard] = useState<FunnelKeyboardCatalog>(
+    defaultFunnelKeyboardCatalog(),
+  );
+  const [previewPage, setPreviewPage] = useState(0);
+  const [dragId, setDragId] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/peach/look-packs");
     const json = await res.json();
     if (!res.ok) throw new Error(String(json.error || "Не удалось загрузить"));
     setPacks((json.packs || []) as Pack[]);
+    if (json.keyboard) setKeyboard(json.keyboard as FunnelKeyboardCatalog);
   }, []);
 
   useEffect(() => {
@@ -92,6 +118,8 @@ export function LookPacksPanel() {
           previewVideoUrl: draft.previewVideoUrl,
           funnelV2Published: draft.funnelV2Published,
           sortOrder: Number(draft.sortOrder) || 0,
+          buttonStyle: draft.buttonStyle,
+          rowBreak: draft.rowBreak,
           scenes: draft.scenes,
         }),
       });
@@ -125,6 +153,53 @@ export function LookPacksPanel() {
     }
   }
 
+  async function saveKeyboard(patch: Partial<FunnelKeyboardCatalog>) {
+    const next = { ...keyboard, ...patch };
+    setKeyboard(next);
+    const res = await fetch("/api/peach/look-packs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "keyboard",
+        customRows: next.customRows,
+        firstPageSize: next.firstPageSize,
+        nextPageSize: next.nextPageSize,
+      }),
+    });
+    if (!res.ok) setErr("Не удалось сохранить раскладку");
+  }
+
+  async function reorder(fromId: string, toId: string) {
+    if (!fromId || !toId || fromId === toId) return;
+    const ids = packs.map((p) => p.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]!);
+    setPacks(ids.map((id, index) => {
+      const pack = packs.find((p) => p.id === id)!;
+      return { ...pack, sortOrder: index };
+    }));
+    const res = await fetch("/api/peach/look-packs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reorder", ids }),
+    });
+    if (!res.ok) setErr("Не удалось сохранить порядок");
+  }
+
+  const previewItems: PreviewButton[] = packs
+    .filter((p) => (draft.id === p.id ? draft.funnelV2Published : p.funnelV2Published))
+    .map((p) => {
+      const src = draft.id === p.id ? draft : p;
+      return {
+        key: p.id,
+        label: (src.tgDisplayTitle || src.title || "Образ").slice(0, 40),
+        rowBreak: src.rowBreak,
+        style: src.buttonStyle,
+      };
+    });
+
   return (
     <div className="grid gap-4">
       <p className="text-sm text-zinc-400">
@@ -147,6 +222,13 @@ export function LookPacksPanel() {
           <button
             key={p.id}
             type="button"
+            draggable
+            onDragStart={() => setDragId(p.id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => {
+              void reorder(dragId, p.id);
+              setDragId("");
+            }}
             onClick={() => setDraft(p)}
             className={`rounded-2xl border px-3 py-2 text-left text-xs ${
               draft.id === p.id
@@ -156,11 +238,22 @@ export function LookPacksPanel() {
           >
             <div className="font-medium">{p.tgDisplayTitle || p.title}</div>
             <div className="text-zinc-500">
-              {p.funnelV2Published ? "в боте" : "скрыт"} · {p.pricePeaches}₽
+              {p.funnelV2Published ? "в боте" : "скрыт"} · {p.pricePeaches}₽ · перетащи
             </div>
           </button>
         ))}
       </div>
+
+      <Lab2KeyboardPreview
+        title="Клавиатура образов"
+        hint="Как у поз: перетащи карточки выше для порядка. Длинное название — «Новая строка». Короткие — «В ряд с предыдущей»."
+        items={previewItems}
+        settings={keyboard}
+        page={previewPage}
+        onPage={setPreviewPage}
+        onSettings={(patch) => void saveKeyboard(patch)}
+        onResetRows={() => void saveKeyboard({ customRows: false })}
+      />
 
       <div className="grid gap-3 rounded-2xl border border-white/10 bg-[#121214]/80 p-4">
         <label className="grid gap-1 text-xs text-zinc-400">
@@ -191,17 +284,52 @@ export function LookPacksPanel() {
               }
             />
           </label>
-          <label className="grid gap-1 text-xs text-zinc-400">
-            Порядок
-            <input
-              type="number"
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-foreground"
-              value={draft.sortOrder}
-              onChange={(e) =>
-                setDraft({ ...draft, sortOrder: Number(e.target.value) })
-              }
-            />
-          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-zinc-500">Ряд</span>
+          <button
+            type="button"
+            className={`rounded-full border px-2.5 py-1 text-[11px] ${
+              keyboard.customRows && draft.rowBreak
+                ? "border-peach/40 bg-peach/10 text-peach"
+                : "border-white/10 text-zinc-400"
+            }`}
+            onClick={() => {
+              setDraft({ ...draft, rowBreak: true });
+              if (!keyboard.customRows) void saveKeyboard({ customRows: true });
+            }}
+          >
+            Новая строка
+          </button>
+          <button
+            type="button"
+            className={`rounded-full border px-2.5 py-1 text-[11px] ${
+              keyboard.customRows && !draft.rowBreak
+                ? "border-peach/40 bg-peach/10 text-peach"
+                : "border-white/10 text-zinc-400"
+            }`}
+            onClick={() => {
+              setDraft({ ...draft, rowBreak: false });
+              if (!keyboard.customRows) void saveKeyboard({ customRows: true });
+            }}
+          >
+            В ряд с предыдущей
+          </button>
+          <span className="ml-1 text-[11px] text-zinc-500">Цвет</span>
+          {BUTTON_STYLES.map((s) => (
+            <button
+              key={s.id || "plain"}
+              type="button"
+              className={`rounded-full border px-2.5 py-1 text-[11px] ${
+                draft.buttonStyle === s.id
+                  ? "border-peach/40 bg-peach/10 text-peach"
+                  : "border-white/10 text-zinc-400"
+              }`}
+              onClick={() => setDraft({ ...draft, buttonStyle: s.id })}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
         <label className="grid gap-1 text-xs text-zinc-400">
           Короткое описание

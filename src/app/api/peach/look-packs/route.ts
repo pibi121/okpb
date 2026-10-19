@@ -11,6 +11,11 @@ import {
   parseLookScenes,
   type LookScene,
 } from "@/lib/tg/funnel-v2/look-pack";
+import { parseTgButtonStyle } from "@/lib/tg/funnel-v2/keyboard-layout";
+import {
+  loadFunnelKeyboardSettings,
+  saveFunnelKeyboardSettings,
+} from "@/lib/tg/funnel-v2/keyboard-settings";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -28,7 +33,21 @@ const saveSchema = z.object({
   previewVideoUrl: z.string().max(2000).optional(),
   funnelV2Published: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
+  buttonStyle: z.enum(["", "primary", "success", "danger"]).optional(),
+  rowBreak: z.boolean().optional(),
   scenes: z.array(sceneSchema).length(5),
+});
+
+const reorderSchema = z.object({
+  action: z.literal("reorder"),
+  ids: z.array(z.string()).max(80),
+});
+
+const keyboardSchema = z.object({
+  action: z.literal("keyboard"),
+  customRows: z.boolean().optional(),
+  firstPageSize: z.number().int().min(1).max(24).optional(),
+  nextPageSize: z.number().int().min(1).max(24).optional(),
 });
 
 async function assertLab() {
@@ -56,6 +75,8 @@ function toDto(row: {
   scenesJson: string;
   funnelV2Published: boolean;
   sortOrder: number;
+  tgButtonStyle: string;
+  tgRowBreak: boolean;
   updatedAt: Date;
 }) {
   const parsed = parseLookScenes(row.scenesJson);
@@ -71,6 +92,8 @@ function toDto(row: {
     previewVideoUrl: row.previewVideoUrl,
     funnelV2Published: row.funnelV2Published,
     sortOrder: row.sortOrder,
+    buttonStyle: parseTgButtonStyle(row.tgButtonStyle),
+    rowBreak: row.tgRowBreak,
     updatedAt: row.updatedAt.toISOString(),
     scenes,
     ready: lookScenesReady(scenes),
@@ -82,11 +105,14 @@ export async function GET() {
   if (maintenanceBlock) return maintenanceBlock;
   const gate = await assertLab();
   if ("error" in gate && gate.error) return gate.error;
-  const rows = await prisma.funnelLookPack.findMany({
-    orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-    take: 100,
-  });
-  return NextResponse.json({ packs: rows.map(toDto) });
+  const [rows, keyboard] = await Promise.all([
+    prisma.funnelLookPack.findMany({
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+      take: 100,
+    }),
+    loadFunnelKeyboardSettings(),
+  ]);
+  return NextResponse.json({ packs: rows.map(toDto), keyboard: keyboard.look });
 }
 
 export async function POST(req: NextRequest) {
@@ -115,7 +141,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url });
   }
 
-  const body = saveSchema.parse(await req.json());
+  const raw = await req.json();
+  const reorder = reorderSchema.safeParse(raw);
+  if (reorder.success) {
+    await prisma.$transaction(
+      reorder.data.ids.map((id, index) =>
+        prisma.funnelLookPack.update({
+          where: { id },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+    return NextResponse.json({ ok: true });
+  }
+  const keyboardPatch = keyboardSchema.safeParse(raw);
+  if (keyboardPatch.success) {
+    const keyboard = await saveFunnelKeyboardSettings({
+      look: {
+        customRows: keyboardPatch.data.customRows === true,
+        firstPageSize: keyboardPatch.data.firstPageSize ?? 6,
+        nextPageSize: keyboardPatch.data.nextPageSize ?? 6,
+      },
+    });
+    return NextResponse.json({ keyboard: keyboard.look });
+  }
+  const body = saveSchema.parse(raw);
   const scenes = body.scenes.map((s) => ({
     editPrompt: s.editPrompt.trim(),
   }));
@@ -134,6 +184,8 @@ export async function POST(req: NextRequest) {
     previewVideoUrl: (body.previewVideoUrl || "").trim(),
     funnelV2Published: publish,
     sortOrder: body.sortOrder ?? 0,
+    tgButtonStyle: parseTgButtonStyle(body.buttonStyle),
+    tgRowBreak: Boolean(body.rowBreak),
     scenesJson: JSON.stringify(scenes),
   };
   const row = body.id

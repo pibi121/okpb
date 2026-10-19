@@ -166,6 +166,7 @@ export async function sendFunnelV2PhotoHub(
       {
         text: "👙 Look-образы",
         callback_data: FV2.phLooks,
+        style: "primary",
       },
     ]);
   }
@@ -342,6 +343,7 @@ export async function handleFunnelV2PhotoCallback(opts: {
   if (
     data === FV2.phLooks ||
     data.startsWith("fv2:ph:lk:") ||
+    data.startsWith("fv2:ph:lp:") ||
     data.startsWith("fv2:ph:ok:lk:")
   ) {
     const { handleLookPackCallback } = await import(

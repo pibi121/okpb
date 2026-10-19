@@ -1425,6 +1425,10 @@ model FunnelLookPack {
   scenesJson         String   @default("[]")
   funnelV2Published  Boolean  @default(false)
   sortOrder          Int      @default(0)
+  /// "" | primary | success | danger
+  tgButtonStyle      String   @default("")
+  /// Funnel keyboard: start a new row when custom rows are on
+  tgRowBreak         Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

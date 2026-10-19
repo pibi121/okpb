@@ -32,6 +32,13 @@ export async function saveFunnelKeyboardSettings(
           nextPageSize: clampFunnelPageSize(patch.video.nextPageSize),
         }
       : current.video,
+    look: patch.look
+      ? {
+          customRows: patch.look.customRows === true,
+          firstPageSize: clampFunnelPageSize(patch.look.firstPageSize),
+          nextPageSize: clampFunnelPageSize(patch.look.nextPageSize),
+        }
+      : current.look,
   };
   await prisma.opsSetting.upsert({
     where: { id: "main" },

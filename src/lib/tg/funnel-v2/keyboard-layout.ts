@@ -13,7 +13,7 @@ export const FUNNEL_KEYBOARD_PAGE_MIN = 1;
 export const FUNNEL_KEYBOARD_PAGE_MAX = 24;
 export const FUNNEL_KEYBOARD_DEFAULT_PAGE = 6;
 
-export type FunnelKeyboardCatalogId = "photo" | "video";
+export type FunnelKeyboardCatalogId = "photo" | "video" | "look";
 
 export type FunnelKeyboardCatalog = {
   customRows: boolean;
@@ -38,6 +38,7 @@ export function defaultFunnelKeyboardSettings(): FunnelKeyboardSettings {
   return {
     photo: defaultFunnelKeyboardCatalog(),
     video: defaultFunnelKeyboardCatalog(),
+    look: defaultFunnelKeyboardCatalog(),
   };
 }
 
@@ -81,6 +82,7 @@ export function parseFunnelKeyboardSettings(
   return {
     photo: parseCatalog(o.photo),
     video: parseCatalog(o.video),
+    look: parseCatalog(o.look),
   };
 }
 

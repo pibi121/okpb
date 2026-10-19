@@ -69,6 +69,25 @@ export function funnelV2PhotoReadyKeyboard(
   return { inline_keyboard: rows };
 }
 
+/** After a Look pack album. Same actions as a pose, without animate and dislike. */
+export function funnelV2LookReadyKeyboard(galleryItemId: string | null) {
+  const rows: Array<Array<Record<string, unknown>>> = [];
+  if (galleryItemId) {
+    rows.push([
+      {
+        text: "Редактировать фото ✏️",
+        callback_data: FV2.phEdit(galleryItemId),
+        style: "success",
+      },
+    ]);
+  }
+  rows.push(
+    [{ text: "Выбрать другой шаблон 💦", callback_data: FV2.photo }],
+    [{ text: "⬅️ Вернуться в главное меню", callback_data: FV2.hub }],
+  );
+  return { inline_keyboard: rows };
+}
+
 /** Blur trial: pack amounts + back to hub (TZ). */
 export function funnelV2PhotoBlurKeyboard(
   _locale: TgLocale,

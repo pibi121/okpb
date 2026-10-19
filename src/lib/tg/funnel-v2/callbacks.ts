@@ -20,6 +20,7 @@ export const FV2 = {
   /** Look packs submenu. Shown only when at least one pack is published. */
   phLooks: "fv2:ph:lks",
   phLook: (id: string) => `fv2:ph:lk:${id}`,
+  phLookPage: (p: number) => `fv2:ph:lp:${p}`,
   phLookOk: (id: string) => `fv2:ph:ok:lk:${id}`,
   /** Photo: template page */
   phPage: (p: number) => `fv2:ph:p:${p}`,

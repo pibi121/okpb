@@ -21,6 +21,13 @@ import {
   getFunnelBalance,
 } from "@/lib/tg/funnel-v2/mode";
 import { funnelV2ReplaceUi } from "@/lib/tg/funnel-v2/ui";
+import {
+  groupKeyboardRows,
+  paginateKeyboardRows,
+  parseTgButtonStyle,
+  tgInlineButton,
+} from "@/lib/tg/funnel-v2/keyboard-layout";
+import { loadFunnelKeyboardSettings } from "@/lib/tg/funnel-v2/keyboard-settings";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
 
@@ -90,32 +97,56 @@ function buttonTitle(row: { title: string; tgDisplayTitle: string }): string {
 export async function sendLookHub(
   chatId: number,
   platformUserId: string,
+  page = 0,
 ) {
   const rows = await prisma.funnelLookPack.findMany({
     where: { funnelV2Published: true },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-    take: 30,
+    take: 80,
   });
   if (rows.length === 0) {
     await sendFunnelPhotoHub(chatId, platformUserId);
     return;
   }
+  const keyboardSettings = await loadFunnelKeyboardSettings();
+  const items = rows.map((row) => ({
+    id: row.id,
+    title: buttonTitle(row),
+    rowBreak: row.tgRowBreak,
+    buttonStyle: parseTgButtonStyle(row.tgButtonStyle),
+  }));
+  const grouped = groupKeyboardRows(items, keyboardSettings.look.customRows);
+  const paged = paginateKeyboardRows(
+    grouped,
+    page,
+    keyboardSettings.look.firstPageSize,
+    keyboardSettings.look.nextPageSize,
+  );
   const text =
-    "<b>Look-образы</b>\n\n" +
-    "Один образ — 5 фотографий в разных позах. Пришли своё фото, я сделаю весь набор и пришлю альбомом.";
-  const keyboard = {
-    inline_keyboard: [
-      ...rows.map((row) => [
-        {
-          text: buttonTitle(row),
-          callback_data: FV2.phLook(row.id),
-        },
-      ]),
-      [{ text: "⬅️ К фото", callback_data: FV2.photo }],
-    ],
-  };
+    "😜 В каком образе ты хочешь увидишь свою подружку?\n\n" +
+    "Выбери шаблон ниже, прикрепи фотографию и я сделаю для тебя целых 5 горячих фоток в этом образе ⬇️";
+  const inline: Array<Array<Record<string, unknown>>> = paged.pageRows.map(
+    (rowItems) =>
+      rowItems.map((item) =>
+        tgInlineButton(item.title.slice(0, 40), FV2.phLook(item.id), item.buttonStyle),
+      ),
+  );
+  if (paged.pageCount > 1) {
+    const nav: Array<Record<string, unknown>> = [];
+    if (paged.pageIndex > 0) {
+      nav.push({ text: "⬅️", callback_data: FV2.phLookPage(paged.pageIndex - 1) });
+    }
+    if (paged.pageIndex < paged.pageCount - 1) {
+      nav.push({
+        text: "Ещё образы➡️",
+        callback_data: FV2.phLookPage(paged.pageIndex + 1),
+      });
+    }
+    if (nav.length) inline.push(nav);
+  }
+  inline.push([{ text: "⬅️ К фото", callback_data: FV2.photo }]);
   await funnelV2ReplaceUi(platformUserId, chatId, () =>
-    tgSendMessage(chatId, text, { reply_markup: keyboard }),
+    tgSendMessage(chatId, text, { reply_markup: { inline_keyboard: inline } }),
   );
 }
 
@@ -144,13 +175,14 @@ async function sendLookConfirm(
   },
 ) {
   const title = buttonTitle(row);
-  const notes = row.notes.trim() ? `${row.notes.trim().slice(0, 400)}\n\n` : "";
+  const notes = row.notes.trim();
   const text =
     `👙 <b>${title}</b>\n\n` +
-    notes +
-    `5 фотографий одним альбомом.\n` +
-    `Стоимость: ${formatRubOnly(row.pricePeaches)}\n\n` +
-    `Нажми «Подтвердить», если фото уже загружено.`;
+    (notes ? `${notes.slice(0, 400)}\n\n` : "") +
+    `Стоимость: ${formatRubOnly(row.pricePeaches)}\n` +
+    `(получишь 5 фотографий в этом образе с разных ракурсов и поз)\n\n` +
+    `❗️Рекомендуем загружать фотографию девушки крупным планом лица, чтобы сохранить внешность и избежать искажений в генерации.\n\n` +
+    `Нажми «Подтвердить», если фото уже загружено. Если фото ещё не загружено или хочешь заменить на другое, сделай это.`;
   const kb = {
     inline_keyboard: [
       [
@@ -193,7 +225,12 @@ export async function handleLookPackCallback(opts: {
 }): Promise<boolean> {
   const { chatId, platformUserId, data } = opts;
   if (data === FV2.phLooks) {
-    await sendLookHub(chatId, platformUserId);
+    await sendLookHub(chatId, platformUserId, 0);
+    return true;
+  }
+  const pageM = /^fv2:ph:lp:(\d+)$/.exec(data);
+  if (pageM) {
+    await sendLookHub(chatId, platformUserId, Number(pageM[1]) || 0);
     return true;
   }
   const open = /^fv2:ph:lk:(.+)$/.exec(data);
@@ -324,24 +361,26 @@ async function deliverLookPack(parentId: string): Promise<void> {
     );
   }
 
-  const caption =
+  const followup =
     ready.length === 0
       ? "Не получилось сделать образ. Деньги вернул на баланс."
       : ready.length === FRAME_COUNT
-        ? `Готово. Образ «${meta.title}» — 5 фото.`
-        : `Готово ${ready.length} из 5. За недостающие вернул ${refund}₽.`;
+        ? "Образ готов! Что сделать дальше?"
+        : `Образ готов! Что сделать дальше?\n\nГотово ${ready.length} из 5. За недостающие вернул ${refund}₽.`;
+  const { funnelV2LookReadyKeyboard } = await import(
+    "@/lib/tg/funnel-v2/result-keyboards"
+  );
+  const editId = ready.length > 0 ? meta.frameItemIds[ready[0]!.index] || null : null;
+  const markup = funnelV2LookReadyKeyboard(editId);
 
   try {
     if (ready.length >= 2) {
       await tgSendMediaGroupFiles(
         meta.chatId,
         ready.map((r) => ({ bytes: r.bytes, filename: `look-${r.index + 1}.jpg` })),
-        caption,
       );
     } else if (ready.length === 1) {
-      await tgSendPhotoFile(meta.chatId, ready[0]!.bytes, "look.jpg", caption);
-    } else {
-      await tgSendMessage(meta.chatId, caption);
+      await tgSendPhotoFile(meta.chatId, ready[0]!.bytes, "look.jpg");
     }
   } catch (e) {
     console.error("[look-pack] deliver", e);
@@ -352,10 +391,10 @@ async function deliverLookPack(parentId: string): Promise<void> {
         `look-${frame.index + 1}.jpg`,
       ).catch(() => undefined);
     }
-    if (ready.length === 0) {
-      await tgSendMessage(meta.chatId, caption).catch(() => undefined);
-    }
   }
+  await tgSendMessage(meta.chatId, followup, { reply_markup: markup }).catch(
+    (e) => console.error("[look-pack] keyboard", e),
+  );
 }
 
 export async function settleAbandonedLookPack(parentId: string): Promise<void> {

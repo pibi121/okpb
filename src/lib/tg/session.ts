@@ -83,6 +83,8 @@ export type TgPending = {
   qcSuccessMessageId?: number;
   funnelV2PhotoUrl?: string;
   funnelV2PhotoKey?: string;
+  /** Look pack waiting for the user's photo, then confirm. */
+  funnelV2PendingLookId?: string;
   /** Optional second hero for dual-cast QuickVideo templates. */
   funnelV2Photo2Url?: string;
   funnelV2Photo2Key?: string;

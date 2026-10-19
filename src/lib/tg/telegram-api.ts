@@ -324,6 +324,39 @@ export async function tgSendPhotoFile(
   return tgApiForm("sendPhoto", form, token);
 }
 
+/** Album of 2–10 photos. Bytes are uploaded; gallery URLs are not public to Telegram. */
+export async function tgSendMediaGroupFiles(
+  chatId: number | string,
+  photos: Array<{ bytes: Buffer; filename?: string }>,
+  caption?: string,
+  token?: string,
+) {
+  if (photos.length < 2) {
+    throw new Error("media group needs at least 2 photos");
+  }
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  const media = photos.map((p, i) => {
+    const name = `p${i}`;
+    const item: Record<string, unknown> = {
+      type: "photo",
+      media: `attach://${name}`,
+    };
+    if (i === 0 && caption) {
+      item.caption = caption;
+      item.parse_mode = "HTML";
+    }
+    form.append(
+      name,
+      new Blob([new Uint8Array(p.bytes)], { type: "image/jpeg" }),
+      p.filename || `${name}.jpg`,
+    );
+    return item;
+  });
+  form.append("media", JSON.stringify(media));
+  return tgApiForm("sendMediaGroup", form, token);
+}
+
 export async function tgSendVideo(
   chatId: number | string,
   videoUrl: string,

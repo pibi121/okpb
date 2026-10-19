@@ -1412,6 +1412,25 @@ model PhotoTemplate {
   @@index([funnelV2Published, sortOrder])
 }
 
+/// Funnel v2 Look pack: 5 poses, one GPU job, one album.
+/// Hidden in the bot until funnelV2Published.
+model FunnelLookPack {
+  id                 String   @id @default(cuid())
+  title              String
+  notes              String   @default("")
+  tgDisplayTitle     String   @default("")
+  pricePeaches       Int      @default(270)
+  previewVideoUrl    String   @default("")
+  /// [{ sceneImageUrl, editPrompt }] length 5
+  scenesJson         String   @default("[]")
+  funnelV2Published  Boolean  @default(false)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([funnelV2Published, sortOrder])
+}
+
 /// TG delivery queue — bot polls and sends to chat.
 model TgOutbox {
   id               String    @id @default(cuid())

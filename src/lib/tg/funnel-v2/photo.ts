@@ -160,6 +160,15 @@ export async function sendFunnelV2PhotoHub(
       },
     ],
   ];
+  const { countPublishedLooks } = await import("@/lib/tg/funnel-v2/look-pack");
+  if ((await countPublishedLooks()) > 0) {
+    rows.push([
+      {
+        text: "👙 Look-образы",
+        callback_data: FV2.phLooks,
+      },
+    ]);
+  }
   for (const rowItems of paged.pageRows) {
     rows.push(
       rowItems.map((tpl) =>
@@ -329,6 +338,23 @@ export async function handleFunnelV2PhotoCallback(opts: {
       Number(pageM[1]),
     );
     return true;
+  }
+  if (
+    data === FV2.phLooks ||
+    data.startsWith("fv2:ph:lk:") ||
+    data.startsWith("fv2:ph:ok:lk:")
+  ) {
+    const { handleLookPackCallback } = await import(
+      "@/lib/tg/funnel-v2/look-pack"
+    );
+    return handleLookPackCallback({
+      chatId,
+      userId,
+      platformUserId,
+      locale,
+      data,
+      callbackId: opts.callbackId,
+    });
   }
   if (data === FV2.phUndress) {
     const hasPhoto = Boolean(await activePhotoUrl(platformUserId));
@@ -907,6 +933,7 @@ export async function handleFunnelV2PhotoUpload(opts: {
   const session = await getTgSession(opts.platformUserId);
   const pending = parsePending(session?.pendingJson || "{}") as {
     funnelV2PendingConfirm?: { kind: "ud" | "tpl"; id: string };
+    funnelV2PendingLookId?: string;
     funnelV2PendingVideoConfirm?: { kind: "qv" | "li2v"; id: string };
     funnelV2ReturnTo?: string;
     funnelV2AwaitPhoto2?: boolean;
@@ -967,6 +994,19 @@ export async function handleFunnelV2PhotoUpload(opts: {
   });
 
   await tgSendMessage(opts.chatId, "Фото сохранено ✅");
+  const pendingLookId = (pending.funnelV2PendingLookId || "").trim();
+  if (pendingLookId) {
+    const { runLookPack } = await import("@/lib/tg/funnel-v2/look-pack");
+    await runLookPack({
+      chatId: opts.chatId,
+      userId: opts.userId,
+      platformUserId: opts.platformUserId,
+      locale: opts.locale,
+      lookId: pendingLookId,
+      photoUrl: saved.publicUrl,
+    });
+    return;
+  }
   const pendingConfirm = pending.funnelV2PendingConfirm;
   if (pendingConfirm) {
     await runFunnelV2PhotoGen({

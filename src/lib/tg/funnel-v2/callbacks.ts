@@ -17,6 +17,10 @@ export const FV2 = {
   unblur: (itemId: string) => `fv2:ub:${itemId}`,
   /** Photo: undress full */
   phUndress: "fv2:ph:ud",
+  /** Look packs submenu. Shown only when at least one pack is published. */
+  phLooks: "fv2:ph:lks",
+  phLook: (id: string) => `fv2:ph:lk:${id}`,
+  phLookOk: (id: string) => `fv2:ph:ok:lk:${id}`,
   /** Photo: template page */
   phPage: (p: number) => `fv2:ph:p:${p}`,
   /** Photo: pick template id */

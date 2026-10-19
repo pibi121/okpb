@@ -19,6 +19,7 @@ import {
   Lab2KeyboardPreview,
   type PreviewButton,
 } from "@/components/lab2-keyboard-preview";
+import { LookPacksPanel } from "@/components/look-packs-panel";
 
 type Kind = "photo" | "video" | "lora_i2v";
 
@@ -129,6 +130,7 @@ function buttonLabel(it: TransferItem, d: Draft): string {
 
 export function Lab2TransferClient() {
   const [tab, setTab] = useState<Kind>("photo");
+  const [lookPanel, setLookPanel] = useState(false);
   const [lists, setLists] = useState<Record<Kind, TransferItem[]>>({
     photo: [],
     video: [],
@@ -550,6 +552,7 @@ export function Lab2TransferClient() {
               key={t.id}
               type="button"
               onClick={() => {
+                setLookPanel(false);
                 setTab(t.id);
                 setPreviewPage(0);
               }}
@@ -568,8 +571,25 @@ export function Lab2TransferClient() {
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setLookPanel(true)}
+          className={`rounded-2xl border px-3 py-2 text-left transition ${
+            lookPanel
+              ? "border-peach/50 bg-peach/10"
+              : "border-white/10 bg-[#121214]/80 hover:border-white/20"
+          }`}
+        >
+          <div className="text-[13px] font-medium text-foreground">Look-образы</div>
+          <div className="text-[11px] text-zinc-500">
+            пак из 5 поз · в боте после публикации
+          </div>
+        </button>
       </div>
 
+      {lookPanel ? <LookPacksPanel /> : null}
+      {lookPanel ? null : (
+      <>
       <Lab2KeyboardPreview
         title={catalog === "photo" ? "Клавиатура фото" : "Клавиатура видео"}
         hint={
@@ -966,6 +986,8 @@ export function Lab2TransferClient() {
               : "Сохранить"}
         </button>
       </div>
+      </>
+      )}
     </div>
   );
 }

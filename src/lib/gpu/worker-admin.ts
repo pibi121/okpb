@@ -157,6 +157,8 @@ const STALE_VIDEO_LIVE_CAP_MS = 120 * 60_000;
 /** Soft budgets by pool — fail hung ledger rows so кабинет не врёт «в работе 13 мин». */
 function staleRunLimitMs(kind: string, pool: string) {
   const k = `${kind} ${pool}`.toLowerCase();
+  // One Look pack holds a GPU for 5 stills. Don't cut it at the single-photo 12 min.
+  if (k.includes("look_pack")) return 40 * 60_000;
   if (k.includes("train") || pool === "lora") return 150 * 60_000;
   if (pool === "video" || /video|clip|film|i2v|quick|animate/.test(k)) {
     return 40 * 60_000;
@@ -384,7 +386,16 @@ export async function sweepStaleGpuJobs(): Promise<number> {
         })
         .catch(() => undefined);
     }
-    if (job.refType === "galleryItem" && job.refId) {
+    if (job.refType === "lookPack" && job.refId) {
+      try {
+        const { settleAbandonedLookPack } = await import(
+          "@/lib/tg/funnel-v2/look-pack"
+        );
+        await settleAbandonedLookPack(job.refId);
+      } catch {
+        /* ignore */
+      }
+    } else if (job.refType === "galleryItem" && job.refId) {
       try {
         const { failAbandonedGalleryItem } = await import(
           "@/lib/gpu/orphan-gallery-heal"

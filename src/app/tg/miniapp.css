@@ -1954,3 +1954,31 @@
   text-decoration: underline;
   text-underline-offset: 0.18em;
 }
+
+/* Partner payout schedule / merchant hold notice — after withdraw on /tg/partner */
+.tg-partner-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0.65rem 0.9rem 0.35rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  color: var(--tg-text, #1a0f12);
+  background: color-mix(in srgb, var(--tg-apricot, #f5a97a) 18%, var(--tg-bg, #fff8f4));
+  border: 1px solid color-mix(in srgb, var(--tg-apricot, #f5a97a) 45%, transparent);
+}
+
+.tg-partner-notice-pin {
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  line-height: 1.2;
+  margin-top: 0.05rem;
+}
+
+.tg-partner-notice-body {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 550;
+  line-height: 1.4;
+  opacity: 0.92;
+}

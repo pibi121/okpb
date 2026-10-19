@@ -324,6 +324,17 @@ export default function TgPartnerPage() {
         </button>
       </div>
 
+      <div className="tg-partner-notice" role="note">
+        <span className="tg-partner-notice-pin" aria-hidden>
+          ℹ️
+        </span>
+        <p className="tg-partner-notice-body">
+          {ru
+            ? "На данный момент все выводы осуществляются каждое воскресенье, можно создавать несколько заявок. С момента получения комиссионных до оформления заявки на вывод должно пройти 3 суток, чтобы сумма стала доступной — это холд платёжного мерчанта."
+            : "For now all payouts are processed every Sunday — you can create multiple requests. After commission is credited, wait 3 days before requesting a withdrawal so the amount becomes available — this is the payment merchant hold."}
+        </p>
+      </div>
+
       {data.commissions.length > 0 && (
         <div className="tg-section">
           <h2>{ru ? "Начисления" : "Commissions"}</h2>

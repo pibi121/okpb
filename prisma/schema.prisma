@@ -1421,7 +1421,7 @@ model FunnelLookPack {
   tgDisplayTitle     String   @default("")
   pricePeaches       Int      @default(270)
   previewVideoUrl    String   @default("")
-  /// [{ sceneImageUrl, editPrompt }] length 5
+  /// [{ editPrompt }] length 5 — applied to the user's photo
   scenesJson         String   @default("[]")
   funnelV2Published  Boolean  @default(false)
   sortOrder          Int      @default(0)

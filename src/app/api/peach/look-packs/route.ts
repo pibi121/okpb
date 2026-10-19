@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { labAccess } from "@/lib/ops/roles";
 import { maintenanceApiBlock } from "@/lib/ops/maintenance-api";
 import { saveGalleryBinary } from "@/lib/local-store";
+import { copyAssetToTgCatalog } from "@/lib/tg/tg-publish";
 import {
   lookScenesReady,
   parseLookScenes,
@@ -15,7 +16,6 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const sceneSchema = z.object({
-  sceneImageUrl: z.string().max(2000),
   editPrompt: z.string().max(4000),
 });
 
@@ -60,7 +60,6 @@ function toDto(row: {
 }) {
   const parsed = parseLookScenes(row.scenesJson);
   const scenes: LookScene[] = Array.from({ length: 5 }, (_, i) => ({
-    sceneImageUrl: parsed[i]?.sceneImageUrl || "",
     editPrompt: parsed[i]?.editPrompt || "",
   }));
   return {
@@ -101,26 +100,29 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File) || file.size < 100) {
-      return NextResponse.json({ error: "Нужен файл картинки" }, { status: 400 });
+      return NextResponse.json({ error: "Нужен файл видео" }, { status: 400 });
     }
-    if (file.size > 12 * 1024 * 1024) {
-      return NextResponse.json({ error: "Файл больше 12 МБ" }, { status: 400 });
+    if (file.size > 40 * 1024 * 1024) {
+      return NextResponse.json({ error: "Файл больше 40 МБ" }, { status: 400 });
     }
     const buf = Buffer.from(await file.arrayBuffer());
-    const ext = /png/i.test(file.type) ? "png" : "jpg";
-    const saved = saveGalleryBinary(gate.user.id, ext, buf, "look_scene");
-    return NextResponse.json({ url: saved.publicUrl });
+    const ext =
+      (file.name || "teaser.mp4").split(".").pop()?.toLowerCase() || "mp4";
+    const saved = saveGalleryBinary(gate.user.id, ext, buf, "look_teaser");
+    const url =
+      copyAssetToTgCatalog(saved.publicUrl, `look-teaser-${Date.now()}`, `.${ext}`) ||
+      saved.publicUrl;
+    return NextResponse.json({ url });
   }
 
   const body = saveSchema.parse(await req.json());
   const scenes = body.scenes.map((s) => ({
-    sceneImageUrl: s.sceneImageUrl.trim(),
     editPrompt: s.editPrompt.trim(),
   }));
   const publish = Boolean(body.funnelV2Published);
   if (publish && !lookScenesReady(scenes)) {
     return NextResponse.json(
-      { error: "Чтобы опубликовать, заполни 5 сцен: картинка и промпт" },
+      { error: "Чтобы опубликовать, заполни 5 промптов" },
       { status: 400 },
     );
   }

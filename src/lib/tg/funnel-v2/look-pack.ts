@@ -27,7 +27,6 @@ import { GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
 const FRAME_COUNT = 5;
 
 export type LookScene = {
-  sceneImageUrl: string;
   editPrompt: string;
 };
 
@@ -49,9 +48,8 @@ export function parseLookScenes(raw: string): LookScene[] {
     const v = JSON.parse(raw || "[]") as unknown;
     if (!Array.isArray(v)) return [];
     return v.slice(0, FRAME_COUNT).map((row) => {
-      const r = row as { sceneImageUrl?: string; editPrompt?: string };
+      const r = row as { editPrompt?: string };
       return {
-        sceneImageUrl: String(r.sceneImageUrl || "").trim(),
         editPrompt: String(r.editPrompt || "").trim(),
       };
     });
@@ -63,7 +61,7 @@ export function parseLookScenes(raw: string): LookScene[] {
 export function lookScenesReady(scenes: LookScene[]): boolean {
   return (
     scenes.length === FRAME_COUNT &&
-    scenes.every((s) => s.sceneImageUrl.length > 0 && s.editPrompt.length >= 2)
+    scenes.every((s) => s.editPrompt.length >= 2)
   );
 }
 
@@ -256,76 +254,6 @@ async function loadImageBytes(url: string): Promise<Buffer> {
   const res = await fetch(abs);
   if (!res.ok) throw new Error("Не удалось открыть картинку сцены");
   return Buffer.from(await res.arrayBuffer());
-}
-
-async function runDualFrame(opts: {
-  person: Buffer;
-  scene: Buffer;
-  prompt: string;
-  filenamePrefix: string;
-}): Promise<Buffer> {
-  const {
-    comfyFreeMemory,
-    comfyUploadImage,
-    isRetryableComfyFlake,
-    runComfyAndDownload,
-    COMFY_PHOTO_TIMEOUT_MS,
-  } = await import("@/lib/comfy-client");
-  const { buildKreaDualRefEditGraph, KREA_UNDRESS_EXTRA_LORAS } = await import(
-    "@/lib/krea-graphs"
-  );
-  const { undressImageSize, undressLatentSize } = await import(
-    "@/lib/tg/undress-comfy"
-  );
-
-  const raw = undressImageSize(opts.person);
-  const { width, height } = undressLatentSize(raw.width, raw.height);
-  const sceneUp = await comfyUploadImage(
-    `look_scene_${Date.now()}.png`,
-    opts.scene,
-  );
-  const personUp = await comfyUploadImage(
-    `look_person_${Date.now()}.jpg`,
-    opts.person,
-  );
-
-  const graph = () => {
-    const g = buildKreaDualRefEditGraph({
-      sceneImageName: sceneUp,
-      personImageName: personUp,
-      editPrompt: opts.prompt,
-      width,
-      height,
-      seed: Math.floor(Math.random() * 1e15),
-      grounding: "scene_pose",
-      refBoost: 5,
-      refBoostA: 1.2,
-      refBoostB: 1.45,
-      useNsfwLora: true,
-      extraLoras: KREA_UNDRESS_EXTRA_LORAS,
-    }) as Record<string, { inputs?: { filename_prefix?: string } }>;
-    if (g["15"]?.inputs) g["15"].inputs.filename_prefix = opts.filenamePrefix;
-    return g;
-  };
-
-  await comfyFreeMemory();
-  try {
-    return await runComfyAndDownload(
-      graph(),
-      "peach-look-pack",
-      COMFY_PHOTO_TIMEOUT_MS,
-    );
-  } catch (first) {
-    if (!isRetryableComfyFlake(first)) throw first;
-    await comfyFreeMemory();
-    await new Promise((r) => setTimeout(r, 2500));
-    await comfyFreeMemory();
-    return await runComfyAndDownload(
-      graph(),
-      "peach-look-pack-retry",
-      COMFY_PHOTO_TIMEOUT_MS,
-    );
-  }
 }
 
 function readPackMeta(raw: string): PackMeta | null {
@@ -643,12 +571,11 @@ async function executeLookPackJob(opts: {
     const scene = opts.scenes[i];
     await noteGpuJobStage("look_frame", `${i + 1}/5`);
     try {
-      if (!scene) throw new Error("нет сцены");
-      const sceneBytes = await loadImageBytes(scene.sceneImageUrl);
-      const out = await runDualFrame({
-        person: opts.person,
-        scene: sceneBytes,
-        prompt: scene.editPrompt,
+      if (!scene?.editPrompt) throw new Error("нет промпта");
+      const { runPhotoEditLabBytes } = await import("@/lib/photo-edit-lab");
+      const out = await runPhotoEditLabBytes({
+        photoBytes: opts.person,
+        editPrompt: scene.editPrompt,
         filenamePrefix: `peach/look_${itemId}`,
       });
       const saved = saveGalleryBinary(parent.userId, "png", out, `look_${itemId}`);

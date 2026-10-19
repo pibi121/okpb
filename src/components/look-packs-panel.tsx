@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Scene = { sceneImageUrl: string; editPrompt: string };
+type Scene = { editPrompt: string };
 
 type Pack = {
   id: string;
@@ -18,7 +18,7 @@ type Pack = {
 };
 
 const emptyScenes = (): Scene[] =>
-  Array.from({ length: 5 }, () => ({ sceneImageUrl: "", editPrompt: "" }));
+  Array.from({ length: 5 }, () => ({ editPrompt: "" }));
 
 const blank = (): Pack => ({
   id: "",
@@ -58,7 +58,7 @@ export function LookPacksPanel() {
     });
   }
 
-  async function uploadScene(i: number, file: File) {
+  async function uploadTeaser(file: File) {
     setBusy(true);
     setErr("");
     try {
@@ -67,7 +67,7 @@ export function LookPacksPanel() {
       const res = await fetch("/api/peach/look-packs", { method: "POST", body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(String(json.error || "Не загрузилось"));
-      patchScene(i, { sceneImageUrl: String(json.url || "") });
+      setDraft((d) => ({ ...d, previewVideoUrl: String(json.url || "") }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "error");
     } finally {
@@ -128,8 +128,9 @@ export function LookPacksPanel() {
   return (
     <div className="grid gap-4">
       <p className="text-sm text-zinc-400">
-        Один образ — 5 поз. В боте раздел «Look-образы» появится только после публикации
-        хотя бы одного. Пока галочка снята, люди его не видят.
+        Сначала прогони 5 промптов на одной фотке. Если результат ок — вставь эти промпты сюда,
+        напиши название и прикрепи видео-тизер. Человек пришлёт своё фото, и пак соберётся по
+        этим промптам. В боте раздел появится только после публикации.
       </p>
       {err ? <p className="text-sm text-red-400">{err}</p> : null}
       {ok ? <p className="text-sm text-emerald-400/90">{ok}</p> : null}
@@ -211,12 +212,25 @@ export function LookPacksPanel() {
           />
         </label>
         <label className="grid gap-1 text-xs text-zinc-400">
-          Видео-превью (ссылка)
+          Видео-тизер
           <input
-            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-foreground"
-            value={draft.previewVideoUrl}
-            onChange={(e) => setDraft({ ...draft, previewVideoUrl: e.target.value })}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime"
+            className="text-xs text-zinc-400"
+            disabled={busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void uploadTeaser(file);
+            }}
           />
+          {draft.previewVideoUrl ? (
+            <video
+              className="mt-1 max-h-40 rounded-lg"
+              src={draft.previewVideoUrl}
+              controls
+              muted
+            />
+          ) : null}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -231,26 +245,10 @@ export function LookPacksPanel() {
 
         {draft.scenes.map((scene, i) => (
           <div key={i} className="grid gap-2 rounded-xl border border-white/10 p-3">
-            <div className="text-xs font-medium text-zinc-300">Сцена {i + 1}</div>
-            <input
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-foreground"
-              placeholder="Ссылка на картинку сцены"
-              value={scene.sceneImageUrl}
-              onChange={(e) => patchScene(i, { sceneImageUrl: e.target.value })}
-            />
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="text-xs text-zinc-400"
-              disabled={busy}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadScene(i, file);
-              }}
-            />
+            <div className="text-xs font-medium text-zinc-300">Промпт {i + 1}</div>
             <textarea
-              className="min-h-16 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-foreground"
-              placeholder="Промпт этой позы"
+              className="min-h-20 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-foreground"
+              placeholder="Промпт этого кадра"
               value={scene.editPrompt}
               onChange={(e) => patchScene(i, { editPrompt: e.target.value })}
             />

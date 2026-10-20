@@ -2,6 +2,8 @@
  * Funnel v2 Look pack: 5 dual-ref stills as one GPU job, one album.
  * The bot section stays hidden until at least one pack is published.
  */
+import { readFile, stat, writeFile } from "fs/promises";
+import path from "path";
 import { prisma } from "@/lib/db";
 import type { TgLocale } from "@/lib/tg/i18n";
 import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
@@ -12,6 +14,7 @@ import {
   tgSendMessage,
   tgSendPhotoFile,
   tgSendVideo,
+  tgSendVideoFile,
 } from "@/lib/tg/telegram-api";
 import { getTgSession, parsePending, setTgSession } from "@/lib/tg/session";
 import { FV2 } from "@/lib/tg/funnel-v2/callbacks";
@@ -30,8 +33,111 @@ import {
 import { loadFunnelKeyboardSettings } from "@/lib/tg/funnel-v2/keyboard-settings";
 import { saveGalleryBinary } from "@/lib/local-store";
 import { GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
+import { probeMp4VideoSize } from "@/lib/tg/mp4-probe";
 
 const FRAME_COUNT = 5;
+const LOOK_HUB_VIDEO = path.join(process.cwd(), "assets", "look-hub.mp4");
+const LOOK_HUB_VIDEO_CACHE = path.join(process.cwd(), "data", "look-hub-video.json");
+
+type LookHubVideoCache = {
+  bytes: number;
+  fileId: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+};
+
+let lookHubVideoCache: LookHubVideoCache | null = null;
+
+function lookHubVideoFileId(result: unknown): string {
+  if (!result || typeof result !== "object") return "";
+  const video = (result as { video?: { file_id?: string } }).video;
+  return typeof video?.file_id === "string" ? video.file_id.trim() : "";
+}
+
+function lookHubSizeExtra(cache: LookHubVideoCache | null): Record<string, unknown> {
+  if (!cache?.width || !cache.height) return {};
+  return {
+    width: cache.width,
+    height: cache.height,
+    ...(cache.duration ? { duration: cache.duration } : {}),
+  };
+}
+
+async function cachedLookHubVideo(size: number): Promise<LookHubVideoCache | null> {
+  if (lookHubVideoCache?.bytes === size && lookHubVideoCache.fileId) {
+    return lookHubVideoCache;
+  }
+  try {
+    const raw = JSON.parse(await readFile(LOOK_HUB_VIDEO_CACHE, "utf8")) as LookHubVideoCache;
+    if (raw.bytes === size && raw.fileId?.trim()) {
+      lookHubVideoCache = { ...raw, fileId: raw.fileId.trim() };
+      return lookHubVideoCache;
+    }
+  } catch {
+    /* first send uploads the file */
+  }
+  return null;
+}
+
+async function rememberLookHubVideo(cache: LookHubVideoCache) {
+  if (!cache.fileId) return;
+  lookHubVideoCache = cache;
+  await writeFile(LOOK_HUB_VIDEO_CACHE, JSON.stringify(cache)).catch(() => undefined);
+}
+
+async function sendLookHubCarrier(
+  chatId: number,
+  text: string,
+  replyMarkup: { inline_keyboard: Array<Array<Record<string, unknown>>> },
+) {
+  const markup = { reply_markup: replyMarkup };
+  let size = 0;
+  try {
+    size = (await stat(LOOK_HUB_VIDEO)).size;
+  } catch (e) {
+    console.error("[look-pack] hub video missing", e);
+  }
+  if (size > 0) {
+    const cached = await cachedLookHubVideo(size);
+    if (cached) {
+      try {
+        return (await tgSendVideo(chatId, cached.fileId, text, {
+          ...markup,
+          ...lookHubSizeExtra(cached),
+        })) as { message_id?: number };
+      } catch (e) {
+        console.warn("[look-pack] hub video file_id", e);
+        lookHubVideoCache = null;
+      }
+    }
+    try {
+      const bytes = await readFile(LOOK_HUB_VIDEO);
+      const probed = probeMp4VideoSize(bytes);
+      const sent = (await tgSendVideoFile(chatId, bytes, "look-hub.mp4", text, {
+        ...markup,
+        ...(probed
+          ? {
+              width: probed.width,
+              height: probed.height,
+              ...(probed.durationSec ? { duration: probed.durationSec } : {}),
+            }
+          : {}),
+      })) as { message_id?: number };
+      await rememberLookHubVideo({
+        bytes: bytes.length,
+        fileId: lookHubVideoFileId(sent),
+        width: probed?.width,
+        height: probed?.height,
+        duration: probed?.durationSec,
+      });
+      return sent;
+    } catch (e) {
+      console.error("[look-pack] hub video upload", e);
+    }
+  }
+  return (await tgSendMessage(chatId, text, markup)) as { message_id?: number };
+}
 
 export type LookScene = {
   editPrompt: string;
@@ -146,7 +252,7 @@ export async function sendLookHub(
   }
   inline.push([{ text: "⬅️ К фото", callback_data: FV2.photo }]);
   await funnelV2ReplaceUi(platformUserId, chatId, () =>
-    tgSendMessage(chatId, text, { reply_markup: { inline_keyboard: inline } }),
+    sendLookHubCarrier(chatId, text, { inline_keyboard: inline }),
   );
 }
 
@@ -370,8 +476,7 @@ async function deliverLookPack(parentId: string): Promise<void> {
   const { funnelV2LookReadyKeyboard } = await import(
     "@/lib/tg/funnel-v2/result-keyboards"
   );
-  const editId = ready.length > 0 ? meta.frameItemIds[ready[0]!.index] || null : null;
-  const markup = funnelV2LookReadyKeyboard(editId);
+  const markup = funnelV2LookReadyKeyboard();
 
   try {
     if (ready.length >= 2) {

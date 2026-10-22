@@ -51,6 +51,13 @@ const CARDS: Card[] = [
     status: "ready",
   },
   {
+    href: "/peach/lab2/i2v",
+    title: "I2V с моего фото",
+    blurb:
+      "Одно своё фото как первый кадр, промпт и длительность. Видео в галерею, без шаблона и без бота.",
+    status: "ready",
+  },
+  {
     href: "/peach/story-video",
     title: "Видео по 1 фото (из Lab 1.0)",
     blurb:

@@ -50,8 +50,8 @@ const DEMO_PARTNER_BY_TG: Record<string, DemoPartnerRow> = {
     purchases: 785,
     purchaseGrossPeaches: 515860,
     commissionPeaches: 257930,
-    // ~10% of earned left on balance (90% «выведено»)
-    balancePeaches: 25793,
+    // 2026-10-22: balance cut to ~7k uneven, rest «выведено»
+    balancePeaches: 7064,
     totalEarnedPeaches: 257930,
     commissionPct: 50,
     links: [

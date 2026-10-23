@@ -82,6 +82,15 @@ const DEMO_PARTNER_BY_TG: Record<string, DemoPartnerRow> = {
         purchaseGrossPeaches: 13160,
         commissionPeaches: 6580,
       },
+      // Заливка — inside the cabinet total, not extra
+      {
+        slug: "01862b",
+        clicks: 706,
+        signups: 706,
+        purchases: 77,
+        purchaseGrossPeaches: 70286,
+        commissionPeaches: 35143,
+      },
     ],
   },
   /**

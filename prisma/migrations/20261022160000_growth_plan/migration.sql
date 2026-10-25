@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS "GrowthPlan" (
+    "id" TEXT NOT NULL,
+    "monthlyNetGoalRub" INTEGER NOT NULL DEFAULT 0,
+    "paymentFeePct" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "gpuDailyRub" INTEGER NOT NULL DEFAULT 0,
+    "excludedPartnerIdsJson" TEXT NOT NULL DEFAULT '[]',
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "GrowthPlan_pkey" PRIMARY KEY ("id")
+);

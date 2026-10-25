@@ -13,7 +13,9 @@ export function AppChrome({
   const bare =
     pathname.startsWith("/peach") ||
     pathname.startsWith("/tg") ||
-    pathname.startsWith("/ops");
+    pathname.startsWith("/ops") ||
+    pathname.startsWith("/cabinet") ||
+    pathname.startsWith("/preview");
 
   if (bare) {
     return <div className="min-h-full">{children}</div>;

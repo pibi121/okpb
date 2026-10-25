@@ -14,7 +14,6 @@ export function AppChrome({
     pathname.startsWith("/peach") ||
     pathname.startsWith("/tg") ||
     pathname.startsWith("/ops") ||
-    pathname.startsWith("/cabinet") ||
     pathname.startsWith("/preview");
 
   if (bare) {

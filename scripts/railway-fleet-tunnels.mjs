@@ -44,6 +44,11 @@ const FLEET = [
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let fleetProc = null;
+/** @type {Promise<any> | null} */
+let ensureFlight = null;
+let lastSpawnAt = 0;
+/** Don't kill/respawn a live fleet process: that loop exhausted threads and killed the bot. */
+const RESPAWN_COOLDOWN_MS = 3 * 60 * 1000;
 
 function log(msg) {
   console.log(`[fleet-tunnel] ${msg}`);
@@ -111,6 +116,14 @@ export function fleetTunnelAlive() {
 }
 
 export async function ensureFleetTunnels() {
+  if (ensureFlight) return ensureFlight;
+  ensureFlight = ensureFleetTunnelsInner().finally(() => {
+    ensureFlight = null;
+  });
+  return ensureFlight;
+}
+
+async function ensureFleetTunnelsInner() {
   const ready = materializeFleetKeys();
   if (!ready.length) {
     log("no fleet SSH keys — skip fleet tunnels");
@@ -122,14 +135,19 @@ export async function ensureFleetTunnels() {
     return { ok: true, reason: "already_up", ready, pings };
   }
 
+  // Spare GPUs reconnect inside the python process. Replacing it every
+  // watchdog tick piled up SSH threads until the Telegram poller aborted.
   if (fleetTunnelAlive()) {
-    for (let i = 0; i < 10; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
-      const p = await pingFleetComfy();
-      if (ready.every((n) => p[n])) {
-        return { ok: true, reason: "warming", ready };
-      }
-    }
+    return {
+      ok: Object.values(pings).some(Boolean),
+      reason: "partial",
+      ready,
+      pings,
+    };
+  }
+
+  if (Date.now() - lastSpawnAt < RESPAWN_COOLDOWN_MS) {
+    return { ok: false, reason: "cooldown", ready, pings };
   }
 
   const py = pythonBin();
@@ -138,15 +156,7 @@ export async function ensureFleetTunnels() {
     return { ok: false, reason: "no_python" };
   }
 
-  if (fleetTunnelAlive()) {
-    try {
-      fleetProc.kill("SIGTERM");
-    } catch {
-      /* ignore */
-    }
-    fleetProc = null;
-    await new Promise((r) => setTimeout(r, 800));
-  }
+  lastSpawnAt = Date.now();
 
   const host = process.env.METALNODE_HOST || "77.94.203.13";
   const fleetJson = JSON.stringify(

@@ -38,6 +38,7 @@ export default function OpsQualityPage() {
   const [status, setStatus] = useState("pending");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [secs, setSecs] = useState<Record<string, string>>({});
 
   async function load() {

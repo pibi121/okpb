@@ -998,29 +998,41 @@ export async function handleFunnelV2PhotoUpload(opts: {
   await tgSendMessage(opts.chatId, "Фото сохранено ✅");
   const pendingLookId = (pending.funnelV2PendingLookId || "").trim();
   if (pendingLookId) {
-    const { runLookPack } = await import("@/lib/tg/funnel-v2/look-pack");
-    await runLookPack({
-      chatId: opts.chatId,
-      userId: opts.userId,
-      platformUserId: opts.platformUserId,
-      locale: opts.locale,
-      lookId: pendingLookId,
-      photoUrl: saved.publicUrl,
-    });
+    const { reopenLookConfirm } = await import("@/lib/tg/funnel-v2/look-pack");
+    await reopenLookConfirm(opts.chatId, opts.platformUserId, pendingLookId);
     return;
   }
   const pendingConfirm = pending.funnelV2PendingConfirm;
   if (pendingConfirm) {
-    await runFunnelV2PhotoGen({
-      chatId: opts.chatId,
-      userId: opts.userId,
-      platformUserId: opts.platformUserId,
-      locale: opts.locale,
-      kind: pendingConfirm.kind,
-      templateId: pendingConfirm.id,
-      photoUrl: saved.publicUrl,
+    if (pendingConfirm.kind === "ud") {
+      await sendConfirm(opts.chatId, opts.platformUserId, {
+        kind: "ud",
+        id: "undress",
+        title: "Раздеть полностью",
+        notes:
+          "Она готова раздеться перед тобой - показать свою грудь, киску и попку, чтобы ты насладился её телом",
+        price: undressPeaches(),
+        hasPhoto: true,
+        previewVideoUrl: "/tg/media/funnel-undress-preview.mp4",
+      });
+      return;
+    }
+    const row = await prisma.photoTemplate.findFirst({
+      where: { id: pendingConfirm.id, funnelV2Published: true },
     });
-    return;
+    if (row) {
+      await sendConfirm(opts.chatId, opts.platformUserId, {
+        kind: "tpl",
+        id: row.id,
+        title: row.tgDisplayTitle || row.title,
+        notes: row.notes || "",
+        price: priceForPhotoTemplateTier(row.tier) || row.pricePeaches,
+        previewImageUrl: row.previewImageUrl,
+        previewVideoUrl: row.previewVideoUrl,
+        hasPhoto: true,
+      });
+      return;
+    }
   }
   if (pending.funnelV2PendingVideoConfirm) {
     const { resumeFunnelV2VideoAfterPhoto } = await import(

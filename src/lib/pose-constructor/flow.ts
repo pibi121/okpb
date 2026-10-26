@@ -23,7 +23,9 @@ import {
 import { startPoseFilm } from "@/lib/pose-constructor/run";
 
 const INTRO =
-  "Собери свой п@рно ролик с ней и собой в разных позах! Просто отметь ✅ кнопки с названиями поз, которые хочешь видеть в своём видео. После этого нажми: «Подтвердить 🔥» отправь фотографию любой девушки и по желанию свою.";
+  "Собери свой п@рно ролик с ней и собой в разных позах!\n\n" +
+  "Просто отметь ✅ кнопки с названием поз и действий, которые хочешь видеть. После этого нажми: \"Подтвердить 🔥\" отправь фотографию любой девушки и по желанию, можешь отправить свою фотографию.\n\n" +
+  "Дальше бот сгенерирует тебе готовое 🔞 видео с этими позами";
 
 function menuButton() {
   return [{ text: "В главное меню", callback_data: FV2.hub }];
@@ -139,12 +141,19 @@ export async function handlePoseBuilderCallback(opts: {
     await setTgSession(opts.platformUserId, {
       chatState: "funnel_v2_pose_man",
     });
-    await askMan(opts.chatId);
+    await askMan(opts.chatId, opts.platformUserId);
     return;
   }
 
-  if (opts.data === "fv2:pz:ms") {
-    await launch(opts.chatId, opts.userId, opts.platformUserId, undefined);
+  if (opts.data === "fv2:pz:ms" || opts.data === "fv2:pz:go") {
+    const session = await getTgSession(opts.platformUserId);
+    const manKey = parsePending(session?.pendingJson || "{}").poseManKey;
+    await launch(
+      opts.chatId,
+      opts.userId,
+      opts.platformUserId,
+      opts.data === "fv2:pz:go" ? manKey || undefined : undefined,
+    );
   }
 }
 
@@ -187,24 +196,45 @@ async function askGirl(chatId: number, platformUserId: string) {
   );
 }
 
-async function askMan(chatId: number) {
-  await tgSendMessage(
-    chatId,
-    "По желанию пришли своё фото. Если не пришлёшь, в сценах останется мужчина из шаблона.",
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "Оставить как есть",
-              callback_data: "fv2:pz:ms",
-              style: "success",
-            },
-          ],
-          menuButton(),
+async function askMan(chatId: number, platformUserId: string) {
+  const session = await getTgSession(platformUserId);
+  const key = (parsePending(session?.pendingJson || "{}").poseManKey || "").trim();
+  const abs = key ? resolveGalleryFile(key) : null;
+  const hasMan = Boolean(abs && fs.existsSync(abs));
+  const markup = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          hasMan
+            ? {
+                text: "Собрать видео 🔥",
+                callback_data: "fv2:pz:go",
+                style: "success",
+              }
+            : {
+                text: "Оставить как есть",
+                callback_data: "fv2:pz:ms",
+                style: "success",
+              },
         ],
-      },
+        menuButton(),
+      ],
     },
+  };
+  if (!hasMan || !abs) {
+    await tgSendMessage(
+      chatId,
+      "По желанию пришли своё фото. Если не пришлёшь, в сценах останется мужчина из шаблона.",
+      markup,
+    );
+    return;
+  }
+  await tgSendPhotoFile(
+    chatId,
+    fs.readFileSync(abs),
+    "man.jpg",
+    "Это фото мужчины для всех выбранных сцен. Можно заменить — просто пришли другое. Или жми «Собрать видео».",
+    markup,
   );
 }
 
@@ -241,23 +271,23 @@ export async function handlePoseBuilderPhoto(opts: {
 
   if (opts.which === "girl") {
     await setTgSession(opts.platformUserId, {
-      chatState: "funnel_v2_pose_man",
+      chatState: "funnel_v2_pose_girl",
       pending: {
         funnelV2PhotoUrl: saved.publicUrl,
         funnelV2PhotoKey: saved.relKey,
       },
     });
     await tgSendMessage(opts.chatId, "Фото девушки сохранено ✅");
-    await askMan(opts.chatId);
+    await askGirl(opts.chatId, opts.platformUserId);
     return;
   }
 
   await setTgSession(opts.platformUserId, {
-    chatState: "idle",
+    chatState: "funnel_v2_pose_man",
     pending: { poseManKey: saved.relKey },
   });
-  await tgSendMessage(opts.chatId, "Твоё фото сохранено ✅");
-  await launch(opts.chatId, opts.userId, opts.platformUserId, saved.relKey);
+  await tgSendMessage(opts.chatId, "Фото мужчины сохранено ✅");
+  await askMan(opts.chatId, opts.platformUserId);
 }
 
 async function launch(

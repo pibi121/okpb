@@ -908,19 +908,13 @@ export async function resumeFunnelV2VideoAfterPhoto(opts: {
   const row = rows.find(
     (r) => r.id === opts.pending.id && r.kind === opts.pending.kind,
   );
-  // Dual-cast: after any slot upload, return to confirm so user can add photo2 / confirm.
-  if (row && (opts.wasPhoto2 || isDualCast(row))) {
+  // Dual-cast and single templates: the photo belongs to this confirm step.
+  if (row) {
     await sendVideoConfirm(opts.chatId, opts.platformUserId, row);
     return;
   }
-  await runFunnelV2VideoGen({
-    chatId: opts.chatId,
-    userId: opts.userId,
-    platformUserId: opts.platformUserId,
-    locale: opts.locale,
-    kind: opts.pending.kind,
-    templateId: opts.pending.id,
-    photoUrl: opts.photoUrl,
-    photo2Url: await activePhoto2Url(opts.platformUserId),
-  });
+  await tgSendMessage(
+    opts.chatId,
+    "Шаблон не найден. Открой раздел ещё раз и выбери его.",
+  );
 }

@@ -268,6 +268,21 @@ async function sendFunnelPhotoHub(chatId: number, platformUserId: string) {
   );
 }
 
+export async function reopenLookConfirm(
+  chatId: number,
+  platformUserId: string,
+  lookId: string,
+) {
+  const row = await prisma.funnelLookPack.findFirst({
+    where: { id: lookId, funnelV2Published: true },
+  });
+  if (!row) {
+    await sendLookHub(chatId, platformUserId);
+    return;
+  }
+  await sendLookConfirm(chatId, platformUserId, row);
+}
+
 async function sendLookConfirm(
   chatId: number,
   platformUserId: string,

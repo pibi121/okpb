@@ -2359,10 +2359,24 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
         return;
       }
 
-      if (msg.photo?.length) {
-        const largest = msg.photo[msg.photo.length - 1]!;
-        const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
-        if (!buf) return;
+      const routeFunnelPhoto = async (buf: Buffer) => {
+        if (
+          chatState === "funnel_v2_pose_girl" ||
+          chatState === "funnel_v2_pose_man"
+        ) {
+          const { handlePoseBuilderPhoto } = await import(
+            "@/lib/pose-constructor/flow"
+          );
+          await handlePoseBuilderPhoto({
+            chatId,
+            userId: user.id,
+            platformUserId,
+            locale,
+            photoBytes: buf,
+            which: chatState === "funnel_v2_pose_man" ? "man" : "girl",
+          });
+          return;
+        }
         await handleFunnelV2PhotoUpload({
           chatId,
           userId: user.id,
@@ -2370,6 +2384,13 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           locale,
           photoBytes: buf,
         });
+      };
+
+      if (msg.photo?.length) {
+        const largest = msg.photo[msg.photo.length - 1]!;
+        const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
+        if (!buf) return;
+        await routeFunnelPhoto(buf);
         return;
       }
 
@@ -2383,13 +2404,7 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
           locale,
         );
         if (!buf) return;
-        await handleFunnelV2PhotoUpload({
-          chatId,
-          userId: user.id,
-          platformUserId,
-          locale,
-          photoBytes: buf,
-        });
+        await routeFunnelPhoto(buf);
         return;
       }
 

@@ -25,6 +25,7 @@ export type TelegramBotUser = {
 };
 
 const REF_PREFIX = "ref_";
+const DEAL_PREFIX = "dref_";
 const USER_REF_PREFIX = "u_";
 
 export function parseStartPayload(payload: string | undefined): {
@@ -32,9 +33,19 @@ export function parseStartPayload(payload: string | undefined): {
   linkSlug?: string;
   userReferralCode?: string;
   trafficCode?: string;
+  cabinetCode?: string;
+  cabinetSlug?: string;
 } {
   if (!payload?.trim()) return {};
   const p = payload.trim();
+  if (p.startsWith(DEAL_PREFIX)) {
+    const raw = p.slice(DEAL_PREFIX.length);
+    const sep = raw.indexOf("__");
+    const cabinetCode = (sep >= 0 ? raw.slice(0, sep) : raw).trim().toLowerCase();
+    const cabinetSlug = sep >= 0 ? raw.slice(sep + 2).trim().toLowerCase() : "";
+    if (!cabinetCode) return {};
+    return { cabinetCode, cabinetSlug: cabinetSlug || undefined };
+  }
   if (p.startsWith(REF_PREFIX)) {
     const { code, linkSlug } = parsePartnerRefPayload(p);
     if (code) return { affiliateCode: code, linkSlug };
@@ -123,6 +134,8 @@ export async function findOrCreateTelegramUser(
       affiliateCode: existingAffiliate,
       linkSlug: existingLinkSlug,
       trafficCode: existingTraffic,
+      cabinetCode: existingCabinet,
+      cabinetSlug: existingCabinetSlug,
     } = parseStartPayload(startPayload);
     if (existingTraffic) {
       await recordTrafficClick(existingTraffic);
@@ -131,11 +144,17 @@ export async function findOrCreateTelegramUser(
       );
     }
     if (existingAffiliate) {
-      const already = await prisma.partnerAttribution.findUnique({
-        where: { userId: existing.user.id },
-        select: { id: true },
-      });
-      if (!already) {
+      const [already, dealAlready] = await Promise.all([
+        prisma.partnerAttribution.findUnique({
+          where: { userId: existing.user.id },
+          select: { id: true },
+        }),
+        prisma.cabinetAttribution.findUnique({
+          where: { userId: existing.user.id },
+          select: { id: true },
+        }),
+      ]);
+      if (!already && !dealAlready) {
         const partner = await prisma.partnerProfile.findFirst({
           where: { code: existingAffiliate, status: "active" },
         });
@@ -149,6 +168,14 @@ export async function findOrCreateTelegramUser(
         }
       }
     }
+    if (existingCabinet) {
+      const { touchCabinetStart } = await import("@/lib/cabinet/service");
+      await touchCabinetStart({
+        userId: existing.user.id,
+        code: existingCabinet,
+        slug: existingCabinetSlug,
+      }).catch(() => undefined);
+    }
     return existing.user;
   }
 
@@ -161,7 +188,8 @@ export async function findOrCreateTelegramUser(
   const randomSecret = cryptoRandom();
   const passwordHash = await hashPassword(randomSecret);
 
-  const { affiliateCode, linkSlug, trafficCode } = parseStartPayload(startPayload);
+  const { affiliateCode, linkSlug, trafficCode, cabinetCode, cabinetSlug } =
+    parseStartPayload(startPayload);
   let affiliateId: string | undefined;
   let partnerCode: string | undefined;
 
@@ -227,6 +255,15 @@ export async function findOrCreateTelegramUser(
     }).catch(() => {
       /* already attributed */
     });
+  }
+
+  if (cabinetCode) {
+    const { touchCabinetStart } = await import("@/lib/cabinet/service");
+    await touchCabinetStart({
+      userId: user.id,
+      code: cabinetCode,
+      slug: cabinetSlug,
+    }).catch(() => undefined);
   }
 
   if (trafficCode) {

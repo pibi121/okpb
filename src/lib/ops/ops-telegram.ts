@@ -661,6 +661,11 @@ export async function notifyOpsPayment(opts: {
   if (!opsTelegramConfigured()) return;
   try {
     const ident = await loadOpsUserIdentity(opts.userId);
+    const deal = await import("@/lib/cabinet/service")
+      .then(({ cabinetSplitForPayment }) =>
+        cabinetSplitForPayment(opts.userId, opts.peaches),
+      )
+      .catch(() => null);
     const rub = (opts.amountMinor / 100).toFixed(0);
     const method = paymentMethodLabelRu(opts.method);
     const text = [
@@ -668,10 +673,18 @@ export async function notifyOpsPayment(opts: {
       `Кто: ${ident?.who || `<code>${escHtml(opts.userId)}</code>`}`,
       `Сумма: <b>${escHtml(rub)} ${escHtml(opts.currency || "₽")}</b>`,
       `Способ: ${escHtml(method)} (бот / мини-апп)`,
-      `Партнёр: ${ident?.partnerLine || "—"}`,
+      deal
+        ? `Партнёр: нет (это сделка, не личная партнёрка)`
+        : `Партнёр: ${ident?.partnerLine || "—"}`,
+      deal
+        ? `Сделка: инвестор ${escHtml(deal.investorName)} <b>${deal.investorPeaches}₽</b> (${deal.investorPct}%) · байер ${escHtml(deal.buyerName)} <b>${deal.buyerPeaches}₽</b> (${deal.buyerPct}%)`
+        : "",
+      deal ? `Ссылка сделки: ${escHtml(deal.linkLabel)}` : "",
       `Источник: ${ident?.sourceLine || "—"}`,
       formatMsk(new Date()) + " МСК",
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     await sendOpsTelegram("payments", text);
   } catch (e) {
     console.error("[ops-tg] payment notify:", e);
@@ -689,6 +702,13 @@ export async function notifyOpsPaymentRefund(opts: {
   provider?: string;
   /** Partner commission clawed back (₽). */
   partnerClawback?: number;
+  /** Deal split taken back, when the payer came through a cabinet link. */
+  dealClawback?: {
+    investorName: string;
+    buyerName: string;
+    investorPeaches: number;
+    buyerPeaches: number;
+  } | null;
 }): Promise<void> {
   if (!opsTelegramConfigured()) return;
   try {
@@ -706,11 +726,16 @@ export async function notifyOpsPaymentRefund(opts: {
       partnerAmt > 0
         ? `Комиссия партнёра снята: <b>${escHtml(String(partnerAmt))}₽</b>`
         : `Комиссия партнёра: не было / уже снята`,
+      opts.dealClawback
+        ? `Комиссия сделки снята: инвестор ${escHtml(opts.dealClawback.investorName)} <b>${opts.dealClawback.investorPeaches}₽</b> · байер ${escHtml(opts.dealClawback.buyerName)} <b>${opts.dealClawback.buyerPeaches}₽</b>`
+        : "",
       `Способ: ${escHtml(method)}`,
       `Партнёр: ${ident?.partnerLine || "—"}`,
       `Источник: ${ident?.sourceLine || "—"}`,
       formatMsk(new Date()) + " МСК",
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     await sendOpsTelegram("payments", text);
   } catch (e) {
     console.error("[ops-tg] payment refund notify:", e);

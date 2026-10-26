@@ -41,6 +41,14 @@ export async function creditPeaches(
       grossPeaches: amount,
       kind: "topup",
     }).catch((e) => console.error("[partner] commission:", e));
+    await import("@/lib/cabinet/service")
+      .then(({ creditCabinetCommission }) =>
+        creditCabinetCommission({
+          referredUserId: userId,
+          grossPeaches: amount,
+        }),
+      )
+      .catch((e) => console.error("[cabinet] commission:", e));
     void import("@/lib/ops/traffic")
       .then(({ recordTrafficPurchase }) =>
         recordTrafficPurchase(userId, amount),

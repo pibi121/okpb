@@ -24,6 +24,8 @@ const REQUIRED_DELEGATES = [
   "adminAudit",
   "opsExpense",
   "growthPlan",
+  "cabinetAccount",
+  "cabinetAttribution",
 ] as const;
 
 function hasDelegates(client: PrismaClient | undefined): boolean {

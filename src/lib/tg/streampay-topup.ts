@@ -491,6 +491,12 @@ export async function fulfillStreampayTopup(opts: {
     const balanceAfter = claw.balance;
 
     let partnerClawback = 0;
+    let dealClawback: {
+      investorName: string;
+      buyerName: string;
+      investorPeaches: number;
+      buyerPeaches: number;
+    } | null = null;
     try {
       const { clawbackPartnerCommission } = await import(
         "@/lib/tg/partner-program"
@@ -504,6 +510,23 @@ export async function fulfillStreampayTopup(opts: {
     } catch (e) {
       console.error("[streampay] partner commission clawback:", e);
     }
+    try {
+      const { clawbackCabinetCommission } = await import("@/lib/cabinet/service");
+      const deal = await clawbackCabinetCommission({
+        referredUserId: order.userId,
+        grossPeaches: order.peaches,
+      });
+      if (deal) {
+        dealClawback = {
+          investorName: deal.investorName,
+          buyerName: deal.buyerName,
+          investorPeaches: deal.investorPeaches,
+          buyerPeaches: deal.buyerPeaches,
+        };
+      }
+    } catch (e) {
+      console.error("[streampay] cabinet commission clawback:", e);
+    }
 
     void import("@/lib/ops/ops-telegram")
       .then(({ notifyOpsPaymentRefund }) =>
@@ -516,6 +539,7 @@ export async function fulfillStreampayTopup(opts: {
           currency: "RUB",
           provider: "StreamPay",
           partnerClawback,
+          dealClawback,
         }),
       )
       .catch(() => undefined);

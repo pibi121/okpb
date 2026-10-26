@@ -91,6 +91,7 @@ model User {
   affiliateAttributions AffiliateAttribution[]
   partnerProfile      PartnerProfile?
   partnerAttribution  PartnerAttribution?
+  cabinetAttribution  CabinetAttribution?
   characters        Character[]
   scenarios         Scenario[]
   renderJobs        RenderJob[]
@@ -1587,4 +1588,141 @@ model AgeGateReview {
   @@index([status, createdAt])
   @@index([photoHash, status])
   @@index([userId, status])
+}
+
+/// Web cabinet login for an investor or a media buyer. Not a bot user and not a TG partner.
+model CabinetAccount {
+  id                 String   @id @default(cuid())
+  login              String   @unique
+  passwordHash       String
+  /// investor | buyer
+  role               String
+  name               String   @default("")
+  balancePeaches     Int      @default(0)
+  totalEarnedPeaches Int      @default(0)
+  /// active | disabled
+  status             String   @default("active")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  investorProjects CabinetProject[]    @relation("CabinetInvestor")
+  buyerProjects    CabinetProject[]    @relation("CabinetBuyer")
+  withdrawals      CabinetWithdrawal[]
+}
+
+/// One investor + one buyer. Stats, links, spends and the chat live here.
+model CabinetProject {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  investorId  String
+  buyerId     String
+  investorPct Int      @default(30)
+  buyerPct    Int      @default(30)
+  chatUrl     String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  investor CabinetAccount @relation("CabinetInvestor", fields: [investorId], references: [id], onDelete: Cascade)
+  buyer    CabinetAccount @relation("CabinetBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  links          CabinetLink[]
+  spends         CabinetSpend[]
+  accruals       CabinetAccrual[]
+  attributions   CabinetAttribution[]
+
+  @@unique([investorId, buyerId])
+  @@index([buyerId])
+}
+
+/// Referral link inside one deal. Created by the buyer.
+model CabinetLink {
+  id                   String   @id @default(cuid())
+  projectId            String
+  slug                 String
+  label                String   @default("")
+  clicks               Int      @default(0)
+  signups              Int      @default(0)
+  purchases            Int      @default(0)
+  purchaseGrossPeaches Int      @default(0)
+  createdAt            DateTime @default(now())
+
+  project      CabinetProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  accruals     CabinetAccrual[]
+  attributions CabinetAttribution[]
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+}
+
+/// One top-up split at the rates that were set at that moment.
+model CabinetAccrual {
+  id              String   @id @default(cuid())
+  projectId       String
+  linkId          String?
+  grossPeaches    Int
+  investorPeaches Int
+  buyerPeaches    Int
+  investorPct     Int
+  buyerPct        Int
+  /// Telegram user who paid. Empty for a manual ops credit.
+  referredUserId  String?
+  /// Set when a payment refund takes this split back.
+  reversedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  project CabinetProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  link    CabinetLink?   @relation(fields: [linkId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([linkId])
+  @@index([referredUserId, createdAt])
+}
+
+/// Lifetime deal attribution. Separate from PartnerAttribution so one top-up is not paid twice.
+model CabinetAttribution {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  projectId String
+  linkId    String
+  createdAt DateTime @default(now())
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project CabinetProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  link    CabinetLink    @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([linkId])
+}
+
+/// Investor's note that money was sent. Buyer attaches the report to this row.
+model CabinetSpend {
+  id          String    @id @default(cuid())
+  projectId   String
+  amountRub   Int
+  reportTitle String    @default("")
+  reportBody  String    @default("")
+  /// File name inside data/cabinet-reports
+  reportFile  String    @default("")
+  reportedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  project CabinetProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model CabinetWithdrawal {
+  id            String   @id @default(cuid())
+  accountId     String
+  amountPeaches Int
+  /// pending | paid | rejected
+  status        String   @default("pending")
+  payoutDetails String   @default("")
+  adminNote     String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  account CabinetAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, status])
+  @@index([status, createdAt])
 }

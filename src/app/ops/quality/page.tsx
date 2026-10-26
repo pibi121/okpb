@@ -10,6 +10,8 @@ type Row = {
   kind: string;
   chargedPeaches: number;
   refundedPeaches: number;
+  poseBuilder?: boolean;
+  durationSec?: number;
   createdAt: string;
   reviewedAt: string | null;
   userClaimsTotal: number;
@@ -36,7 +38,7 @@ export default function OpsQualityPage() {
   const [status, setStatus] = useState("pending");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [secs, setSecs] = useState<Record<string, string>>({});
 
   async function load() {
     const q = new URLSearchParams();
@@ -49,13 +51,17 @@ export default function OpsQualityPage() {
     load().catch((e) => setMsg(e instanceof Error ? e.message : "ошибка"));
   }, [status]);
 
-  async function act(claimId: string, action: "approve" | "reject") {
+  async function act(
+    claimId: string,
+    action: "approve" | "reject" | "partial",
+    defectSec?: number,
+  ) {
     setBusy(claimId + action);
     setMsg("");
     try {
       await opsFetch("/api/ops/quality", {
         method: "POST",
-        body: JSON.stringify({ claimId, action }),
+        body: JSON.stringify({ claimId, action, defectSec }),
       });
       await load();
     } catch (e) {
@@ -185,6 +191,46 @@ export default function OpsQualityPage() {
                       >
                         Отклонить
                       </button>
+                      {r.poseBuilder ? (
+                        <form
+                          className="flex items-center gap-2"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const n = Math.round(Number(secs[r.id] || 0));
+                            if (n < 1) {
+                              setMsg("Укажи секунды брака");
+                              return;
+                            }
+                            void act(r.id, "partial", n);
+                          }}
+                        >
+                          <input
+                            type="number"
+                            min={1}
+                            max={r.durationSec || undefined}
+                            value={secs[r.id] || ""}
+                            placeholder={
+                              r.durationSec
+                                ? `сек из ${r.durationSec}`
+                                : "сек брака"
+                            }
+                            onChange={(e) =>
+                              setSecs((prev) => ({
+                                ...prev,
+                                [r.id]: e.target.value,
+                              }))
+                            }
+                            className="w-28 rounded-lg border border-white/10 bg-black px-2 py-1 text-xs"
+                          />
+                          <button
+                            type="submit"
+                            disabled={busy === r.id + "partial"}
+                            className="text-xs text-amber-300 disabled:opacity-40"
+                          >
+                            Вернуть частично
+                          </button>
+                        </form>
+                      ) : null}
                     </>
                   ) : null}
                 </div>

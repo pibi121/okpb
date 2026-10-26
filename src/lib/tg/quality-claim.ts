@@ -293,14 +293,15 @@ function opsStatusLabel(status: QualityClaimStatus): string {
 
 export async function resolveQualityClaim(opts: {
   claimId: string;
-  action: "approve" | "reject";
+  action: "approve" | "reject" | "partial";
   actorId: string;
+  defectSec?: number;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const claim = await prisma.qualityClaim.findUnique({
     where: { id: opts.claimId },
     include: {
       user: { select: { locale: true } },
-      galleryItem: { select: { kind: true } },
+      galleryItem: { select: { kind: true, metaJson: true } },
     },
   });
   if (!claim) return { ok: false, error: "Заявка не найдена" };
@@ -308,20 +309,56 @@ export async function resolveQualityClaim(opts: {
     return { ok: false, error: "Уже рассмотрена" };
   }
 
+  const meta = parseGalleryMeta(claim.galleryItem.metaJson) as Record<
+    string,
+    unknown
+  >;
+  const already = Math.max(0, Math.floor(Number(meta.refundedPeaches) || 0));
+  const left = Math.max(0, claim.chargedPeaches - already);
+  const poseBuilder = meta.poseBuilder === true;
+  const durationSec = Math.max(
+    0,
+    Math.floor(
+      Number(meta.durationSec) ||
+        (Array.isArray(meta.poses) ? meta.poses.length * 5 : 0),
+    ),
+  );
+
+  let defectSec = 0;
+  let refundTarget = opts.action === "approve" ? left : 0;
+  if (opts.action === "partial") {
+    if (!poseBuilder) {
+      return { ok: false, error: "Частичный возврат только для конструктора сцен" };
+    }
+    defectSec = Math.round(Number(opts.defectSec) || 0);
+    if (defectSec < 1) return { ok: false, error: "Укажи секунды брака" };
+    if (durationSec < 1) {
+      return { ok: false, error: "У ролика нет длительности" };
+    }
+    if (left < 1) return { ok: false, error: "По этой работе уже всё возвращено" };
+    defectSec = Math.min(defectSec, durationSec);
+    refundTarget = Math.min(
+      left,
+      Math.max(1, Math.round((left * defectSec) / durationSec)),
+    );
+  }
+
   const status: QualityClaimStatus =
-    opts.action === "approve" ? "approved" : "rejected";
+    opts.action === "reject" ? "rejected" : "approved";
   let refunded = 0;
   let restoredFree = false;
 
-  if (opts.action === "approve") {
-    const usedFree = await undressFreeUsedForGalleryItem(claim.galleryItemId);
+  if (opts.action !== "reject" && refundTarget > 0) {
+    const usedFree =
+      opts.action === "approve" &&
+      (await undressFreeUsedForGalleryItem(claim.galleryItemId));
     if (usedFree) {
       const { restoreUndressFree } = await import(
         "@/lib/tg/undress-entitlement"
       );
       await restoreUndressFree(claim.userId);
       restoredFree = true;
-    } else if (claim.chargedPeaches > 0) {
+    } else {
       const u = await prisma.user.findUnique({
         where: { id: claim.userId },
         select: { tgFunnelV2Preview: true },
@@ -330,15 +367,25 @@ export async function resolveQualityClaim(opts: {
         const { creditFunnelBalance } = await import(
           "@/lib/tg/funnel-v2/mode"
         );
-        await creditFunnelBalance(claim.userId, claim.chargedPeaches);
+        await creditFunnelBalance(claim.userId, refundTarget);
       } else {
-        await creditPeaches(claim.userId, claim.chargedPeaches, "qc_refund", {
+        await creditPeaches(claim.userId, refundTarget, "qc_refund", {
           claimId: claim.id,
           galleryItemId: claim.galleryItemId,
           actorId: opts.actorId,
+          ...(defectSec ? { defectSec } : {}),
         });
       }
-      refunded = claim.chargedPeaches;
+      refunded = refundTarget;
+      await prisma.galleryItem.update({
+        where: { id: claim.galleryItemId },
+        data: {
+          metaJson: JSON.stringify({
+            ...meta,
+            refundedPeaches: already + refunded,
+          }),
+        },
+      });
     }
   }
 
@@ -403,6 +450,11 @@ export async function resolveQualityClaim(opts: {
         await tgSendMessage(chatId, t("qc_approved_free_undress", locale)).catch(
           () => undefined,
         );
+      } else if (defectSec > 0) {
+        await tgSendMessage(
+          chatId,
+          `✅ Вернули ${refunded}₽ за ${defectSec} сек. брака.\nБаланс: ${bal ?? 0}₽`,
+        ).catch(() => undefined);
       } else {
         await tgSendMessage(
           chatId,
@@ -433,7 +485,9 @@ export async function resolveQualityClaim(opts: {
       `Пользователь: <code>${escHtml(claim.userId)}</code>`,
       `Работа: <code>${escHtml(claim.galleryItemId)}</code>`,
       `Списано: <b>${claim.chargedPeaches}₽</b>` +
-        (refunded ? ` → возврат <b>${refunded}</b>` : ""),
+        (refunded
+          ? ` → возврат <b>${refunded}</b>${defectSec ? ` за ${defectSec} сек` : ""}`
+          : ""),
       `Заявок всего: <b>${totalClaims}</b>`,
       `Решено: ${formatMsk(new Date())} МСК`,
     ].join("\n");

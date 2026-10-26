@@ -47,10 +47,10 @@ function poseKeyboard(selected: string[]) {
   return { inline_keyboard: rows };
 }
 
-function poseText(selected: string[]): string {
+async function poseText(selected: string[]): Promise<string> {
   if (!selected.length) return INTRO;
   const lines = selected.map((id, i) => `${i + 1}. ${poseById(id)?.title || id}`);
-  const quote = poseOrderPrice(selected);
+  const quote = await poseOrderPrice(selected);
   return (
     `${INTRO}\n\n<blockquote>Порядок выбранных поз:\n${lines.join("\n")}\n` +
     `Стоимость полного видео ${quote.sec} сек. с этими сценами = ${formatRubOnly(quote.rub)}</blockquote>`
@@ -85,7 +85,7 @@ export async function handlePoseBuilderCallback(opts: {
       chatState: "idle",
       pending: { poseIds: [], poseManKey: "", poseRunning: false },
     });
-    const sent = (await tgSendMessage(opts.chatId, poseText([]), {
+    const sent = (await tgSendMessage(opts.chatId, await poseText([]), {
       reply_markup: poseKeyboard([]),
     })) as { message_id?: number };
     if (sent?.message_id) {
@@ -108,7 +108,7 @@ export async function handlePoseBuilderCallback(opts: {
       opts.messageId || parsePending(session?.pendingJson || "{}").poseMsgId;
     if (msgId) {
       try {
-        await tgEditMessageText(opts.chatId, msgId, poseText(next), {
+        await tgEditMessageText(opts.chatId, msgId, await poseText(next), {
           reply_markup: poseKeyboard(next),
         });
       } catch {
@@ -309,7 +309,7 @@ async function launch(
     await tgSendMessage(chatId, "Нет фото девушки. Пришли его ещё раз.");
     return;
   }
-  const quote = poseOrderPrice(ids);
+  const quote = await poseOrderPrice(ids);
   const paid = await debitFunnelBalance(userId, quote.rub);
   if (!paid.ok) {
     await tgSendMessage(

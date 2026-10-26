@@ -31,15 +31,15 @@ export async function startPoseFilm(opts: {
   manKey?: string;
 }): Promise<void> {
   const ids = opts.poseIds.filter((id) => poseById(id));
-  const quote = poseOrderPrice(ids);
-  const per = posePriceRub();
+  const quote = await poseOrderPrice(ids);
+  const per = await posePriceRub();
   const titles = ids.map((id) => poseById(id)?.title || id);
 
   await tgSendMessage(
     opts.chatId,
     `Собираю ролик: ${titles.join(" → ")}\n` +
       `${quote.sec} сек, списано ${formatRubOnly(quote.rub)}. ` +
-      `Если сцена не соберётся, верну деньги только за неё.`,
+      `Если вдруг сцена не соберётся или в ней будут грубые ошибки с нашей стороны, мы вернём за неё деньги`,
   );
 
   let settled = false;
@@ -127,6 +127,7 @@ export async function startPoseFilm(opts: {
                 poseBuilder: true,
                 chargedPeaches: quote.rub,
                 refundedPeaches: refunded,
+                durationSec: clips.length * 5,
                 poses: okTitles,
                 failed: failTitles,
               }),

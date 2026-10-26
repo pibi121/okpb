@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { parseGalleryMeta } from "@/lib/gallery-meta";
 import { withOps, jsonOk, jsonErr } from "@/lib/ops/http";
 import { writeAudit } from "@/lib/ops/audit";
 import { resolveQualityClaim } from "@/lib/tg/quality-claim";
@@ -38,6 +39,7 @@ export async function GET(req: Request) {
             resultUrl: true,
             thumbUrl: true,
             createdAt: true,
+            metaJson: true,
           },
         },
       },
@@ -55,12 +57,26 @@ export async function GET(req: Request) {
     const countMap = new Map(counts.map((c) => [c.userId, c._count._all]));
 
     return jsonOk({
-      rows: rows.map((r) => ({
+      rows: rows.map((r) => {
+        const meta = parseGalleryMeta(r.galleryItem.metaJson) as Record<
+          string,
+          unknown
+        >;
+        const durationSec = Math.max(
+          0,
+          Math.floor(
+            Number(meta.durationSec) ||
+              (Array.isArray(meta.poses) ? meta.poses.length * 5 : 0),
+          ),
+        );
+        return {
         id: r.id,
         status: r.status,
         kind: r.kind,
         chargedPeaches: r.chargedPeaches,
         refundedPeaches: r.refundedPeaches,
+        poseBuilder: meta.poseBuilder === true,
+        durationSec,
         createdAt: r.createdAt.toISOString(),
         reviewedAt: r.reviewedAt?.toISOString() || null,
         userClaimsTotal: countMap.get(r.userId) || 1,
@@ -80,7 +96,8 @@ export async function GET(req: Request) {
           thumbUrl: r.galleryItem.thumbUrl,
           createdAt: r.galleryItem.createdAt.toISOString(),
         },
-      })),
+      };
+      }),
     });
   });
 }
@@ -90,26 +107,36 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as {
       action?: string;
       claimId?: string;
+      defectSec?: number;
     };
     if (
       !body.claimId ||
-      (body.action !== "approve" && body.action !== "reject")
+      (body.action !== "approve" &&
+        body.action !== "reject" &&
+        body.action !== "partial")
     ) {
-      return jsonErr("claimId + action (approve|reject)");
+      return jsonErr("claimId + action (approve|reject|partial)");
     }
 
     const result = await resolveQualityClaim({
       claimId: body.claimId,
       action: body.action,
       actorId: actor.id,
+      defectSec: body.defectSec,
     });
     if (!result.ok) return jsonErr(result.error);
 
     await writeAudit({
       actorId: actor.id,
-      action: body.action === "approve" ? "qc_approve" : "qc_reject",
+      action:
+        body.action === "approve"
+          ? "qc_approve"
+          : body.action === "partial"
+            ? "qc_partial"
+            : "qc_reject",
       targetType: "qualityClaim",
       targetId: body.claimId,
+      detail: body.action === "partial" ? { defectSec: body.defectSec } : undefined,
     });
 
     return jsonOk({ ok: true });

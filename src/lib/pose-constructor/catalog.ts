@@ -3,7 +3,6 @@
  * Picture 1 = girl (replaced). Picture 2 = man or the baked default.
  * Pictures 3–5 stay on the pose GPU input folder.
  */
-import { premiumVideoPeaches } from "@/lib/tg-pricing";
 import prompts from "@/lib/pose-constructor/prompts.json";
 
 export const POSE_CLIP_SEC = 5;
@@ -49,11 +48,17 @@ export function posePrompt(id: string): string {
   return text;
 }
 
-export function posePriceRub(): number {
-  return premiumVideoPeaches(POSE_CLIP_SEC);
+export async function posePriceRub(): Promise<number> {
+  const { ensurePriceOverlay, getOpsPrices } = await import("@/lib/ops/prices");
+  await ensurePriceOverlay();
+  const n = Math.round(Number(getOpsPrices().pose_scene_5) || 150);
+  return Math.max(1, n);
 }
 
-export function poseOrderPrice(ids: string[]): { sec: number; rub: number } {
+export async function poseOrderPrice(
+  ids: string[],
+): Promise<{ sec: number; rub: number }> {
   const n = ids.length;
-  return { sec: n * POSE_CLIP_SEC, rub: n * posePriceRub() };
+  const per = await posePriceRub();
+  return { sec: n * POSE_CLIP_SEC, rub: n * per };
 }

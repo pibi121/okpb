@@ -18,6 +18,8 @@ export type OpsPrices = {
   video_sec_animate: number;
   video_sec_story: number;
   video_sec_premium: number;
+  /** Pose constructor: rubles for one 5-second scene */
+  pose_scene_5: number;
   /** Minimum billable seconds for any video */
   video_min_sec: number;
   lora_train: number;
@@ -50,6 +52,7 @@ const DEFAULTS: OpsPrices = {
   video_sec_animate: TG_VIDEO_SEC_PEACHES.animate,
   video_sec_story: TG_VIDEO_SEC_PEACHES.story,
   video_sec_premium: TG_VIDEO_SEC_PEACHES.premium,
+  pose_scene_5: 150,
   video_min_sec: TG_VIDEO_MIN_SEC,
   lora_train: TG_PREMIUM.loraTrainPeaches,
   topup_try: TG_TOP_UP_PACKS[0].peaches,
@@ -139,6 +142,7 @@ export const PRICE_FIELDS: { key: keyof OpsPrices; title: string }[] = [
   { key: "video_sec_animate", title: "5. Оживление — ₽ за 1 сек" },
   { key: "video_sec_story", title: "6. Обычный шаблон видео — ₽ за 1 сек" },
   { key: "video_sec_premium", title: "7. Best / премиум видео — ₽ за 1 сек" },
+  { key: "pose_scene_5", title: "Конструктор сцен — ₽ за сцену 5 сек" },
   { key: "video_min_sec", title: "Мин. секунд к оплате (видео)" },
   { key: "lora_train", title: "8. Обучение LoRA (фикс)" },
   { key: "topup_try", title: "Пакет Try" },

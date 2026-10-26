@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { prisma } from "@/lib/db";
 import { comfyUploadImage, runComfyJob } from "@/lib/comfy-client";
 import { enqueueGpuJob } from "@/lib/gallery-jobs";
+import { GALLERY_PLACEHOLDER_URL } from "@/lib/gallery-meta";
 import { saveGalleryBinary, resolveGalleryFile } from "@/lib/local-store";
 import { stitchClipBuffersWithFallback } from "@/lib/stitch-fallback";
 import { QC_CB } from "@/lib/tg/generation-flow";
@@ -43,7 +44,26 @@ export async function startPoseFilm(opts: {
   );
 
   let settled = false;
+  let itemId = "";
   try {
+    const pending = await prisma.galleryItem.create({
+      data: {
+        userId: opts.userId,
+        kind: "video",
+        title: "Конструктор сцен",
+        prompt: titles.join(", "),
+        resultUrl: GALLERY_PLACEHOLDER_URL,
+        metaJson: JSON.stringify({
+          status: "pending",
+          poseBuilder: true,
+          chargedPeaches: quote.rub,
+          refundedPeaches: 0,
+          durationSec: quote.sec,
+          poses: titles,
+        }),
+      },
+    });
+    itemId = pending.id;
     await enqueueGpuJob(
       async () => {
         let refunded = 0;
@@ -89,6 +109,21 @@ export async function startPoseFilm(opts: {
           if (refunded > 0) await creditFunnelBalance(opts.userId, refunded);
 
           if (!clips.length) {
+            await prisma.galleryItem.update({
+              where: { id: itemId },
+              data: {
+                metaJson: JSON.stringify({
+                  status: "error",
+                  error: "Ни одна сцена не собралась",
+                  poseBuilder: true,
+                  chargedPeaches: quote.rub,
+                  refundedPeaches: quote.rub,
+                  durationSec: 0,
+                  poses: [],
+                  failed: failTitles,
+                }),
+              },
+            });
             await tgSendMessage(
               opts.chatId,
               `Ни одна сцена не собралась. Вернул ${formatRubOnly(quote.rub)}.`,
@@ -115,11 +150,9 @@ export async function startPoseFilm(opts: {
           }
 
           const saved = saveGalleryBinary(opts.userId, "mp4", video, "pose_film");
-          const item = await prisma.galleryItem.create({
+          await prisma.galleryItem.update({
+            where: { id: itemId },
             data: {
-              userId: opts.userId,
-              kind: "video",
-              title: "Конструктор сцен",
               prompt: okTitles.join(", "),
               resultUrl: saved.publicUrl,
               metaJson: JSON.stringify({
@@ -144,7 +177,7 @@ export async function startPoseFilm(opts: {
               [
                 {
                   text: "Не понравилось видео",
-                  callback_data: QC_CB.dislike(item.id),
+                  callback_data: QC_CB.dislike(itemId),
                 },
               ],
             ],
@@ -179,6 +212,24 @@ export async function startPoseFilm(opts: {
           if (left > 0) await creditFunnelBalance(opts.userId, left);
           settled = true;
           const msg = e instanceof Error ? e.message : String(e);
+          if (itemId) {
+            await prisma.galleryItem
+              .update({
+                where: { id: itemId },
+                data: {
+                  metaJson: JSON.stringify({
+                    status: "error",
+                    error: msg.slice(0, 300),
+                    poseBuilder: true,
+                    chargedPeaches: quote.rub,
+                    refundedPeaches: quote.rub,
+                    poses: titles,
+                    failed: titles,
+                  }),
+                },
+              })
+              .catch(() => undefined);
+          }
           await tgSendMessage(
             opts.chatId,
             `Сборка оборвалась. Вернул ${formatRubOnly(left)}.\n${msg}`,
@@ -190,11 +241,31 @@ export async function startPoseFilm(opts: {
         userId: opts.userId,
         title: "Конструктор сцен",
         kind: "film",
+        refType: "galleryItem",
+        refId: itemId,
         meta: { poseBuilder: true, poseCount: ids.length },
       },
     );
   } catch (e) {
     if (!settled) {
+      if (itemId) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await prisma.galleryItem
+          .update({
+            where: { id: itemId },
+            data: {
+              metaJson: JSON.stringify({
+                status: "error",
+                error: msg.slice(0, 300),
+                poseBuilder: true,
+                chargedPeaches: quote.rub,
+                refundedPeaches: quote.rub,
+                poses: titles,
+              }),
+            },
+          })
+          .catch(() => undefined);
+      }
       await creditFunnelBalance(opts.userId, quote.rub);
       const msg = e instanceof Error ? e.message : String(e);
       await tgSendMessage(

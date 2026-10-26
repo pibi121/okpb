@@ -2499,6 +2499,25 @@ export async function handleTgMessage(msg: TgUpdateMessage) {
 
   if (msg.photo?.length) {
     const largest = msg.photo[msg.photo.length - 1]!;
+    if (
+      chatState === "funnel_v2_pose_girl" ||
+      chatState === "funnel_v2_pose_man"
+    ) {
+      const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
+      if (!buf) return;
+      const { handlePoseBuilderPhoto } = await import(
+        "@/lib/pose-constructor/flow"
+      );
+      await handlePoseBuilderPhoto({
+        chatId,
+        userId: user.id,
+        platformUserId,
+        locale,
+        photoBytes: buf,
+        which: chatState === "funnel_v2_pose_man" ? "man" : "girl",
+      });
+      return;
+    }
     if (chatState === "funnel_v2_awaiting_photo") {
       const buf = await downloadTgPhotoSoft(chatId, largest.file_id, locale);
       if (!buf) return;

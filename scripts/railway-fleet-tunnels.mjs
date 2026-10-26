@@ -40,6 +40,13 @@ const FLEET = [
     keyEnv: "METALNODE_SSH_KEY_OWNERLAB",
     keyPath: "/tmp/metalnode_key_ownerlab",
   },
+  {
+    name: "poselab",
+    localPort: 8193,
+    sshPort: 22034,
+    keyEnv: "METALNODE_SSH_KEY_POSELAB",
+    keyPath: "/tmp/metalnode_key_poselab",
+  },
 ];
 
 /** @type {import("node:child_process").ChildProcess | null} */

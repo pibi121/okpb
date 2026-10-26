@@ -56,6 +56,8 @@ model User {
   tgFunnelV2BlurTrialsUsed Int @default(0)
   /// Accepted v2 rules in preview (independent of ageConfirmed)
   tgFunnelV2RulesOk Boolean @default(false)
+  /// Secret code unlocked the pose constructor for this account
+  tgPoseBuilderOk Boolean @default(false)
   /// Faststart screen shown (30m idle nudge clock)
   tgFunnelV2FaststartAt DateTime?
   tgFunnelV2FaststartNudgeSent Boolean @default(false)

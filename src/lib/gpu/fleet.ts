@@ -19,7 +19,7 @@ export type FleetGpu = {
   host?: string;
   keyEnv: string;
   keyPath: string;
-  pool: "any" | "photo" | "video" | "lora" | "lab";
+  pool: "any" | "photo" | "video" | "lora" | "lab" | "pose";
   /** Prefer this node for LoRA train SSH. */
   loraPreferred?: boolean;
   /** Prefer this node for user photo/video gens when online. */
@@ -65,6 +65,16 @@ export const FLEET_EXTRA_GPUS: FleetGpu[] = [
     keyEnv: "METALNODE_SSH_KEY_OWNERLAB",
     keyPath: "/tmp/metalnode_key_ownerlab",
     pool: "lab",
+    labOnly: true,
+  },
+  {
+    key: "poselab",
+    label: "Metalnode Pose Lab (22034)",
+    localPort: 8193,
+    sshPort: 22034,
+    keyEnv: "METALNODE_SSH_KEY_POSELAB",
+    keyPath: "/tmp/metalnode_key_poselab",
+    pool: "pose",
     labOnly: true,
   },
 ];

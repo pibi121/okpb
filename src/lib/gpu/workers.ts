@@ -349,8 +349,10 @@ export async function pickWorker(
     // Owner Lab GPU (pool=lab) never takes user/funnel jobs; lab jobs never spill to primary.
     if (pool === "lab") {
       live = live.filter((w) => w.pool === "lab");
+    } else if (pool === "pose") {
+      live = live.filter((w) => w.pool === "pose");
     } else {
-      live = live.filter((w) => w.pool !== "lab");
+      live = live.filter((w) => w.pool !== "lab" && w.pool !== "pose");
     }
     if (allow?.length) {
       live = live.filter((w) => allow.includes(w.provider.toLowerCase()));
@@ -367,10 +369,12 @@ export async function pickWorker(
     }
     if (!live.length) {
       // Lab pool must not fall back onto the user/primary card.
-      if (pool === "lab") {
+      if (pool === "lab" || pool === "pose") {
         if (Date.now() >= deadline) {
           throw new Error(
-            "Owner Lab GPU offline (ownerlab :8191). Проверь туннель METALNODE_SSH_KEY_OWNERLAB.",
+            pool === "pose"
+              ? "Pose Lab GPU offline (poselab :8193). Проверь туннель METALNODE_SSH_KEY_POSELAB."
+              : "Owner Lab GPU offline (ownerlab :8191). Проверь туннель METALNODE_SSH_KEY_OWNERLAB.",
           );
         }
         await new Promise((r) => setTimeout(r, 1_200));

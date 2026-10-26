@@ -110,6 +110,7 @@ async function markReady(
   if (prev.videoFrozenRefund === true) return;
   if (
     prev.ownerLab !== true &&
+    prev.poseBuilder !== true &&
     (existing.kind === "video" || existing.kind === "film")
   ) {
     const { isVideoFrozen } = await import("@/lib/ops/video-freeze");

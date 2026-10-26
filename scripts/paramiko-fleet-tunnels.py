@@ -64,6 +64,14 @@ def default_fleet() -> list[dict]:
             "host": host,
             "sshUser": user,
         },
+        {
+            "name": "poselab",
+            "localPort": 8193,
+            "sshPort": 22034,
+            "keyPath": "/tmp/metalnode_key_poselab",
+            "host": host,
+            "sshUser": user,
+        },
     ]
 
 

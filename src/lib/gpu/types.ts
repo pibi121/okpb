@@ -1,6 +1,6 @@
 /** GPU orchestrator shared types. */
 
-export type GpuPool = "photo" | "video" | "lora" | "any" | "lab";
+export type GpuPool = "photo" | "video" | "lora" | "any" | "lab" | "pose";
 
 export type GpuJobKind =
   | "photo"

@@ -52,6 +52,14 @@ export async function handleFunnelV2Callback(opts: {
 
   await tgAnswerCallbackQuery(opts.callbackId);
 
+  if (opts.data === FV2.pose || opts.data.startsWith("fv2:pz:")) {
+    const { handlePoseBuilderCallback } = await import(
+      "@/lib/pose-constructor/flow"
+    );
+    await handlePoseBuilderCallback(opts);
+    return true;
+  }
+
   const { handleFunnelV2FaststartCallback } = await import(
     "@/lib/tg/funnel-v2/faststart"
   );

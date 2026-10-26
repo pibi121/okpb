@@ -18,6 +18,8 @@ export type TgChatState =
   | "awaiting_undress_photo"
   | "funnel_v2_awaiting_rules"
   | "funnel_v2_awaiting_photo"
+  | "funnel_v2_pose_girl"
+  | "funnel_v2_pose_man"
   | "funnel_v2_awaiting_edit"
   | "funnel_v2_awaiting_partner_label";
 
@@ -88,6 +90,10 @@ export type TgPending = {
   /** Optional second hero for dual-cast QuickVideo templates. */
   funnelV2Photo2Url?: string;
   funnelV2Photo2Key?: string;
+  poseIds?: string[];
+  poseMsgId?: number;
+  poseManKey?: string;
+  poseRunning?: boolean;
   /** Next funnel_v2_awaiting_photo upload goes to photo2, not photo1. */
   funnelV2AwaitPhoto2?: boolean;
   funnelV2AwaitReplace?: boolean;

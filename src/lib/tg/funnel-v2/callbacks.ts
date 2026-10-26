@@ -10,6 +10,8 @@ export const FV2 = {
   earn: "fv2:earn",
   help: "fv2:help",
   hub: "fv2:hub",
+  /** Pose constructor. Visible only after the secret code. */
+  pose: "fv2:pz",
   /** Legacy faststart buttons still in old chats → photo hub / hub */
   fsPose: "fv2:fs:pose",
   fsLater: "fv2:fs:later",

@@ -11,7 +11,7 @@ import {
   enterFunnelV2Preview,
   setFunnelV2Live,
 } from "@/lib/tg/funnel-v2/mode";
-import { sendFunnelV2Rules } from "@/lib/tg/funnel-v2/hub";
+import { POSE_CODEWORD } from "@/lib/pose-constructor/catalog";
 
 const TOPUP_MAP: Record<string, number> = {
   TOPUP_200: 200,
@@ -62,6 +62,20 @@ export async function tryFunnelV2Codeword(opts: {
 }): Promise<boolean> {
   const raw = opts.text.trim();
   const key = raw.toUpperCase().replace(/\s+/g, "_");
+
+  if (key === POSE_CODEWORD) {
+    await prisma.user.update({
+      where: { id: opts.userId },
+      data: { tgPoseBuilderOk: true },
+    });
+    await tgSendMessage(
+      opts.chatId,
+      "Конструктор сцен включён только для этого аккаунта. Кнопка появилась в меню под горячим видео.",
+    );
+    const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
+    await sendFunnelV2Hub(opts.chatId, opts.userId, opts.locale);
+    return true;
+  }
 
   if (key === "FUNNEL_PREVIEW") {
     await enterFunnelV2Preview(opts.userId);

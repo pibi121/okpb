@@ -57,6 +57,22 @@ export function currentGpuComfyBaseUrl(): string | null {
   return u ? u.replace(/\/$/, "") : null;
 }
 
+/** Run Comfy calls against a specific worker after a process restart. */
+export async function withGpuJobContext<T>(
+  ctx: { jobId: string; comfyUrl: string | null },
+  fn: () => Promise<T>,
+): Promise<T> {
+  return als.run(
+    {
+      jobId: ctx.jobId,
+      workerId: null,
+      comfyUrl: ctx.comfyUrl,
+      failed: false,
+    },
+    fn,
+  );
+}
+
 export async function noteGpuJobStage(stage: GpuJobStage | string, detail?: string) {
   const id = currentGpuJobId();
   if (!id) return;

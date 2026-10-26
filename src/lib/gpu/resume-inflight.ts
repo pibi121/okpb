@@ -153,7 +153,9 @@ export async function resumeInflightUserGenerations(): Promise<number> {
   let n = 0;
   for (const job of jobs) {
     const meta = parseMeta(job.metaJson);
-    if (meta.ownerLab === true) continue;
+    if (meta.ownerLab === true || meta.poseBuilder === true || job.pool === "pose") {
+      continue;
+    }
     const promptId = typeof meta.comfyPromptId === "string" ? meta.comfyPromptId : "";
     if (!promptId) continue;
     n += 1;
@@ -162,5 +164,9 @@ export async function resumeInflightUserGenerations(): Promise<number> {
   if (n > 0) {
     console.log(`[peach] resume: watching ${n} in-flight user generation(s)`);
   }
+  const { watchInterruptedPoseFilms } = await import("@/lib/pose-constructor/resume");
+  await watchInterruptedPoseFilms().catch((e) =>
+    console.error("[peach] pose resume:", e),
+  );
   return n;
 }

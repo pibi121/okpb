@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "async_hooks";
 import { prisma } from "@/lib/db";
+import { claimIdleMainForPose, isLivePoseOverflow } from "@/lib/gpu/pose-queue";
 import { pickWorker } from "@/lib/gpu/workers";
 import {
   BUILD_VERSION,
@@ -220,19 +221,35 @@ export async function runTrackedGpuJob(
   });
 
   const { acquireGpuSlot, releaseGpuSlot } = await import("@/lib/gpu/slots");
-  await acquireGpuSlot();
+  // A pose batch waits on its own card. It does not take a user slot, so a
+  // photo waiting out an overflow batch cannot block the next pose order.
+  const tookSlot = pool !== "pose";
+  if (tookSlot) await acquireGpuSlot();
   try {
-    // Atomic claim: two waiters must not both stick the same free Metalnode.
-    let worker = await pickWorker(pool, {
+    const pickOpts = {
       providers: opts?.providers,
       excludeProviders: opts?.excludeProviders,
-    });
+    };
+    // Atomic claim: two waiters must not both stick the same free Metalnode.
+    let worker =
+      pool === "pose"
+        ? (await claimIdleMainForPose(job.id)) ?? (await pickWorker(pool, pickOpts))
+        : await pickWorker(pool, pickOpts);
+    const holdUntil = Date.now() + 3 * 60 * 60 * 1000;
     for (let claimTry = 0; claimTry < 12; claimTry++) {
+      if (worker.currentJobId === job.id) break;
+      if (
+        worker.currentJobId &&
+        (await isLivePoseOverflow(worker.currentJobId)) &&
+        Date.now() < holdUntil
+      ) {
+        await new Promise((r) => setTimeout(r, 1_500));
+        worker = await pickWorker(pool, pickOpts);
+        claimTry = -1;
+        continue;
+      }
       if (worker.currentJobId) {
-        worker = await pickWorker(pool, {
-          providers: opts?.providers,
-          excludeProviders: opts?.excludeProviders,
-        });
+        worker = await pickWorker(pool, pickOpts);
       }
       const claimed = await prisma.gpuWorker.updateMany({
         where: {
@@ -244,12 +261,21 @@ export async function runTrackedGpuJob(
       });
       if (claimed.count === 1) break;
       await new Promise((r) => setTimeout(r, 200 + claimTry * 100));
-      worker = await pickWorker(pool, {
-        providers: opts?.providers,
-        excludeProviders: opts?.excludeProviders,
-      });
+      worker = await pickWorker(pool, pickOpts);
       if (claimTry === 11) {
         // Last resort: force-bind (single-GPU / stale currentJobId).
+        // Never steal a card that is mid constructor overflow batch.
+        if (
+          Date.now() < holdUntil &&
+          worker.currentJobId &&
+          worker.currentJobId !== job.id &&
+          (await isLivePoseOverflow(worker.currentJobId))
+        ) {
+          await new Promise((r) => setTimeout(r, 1_500));
+          worker = await pickWorker(pool, pickOpts);
+          claimTry = -1;
+          continue;
+        }
         await prisma.gpuWorker.update({
           where: { id: worker.id },
           data: { status: "busy", currentJobId: job.id },
@@ -360,7 +386,7 @@ export async function runTrackedGpuJob(
       }
     });
   } finally {
-    releaseGpuSlot();
+    if (tookSlot) releaseGpuSlot();
   }
 }
 

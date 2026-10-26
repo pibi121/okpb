@@ -190,6 +190,7 @@ export async function startPoseFilm(opts: {
         userId: opts.userId,
         title: "Конструктор сцен",
         kind: "film",
+        meta: { poseBuilder: true, poseCount: ids.length },
       },
     );
   } catch (e) {

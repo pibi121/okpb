@@ -232,10 +232,6 @@ export async function funnelV2HubKeyboard(userId: string) {
     "@/lib/tg/funnel-v2/pro-access"
   );
   const showPro = await userHasFunnelV2ProAccess(userId);
-  const poseUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { tgPoseBuilderOk: true },
-  });
   const rows: Array<Array<Record<string, unknown>>> = [
     [
       {
@@ -251,16 +247,14 @@ export async function funnelV2HubKeyboard(userId: string) {
         style: "danger",
       },
     ],
-  ];
-  if (poseUser?.tgPoseBuilderOk) {
-    rows.push([
+    [
       {
         text: "Конструктор 🔞 сцен",
         callback_data: FV2.pose,
         style: "primary",
       },
-    ]);
-  }
+    ],
+  ];
   if (showPro) {
     rows.push([{ text: "⭐️ PRO режим", callback_data: FV2.pro }]);
   }

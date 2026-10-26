@@ -23,7 +23,8 @@ async function liveWorkerCap(force = false): Promise<number> {
     where: {
       enabled: true,
       status: { in: ["online", "busy", "unknown"] },
-      pool: { not: "lab" },
+      // Pose card has its own queue and must not add a user slot. Lab neither.
+      pool: { notIn: ["lab", "pose"] },
       NOT: { comfyUrl: "" },
     },
     select: { id: true },

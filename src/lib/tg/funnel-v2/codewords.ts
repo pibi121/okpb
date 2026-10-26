@@ -70,7 +70,7 @@ export async function tryFunnelV2Codeword(opts: {
     });
     await tgSendMessage(
       opts.chatId,
-      "Конструктор сцен включён только для этого аккаунта. Кнопка появилась в меню под горячим видео.",
+      "Конструктор сцен в меню, сразу под горячим видео.",
     );
     const { sendFunnelV2Hub } = await import("@/lib/tg/funnel-v2/hub");
     await sendFunnelV2Hub(opts.chatId, opts.userId, opts.locale);

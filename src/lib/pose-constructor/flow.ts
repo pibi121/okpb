@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { prisma } from "@/lib/db";
 import { saveGalleryBinary, resolveGalleryFile } from "@/lib/local-store";
 import type { TgLocale } from "@/lib/tg/i18n";
 import { formatRubOnly } from "@/lib/tg/funnel-v2/money";
@@ -71,15 +70,6 @@ export async function handlePoseBuilderCallback(opts: {
   data: string;
   messageId?: number;
 }): Promise<void> {
-  const user = await prisma.user.findUnique({
-    where: { id: opts.userId },
-    select: { tgPoseBuilderOk: true },
-  });
-  if (!user?.tgPoseBuilderOk) {
-    await tgSendMessage(opts.chatId, "Конструктор сцен для этого аккаунта выключен.");
-    return;
-  }
-
   if (opts.data === FV2.pose) {
     await setTgSession(opts.platformUserId, {
       chatState: "idle",

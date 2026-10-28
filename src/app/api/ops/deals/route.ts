@@ -6,6 +6,7 @@ import {
   createCabinetAccount,
   createCabinetProject,
   creditCabinetTopup,
+  ensureLegacySpendReports,
   isCabinetRole,
   resetCabinetPassword,
   reviewCabinetWithdrawal,
@@ -25,7 +26,10 @@ export async function GET() {
           investor: { select: { id: true, name: true, login: true } },
           buyer: { select: { id: true, name: true, login: true } },
           links: { orderBy: { createdAt: "asc" } },
-          spends: { orderBy: { createdAt: "desc" } },
+          spends: {
+            orderBy: { createdAt: "desc" },
+            include: { reports: { orderBy: { createdAt: "asc" } } },
+          },
         },
       }),
       prisma.cabinetWithdrawal.findMany({
@@ -34,6 +38,8 @@ export async function GET() {
         include: { account: { select: { name: true, login: true, role: true } } },
       }),
     ]);
+    const readySpends = await ensureLegacySpendReports(projects.flatMap((project) => project.spends));
+    const spendById = new Map(readySpends.map((spend) => [spend.id, spend]));
     return jsonOk({
       accounts: accounts.map((a) => ({
         id: a.id,
@@ -58,13 +64,22 @@ export async function GET() {
           purchases: l.purchases,
           purchaseGrossPeaches: l.purchaseGrossPeaches,
         })),
-        spends: p.spends.map((s) => ({
-          id: s.id,
-          amountRub: s.amountRub,
-          reportTitle: s.reportTitle,
-          reportedAt: s.reportedAt?.toISOString() || null,
-          createdAt: s.createdAt.toISOString(),
-        })),
+        spends: p.spends.map((s) => {
+          const spend = spendById.get(s.id) || s;
+          const reportedRub = spend.reports.reduce((sum, report) => sum + report.amountRub, 0);
+          return {
+            id: spend.id,
+            amountRub: spend.amountRub,
+            reportedRub,
+            createdAt: spend.createdAt.toISOString(),
+            reports: spend.reports.map((report) => ({
+              id: report.id,
+              amountRub: report.amountRub,
+              title: report.title,
+              createdAt: report.createdAt.toISOString(),
+            })),
+          };
+        }),
       })),
       withdrawals: withdrawals.map((w) => ({
         id: w.id,

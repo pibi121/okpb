@@ -41,11 +41,16 @@ type View = {
   spends: Array<{
     id: string;
     amountRub: number;
-    reportTitle: string;
-    reportBody: string;
-    hasFile: boolean;
-    reportedAt: string | null;
+    reportedRub: number;
     createdAt: string;
+    reports: Array<{
+      id: string;
+      amountRub: number;
+      title: string;
+      body: string;
+      hasFile: boolean;
+      createdAt: string;
+    }>;
   }>;
   accruals: Array<{
     id: string;
@@ -123,7 +128,7 @@ export default function CabinetProjectPage() {
         body: JSON.stringify({ action: "create_spend", amountRub: Number(amount) }),
       });
       setAmount("");
-      setMsg("Сумма записана. Байер приложит отчёт.");
+      setMsg("Сумма записана. Байер закроет её тратами.");
       await load();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "ошибка");
@@ -203,7 +208,8 @@ export default function CabinetProjectPage() {
         <form onSubmit={createSpend} className="rounded-2xl border border-white/10 p-4">
           <h2 className="text-lg">Я отправил деньги</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Это учёт. Сумма прибавляется к инвестиции в этого байера. Куда она ушла, напишет байер.
+            Это учёт. Сумма прибавляется к инвестиции. Байер закрывает её отдельными тратами:
+            у каждой своя сумма и отчёт.
           </p>
           <div className="mt-3 flex gap-2">
             <input
@@ -229,33 +235,49 @@ export default function CabinetProjectPage() {
         {view.spends.length === 0 ? (
           <p className="text-sm text-zinc-500">Записей пока нет.</p>
         ) : null}
-        {view.spends.map((s) => (
-          <article key={s.id} className="rounded-2xl border border-white/10 p-4 text-sm">
-            <div className="flex items-baseline justify-between gap-2">
-              <b>{rub(s.amountRub)}</b>
-              <span className="text-zinc-500">{when(s.createdAt)}</span>
-            </div>
-            {s.reportedAt ? (
-              <div className="mt-2">
-                <div>{s.reportTitle}</div>
-                <p className="mt-1 whitespace-pre-wrap text-zinc-400">{s.reportBody}</p>
-                {s.hasFile ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/cabinet/file/${s.id}`}
-                    alt="Скрин отчёта"
-                    className="mt-3 max-h-80 rounded-xl border border-white/10"
-                  />
-                ) : null}
+        {view.spends.map((s) => {
+          const left = s.amountRub - s.reportedRub;
+          return (
+            <article key={s.id} className="rounded-2xl border border-white/10 p-4 text-sm">
+              <div className="flex items-baseline justify-between gap-2">
+                <b>{rub(s.amountRub)}</b>
+                <span className="text-zinc-500">{when(s.createdAt)}</span>
               </div>
-            ) : (
-              <p className="mt-2 text-zinc-500">Отчёта ещё нет.</p>
-            )}
-            {!investor ? (
-              <ReportForm busy={busy} spend={s} onSubmit={(form) => void saveReport(s.id, form)} />
-            ) : null}
-          </article>
-        ))}
+              <p className="mt-1 text-zinc-400">
+                закрыто {rub(s.reportedRub)} · осталось {rub(left)}
+              </p>
+              {s.reports.length === 0 ? <p className="mt-2 text-zinc-500">Трат ещё нет.</p> : null}
+              <div className="mt-3 flex flex-col gap-3">
+                {s.reports.map((report) => (
+                  <div key={report.id} className="rounded-xl border border-white/10 p-3">
+                    <div>
+                      {rub(report.amountRub)} · {report.title}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-zinc-400">{report.body}</p>
+                    {report.hasFile ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/cabinet/file/${report.id}`}
+                        alt="Скрин отчёта"
+                        className="mt-3 max-h-80 rounded-xl border border-white/10"
+                      />
+                    ) : null}
+                    {!investor ? (
+                      <ReportForm
+                        busy={busy}
+                        report={report}
+                        onSubmit={(form) => void saveReport(s.id, form)}
+                      />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              {!investor && left > 0 ? (
+                <ReportForm busy={busy} onSubmit={(form) => void saveReport(s.id, form)} />
+              ) : null}
+            </article>
+          );
+        })}
       </section>
 
       <section>
@@ -337,27 +359,40 @@ function Stat(props: { label: string; value: string }) {
 }
 
 function ReportForm(props: {
-  spend: { id: string; reportedAt: string | null };
+  report?: { id: string; amountRub: number; title: string; body: string };
   busy: boolean;
   onSubmit: (form: FormData) => void;
 }) {
+  const editing = Boolean(props.report);
   return (
     <form
       className="mt-3 flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        props.onSubmit(new FormData(e.currentTarget));
+        const form = new FormData(e.currentTarget);
+        if (props.report) form.set("reportId", props.report.id);
+        props.onSubmit(form);
       }}
     >
       <input
+        name="amountRub"
+        required
+        inputMode="numeric"
+        defaultValue={props.report ? String(props.report.amountRub) : ""}
+        placeholder="Сумма этой траты, ₽"
+        className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
+      />
+      <input
         name="title"
         required
+        defaultValue={props.report?.title || ""}
         placeholder="Куда ушли деньги"
         className="rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
       />
       <textarea
         name="body"
         required
+        defaultValue={props.report?.body || ""}
         placeholder="Коротко: что купили и зачем"
         className="min-h-16 rounded-xl border border-white/10 bg-[#121214] px-3 py-2"
       />
@@ -370,7 +405,7 @@ function ReportForm(props: {
         disabled={props.busy}
         className="rounded-full bg-white/10 px-4 py-2 disabled:opacity-60"
       >
-        {props.spend.reportedAt ? "Обновить отчёт" : "Прикрепить отчёт"}
+        {editing ? "Обновить трату" : "Добавить трату"}
       </button>
     </form>
   );

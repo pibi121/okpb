@@ -21,6 +21,8 @@ export async function POST(req: Request, ctx: Ctx) {
       accountId: account.id,
       projectId: id,
       spendId: String(form.get("spendId") || ""),
+      reportId: String(form.get("reportId") || ""),
+      amountRub: Number(form.get("amountRub") || ""),
       title: String(form.get("title") || ""),
       body: String(form.get("body") || ""),
       file: upload,

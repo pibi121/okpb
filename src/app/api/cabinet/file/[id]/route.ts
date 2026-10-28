@@ -14,7 +14,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   const file = await cabinetSpendFile({
     accountId: account?.id,
     ops: Boolean(ops),
-    spendId: id,
+    reportId: id,
   });
   if (!file) return NextResponse.json({ error: "Файл не найден" }, { status: 404 });
   const bytes = fs.readFileSync(file.abs);

@@ -232,10 +232,70 @@ export async function createCabinetSpend(accountId: string, projectId: string, a
   });
 }
 
+type SpendWithReports = {
+  id: string;
+  amountRub: number;
+  reportTitle: string;
+  reportBody: string;
+  reportFile: string;
+  reportedAt: Date | null;
+  reports: Array<{
+    id: string;
+    spendId: string;
+    amountRub: number;
+    title: string;
+    body: string;
+    file: string;
+    createdAt: Date;
+  }>;
+};
+
+function reportedRubOf(reports: Array<{ amountRub: number }>): number {
+  return reports.reduce((sum, report) => sum + report.amountRub, 0);
+}
+
+/** Old cabinets stored one report on the transfer. Copy it once, for the whole sum. */
+export async function ensureLegacySpendReports<T extends SpendWithReports>(spends: T[]): Promise<T[]> {
+  const pending = spends.filter(
+    (spend) =>
+      spend.reportedAt &&
+      spend.reports.length === 0 &&
+      (spend.reportTitle || spend.reportBody || spend.reportFile),
+  );
+  if (pending.length === 0) return spends;
+  await prisma.cabinetSpendReport.createMany({
+    data: pending.map((spend) => ({
+      id: spend.id,
+      spendId: spend.id,
+      amountRub: spend.amountRub,
+      title: spend.reportTitle,
+      body: spend.reportBody,
+      file: spend.reportFile,
+      createdAt: spend.reportedAt || new Date(),
+    })),
+    skipDuplicates: true,
+  });
+  const created = await prisma.cabinetSpendReport.findMany({
+    where: { spendId: { in: pending.map((spend) => spend.id) } },
+    orderBy: { createdAt: "asc" },
+  });
+  const bySpend = new Map<string, SpendWithReports["reports"]>();
+  for (const report of created) {
+    const list = bySpend.get(report.spendId) || [];
+    list.push(report);
+    bySpend.set(report.spendId, list);
+  }
+  return spends.map((spend) =>
+    spend.reports.length > 0 ? spend : { ...spend, reports: bySpend.get(spend.id) || [] },
+  );
+}
+
 export async function saveCabinetReport(opts: {
   accountId: string;
   projectId: string;
   spendId: string;
+  reportId?: string;
+  amountRub: number;
   title: string;
   body: string;
   file?: { bytes: Buffer; ext: string } | null;
@@ -244,35 +304,62 @@ export async function saveCabinetReport(opts: {
   if (project.buyerId !== opts.accountId) throw new Error("Отчёт прикрепляет байер");
   const spend = await prisma.cabinetSpend.findFirst({
     where: { id: opts.spendId, projectId: project.id },
+    include: { reports: true },
   });
   if (!spend) throw new Error("Заявка не найдена");
+  const [ready] = await ensureLegacySpendReports([spend]);
+  const reports = ready?.reports || spend.reports;
   const title = opts.title.trim().slice(0, 120);
   const body = opts.body.trim().slice(0, 2000);
+  const amount = Math.floor(opts.amountRub);
   if (!title) throw new Error("Напиши, куда ушли деньги");
   if (!body) throw new Error("Добавь короткое описание");
+  if (!Number.isFinite(amount) || amount < 1) throw new Error("Сумма траты: целое число от 1");
 
-  let reportFile = spend.reportFile;
-  if (opts.file) {
-    const ext = opts.file.ext.toLowerCase().replace(/^\./, "");
-    if (!["jpg", "jpeg", "png", "webp"].includes(ext)) {
-      throw new Error("Скрин: jpg, png или webp");
-    }
-    if (opts.file.bytes.length > 4 * 1024 * 1024) throw new Error("Скрин больше 4 МБ");
-    const name = `${spend.id}.${ext === "jpeg" ? "jpg" : ext}`;
-    const abs = cabinetReportPath(name);
-    if (!abs) throw new Error("Не удалось сохранить скрин");
-    fs.writeFileSync(abs, opts.file.bytes);
-    if (reportFile && reportFile !== name) {
-      const prev = cabinetReportPath(reportFile);
-      if (prev && fs.existsSync(prev)) fs.unlinkSync(prev);
-    }
-    reportFile = name;
+  const reportId = opts.reportId?.trim() || "";
+  const current = reportId ? reports.find((report) => report.id === reportId) : undefined;
+  if (reportId && !current) throw new Error("Отчёт не найден");
+  const others = reportedRubOf(reports.filter((report) => report.id !== reportId));
+  if (others + amount > spend.amountRub) {
+    const left = spend.amountRub - others;
+    throw new Error(`Эта сумма больше остатка. Осталось ${left} ₽`);
   }
 
-  return prisma.cabinetSpend.update({
-    where: { id: spend.id },
-    data: { reportTitle: title, reportBody: body, reportFile, reportedAt: new Date() },
-  });
+  const saved = current
+    ? current
+    : await prisma.cabinetSpendReport.create({
+        data: { spendId: spend.id, amountRub: amount, title, body },
+      });
+
+  let fileName = saved.file;
+  try {
+    if (opts.file) {
+      const ext = opts.file.ext.toLowerCase().replace(/^\./, "");
+      if (!["jpg", "jpeg", "png", "webp"].includes(ext)) {
+        throw new Error("Скрин: jpg, png или webp");
+      }
+      if (opts.file.bytes.length > 4 * 1024 * 1024) throw new Error("Скрин больше 4 МБ");
+      const name = `${saved.id}.${ext === "jpeg" ? "jpg" : ext}`;
+      const abs = cabinetReportPath(name);
+      if (!abs) throw new Error("Не удалось сохранить скрин");
+      fs.writeFileSync(abs, opts.file.bytes);
+      if (fileName && fileName !== name) {
+        const prev = cabinetReportPath(fileName);
+        if (prev && fs.existsSync(prev)) fs.unlinkSync(prev);
+      }
+      fileName = name;
+    }
+
+    return await prisma.cabinetSpendReport.update({
+      where: { id: saved.id },
+      data: { amountRub: amount, title, body, file: fileName },
+    });
+  } catch (error) {
+    if (!current) {
+      await prisma.cabinetSpendReport.delete({ where: { id: saved.id } }).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 /** Ops: book a top-up on a deal link and split it by the current rates. */
@@ -744,9 +831,11 @@ export async function cabinetHome(accountId: string) {
     include: {
       investor: { select: { name: true, login: true } },
       buyer: { select: { name: true, login: true } },
-      spends: true,
+      spends: { include: { reports: { orderBy: { createdAt: "asc" } } } },
     },
   });
+  const readySpends = await ensureLegacySpendReports(projects.flatMap((project) => project.spends));
+  const spendById = new Map(readySpends.map((spend) => [spend.id, spend]));
   const ids = projects.map((p) => p.id);
   const [sums, withdrawals, recent, avail] = await Promise.all([
     ids.length
@@ -795,10 +884,9 @@ export async function cabinetHome(accountId: string) {
     projects: projects.map((p) => {
       const other = account.role === "investor" ? p.buyer : p.investor;
       const sum = byProject.get(p.id);
-      const investedRub = p.spends.reduce((s, x) => s + x.amountRub, 0);
-      const reportedRub = p.spends
-        .filter((x) => x.reportedAt)
-        .reduce((s, x) => s + x.amountRub, 0);
+      const spends = p.spends.map((spend) => spendById.get(spend.id) || spend);
+      const investedRub = spends.reduce((s, x) => s + x.amountRub, 0);
+      const reportedRub = spends.reduce((s, x) => s + reportedRubOf(x.reports), 0);
       return {
         id: p.id,
         chatUrl: p.chatUrl,
@@ -810,7 +898,7 @@ export async function cabinetHome(accountId: string) {
         myCommission: sumMine(account.role, sum),
         investedRub,
         reportedRub,
-        openSpends: p.spends.filter((x) => !x.reportedAt).length,
+        openSpends: spends.filter((x) => reportedRubOf(x.reports) < x.amountRub).length,
       };
     }),
     accruals: recent.map((a) => ({
@@ -853,6 +941,7 @@ export async function cabinetProjectView(accountId: string, projectId: string) {
     prisma.cabinetSpend.findMany({
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
+      include: { reports: { orderBy: { createdAt: "asc" } } },
     }),
     prisma.cabinetAccrual.findMany({
       where: { projectId: project.id },
@@ -867,6 +956,7 @@ export async function cabinetProjectView(accountId: string, projectId: string) {
     }),
     cabinetAvailability(account),
   ]);
+  const readySpends = await ensureLegacySpendReports(spends);
   const byLink = new Map(linkSums.map((s) => [s.linkId, s._sum]));
   const other = account.role === "investor" ? project.buyer : project.investor;
   const urls = await Promise.all(links.map((l) => linkUrls(project.code, l.slug)));
@@ -887,8 +977,8 @@ export async function cabinetProjectView(accountId: string, projectId: string) {
       buyerPct: project.buyerPct,
       myPct: account.role === "investor" ? project.investorPct : project.buyerPct,
       counterpartName: personName(other),
-      investedRub: spends.reduce((s, x) => s + x.amountRub, 0),
-      reportedRub: spends.filter((x) => x.reportedAt).reduce((s, x) => s + x.amountRub, 0),
+      investedRub: readySpends.reduce((s, x) => s + x.amountRub, 0),
+      reportedRub: readySpends.reduce((s, x) => s + reportedRubOf(x.reports), 0),
       gross: linkSums.reduce((s, x) => s + (x._sum.grossPeaches || 0), 0),
       myCommission: linkSums.reduce((s, x) => s + sumMine(account.role, x._sum), 0),
       referrals: links.reduce((s, l) => s + l.signups, 0),
@@ -906,14 +996,19 @@ export async function cabinetProjectView(accountId: string, projectId: string) {
       bridgeUrl: urls[i]!.bridge,
       telegramUrl: urls[i]!.telegram,
     })),
-    spends: spends.map((s) => ({
+    spends: readySpends.map((s) => ({
       id: s.id,
       amountRub: s.amountRub,
-      reportTitle: s.reportTitle,
-      reportBody: s.reportBody,
-      hasFile: Boolean(s.reportFile),
-      reportedAt: s.reportedAt?.toISOString() || null,
+      reportedRub: reportedRubOf(s.reports),
       createdAt: s.createdAt.toISOString(),
+      reports: s.reports.map((report) => ({
+        id: report.id,
+        amountRub: report.amountRub,
+        title: report.title,
+        body: report.body,
+        hasFile: Boolean(report.file),
+        createdAt: report.createdAt.toISOString(),
+      })),
     })),
     accruals: accruals.map((a) => ({
       id: a.id,
@@ -930,25 +1025,22 @@ export async function cabinetProjectView(accountId: string, projectId: string) {
 export async function cabinetSpendFile(opts: {
   accountId?: string | null;
   ops?: boolean;
-  spendId: string;
+  reportId: string;
 }) {
-  const spend = await prisma.cabinetSpend.findUnique({
-    where: { id: opts.spendId },
-    include: { project: { select: { investorId: true, buyerId: true } } },
+  const report = await prisma.cabinetSpendReport.findUnique({
+    where: { id: opts.reportId },
+    include: { spend: { include: { project: { select: { investorId: true, buyerId: true } } } } },
   });
-  if (!spend || !spend.reportFile) return null;
+  if (!report?.file) return null;
+  const project = report.spend.project;
   if (!opts.ops) {
-    if (
-      !opts.accountId ||
-      (spend.project.investorId !== opts.accountId && spend.project.buyerId !== opts.accountId)
-    ) {
+    if (!opts.accountId || (project.investorId !== opts.accountId && project.buyerId !== opts.accountId)) {
       return null;
     }
   }
-  const abs = cabinetReportPath(spend.reportFile);
+  const abs = cabinetReportPath(report.file);
   if (!abs || !fs.existsSync(abs)) return null;
   const ext = path.extname(abs).slice(1).toLowerCase();
-  const type =
-    ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+  const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
   return { abs, type };
 }

@@ -1695,11 +1695,12 @@ model CabinetAttribution {
   @@index([linkId])
 }
 
-/// Investor's note that money was sent. Buyer attaches the report to this row.
+/// Investor's note that money was sent. Buyer splits it into purchases.
 model CabinetSpend {
   id          String    @id @default(cuid())
   projectId   String
   amountRub   Int
+  /// Legacy single report. New purchases live in reports.
   reportTitle String    @default("")
   reportBody  String    @default("")
   /// File name inside data/cabinet-reports
@@ -1707,9 +1708,26 @@ model CabinetSpend {
   reportedAt  DateTime?
   createdAt   DateTime  @default(now())
 
-  project CabinetProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project CabinetProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reports CabinetSpendReport[]
 
   @@index([projectId, createdAt])
+}
+
+/// One purchase the buyer made from part of an investor transfer.
+model CabinetSpendReport {
+  id        String   @id @default(cuid())
+  spendId   String
+  amountRub Int
+  title     String   @default("")
+  body      String   @default("")
+  /// File name inside data/cabinet-reports
+  file      String   @default("")
+  createdAt DateTime @default(now())
+
+  spend CabinetSpend @relation(fields: [spendId], references: [id], onDelete: Cascade)
+
+  @@index([spendId, createdAt])
 }
 
 model CabinetWithdrawal {

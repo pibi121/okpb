@@ -20,7 +20,13 @@ type Project = {
   investor: { id: string; name: string; login: string };
   buyer: { id: string; name: string; login: string };
   links: Array<{ id: string; label: string; purchases: number; purchaseGrossPeaches: number }>;
-  spends: Array<{ id: string; amountRub: number; reportTitle: string; reportedAt: string | null; createdAt: string }>;
+  spends: Array<{
+    id: string;
+    amountRub: number;
+    reportedRub: number;
+    createdAt: string;
+    reports: Array<{ id: string; amountRub: number; title: string; createdAt: string }>;
+  }>;
 };
 type Withdrawal = {
   id: string;
@@ -324,7 +330,16 @@ export default function OpsDealsPage() {
               <ul className="mt-3 text-zinc-400">
                 {p.spends.map((s) => (
                   <li key={s.id}>
-                    {rub(s.amountRub)} · {when(s.createdAt)} · {s.reportedAt ? s.reportTitle || "отчёт есть" : "ждёт отчёт"}
+                    {rub(s.amountRub)} · {when(s.createdAt)} · закрыто {rub(s.reportedRub)}
+                    {s.reports.length > 0 ? (
+                      <ul className="mt-1 text-zinc-500">
+                        {s.reports.map((report) => (
+                          <li key={report.id}>
+                            {rub(report.amountRub)} · {report.title}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
                 ))}
                 {p.spends.length === 0 ? <li>Расходов ещё нет</li> : null}

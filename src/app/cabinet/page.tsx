@@ -213,7 +213,7 @@ export default function CabinetHomePage() {
             {p.openSpends > 0 ? (
               <p className="mt-3 text-sm text-peach">
                 {p.openSpends}{" "}
-                {home.account.role === "buyer" ? "без отчёта" : "ждут отчёт байера"}
+                {home.account.role === "buyer" ? "с незакрытой суммой" : "ждут отчёт байера"}
               </p>
             ) : null}
           </Link>
